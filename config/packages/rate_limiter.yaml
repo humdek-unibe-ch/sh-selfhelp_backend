@@ -1,0 +1,21 @@
+# Brute-force protection for the auth endpoints (see AuthController).
+# Counters live in the cache.app pool (Redis); no database tables.
+# Each value is an env var (Manager-tunable per instance) with a default in
+# config/services.yaml, so instances without the vars still boot.
+framework:
+    rate_limiter:
+        # Failed password attempts per account (keyed by email).
+        auth_login:
+            policy: sliding_window
+            limit: '%env(default:auth_login_max_attempts_default:int:AUTH_LOGIN_MAX_ATTEMPTS)%'
+            interval: '%env(default:auth_login_window_default:AUTH_LOGIN_WINDOW)%'
+        # Failed 2FA code attempts per account (keyed by user id).
+        auth_two_factor:
+            policy: sliding_window
+            limit: '%env(default:auth_2fa_max_attempts_default:int:AUTH_2FA_MAX_ATTEMPTS)%'
+            interval: '%env(default:auth_2fa_window_default:AUTH_2FA_WINDOW)%'
+        # Password-reset emails per address.
+        auth_forgot_password:
+            policy: sliding_window
+            limit: '%env(default:auth_recovery_max_requests_default:int:AUTH_RECOVERY_MAX_REQUESTS)%'
+            interval: '%env(default:auth_recovery_window_default:AUTH_RECOVERY_WINDOW)%'

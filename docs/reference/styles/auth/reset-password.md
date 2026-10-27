@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (auth password-reset flow, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-30.
+Last verified: 2026-10-27.
 Source of truth: `IResetPasswordStyle` in `@selfhelp/shared`, `ResetPasswordStyle.tsx`, `AuthController::forgotPassword`/`resetPassword`, `PasswordResetService`, `MailTemplateService`, and the seeded `page_routes` (migration `Version20260710093044`).
 
 ## Summary
@@ -53,7 +53,11 @@ decide which screen to render:
 
 - **Request mode** (`/reset`, no params): posts the email to
   `POST /auth/forgot-password`. The endpoint always returns a generic success (no
-  account enumeration). For a known active account,
+  account enumeration), except when the address hit the rate limit
+  (`AUTH_RECOVERY_MAX_REQUESTS` / `AUTH_RECOVERY_WINDOW`): then it answers `429`
+  with `data.retry_after` and sends no email, and the renderer shows
+  `alert_rate_limited`. The limit counts every address, known or not, so the
+  `429` reveals nothing about accounts. For a known active account,
   `PasswordResetService::requestReset()` stores a one-time token on the user
   (`users.token`) and sends the `mail_recovery` email immediately via the job
   scheduler. The link points at `<FRONTEND_BASE_URL>/reset/{user_id}/{token}`.
@@ -83,6 +87,7 @@ live in the DB / `admin/styles/schema` endpoint.
 | `placeholder` | text | 1 | Placeholder for the email input (request mode). |
 | `label_pw_reset` | text | 1 | Submit button label (request mode). |
 | `alert_success` | text | 1 | Confirmation shown after submitting the email form (request mode). |
+| `alert_rate_limited` | text | 1 | Shown (inline orange alert on web, inline text on mobile) when too many reset emails were requested for an address (backend `429`); `{minutes}` = remaining wait, rounded up. Seeded en-GB/de-CH on `reset-sys-form` (`Version20261027085407`). Both renderers use the shared `getRateLimitRetryAfter` / `formatRateLimitMessage` helpers (`@selfhelp/shared` `>= 1.22.0`). |
 | `color` | color-picker | 0 | Submit/link-button accent colour (cross-platform via the shared mapper; default `blue`). |
 | `reset_title` | text | 1 | Heading shown above the set-password form when the reset token is present in the URL. |
 | `reset_label_pw` | text | 1 | Label for the new-password input on the set-password form. |
@@ -118,3 +123,7 @@ live in the DB / `admin/styles/schema` endpoint.
 
 - [login.md](./login.md) — links here via `label_pw_reset`.
 - [_conventions.md](../_conventions.md) — common fields.
+
+## Change history
+
+- `2026-10-27` — Added the translatable `alert_rate_limited` field (`Version20261027085407`) shown when the password-recovery rate limit answers `429`.

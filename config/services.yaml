@@ -21,6 +21,14 @@ parameters:
     # pattern as the impersonation TTL so the container boots without the var).
     jwt_mobile_preview_token_ttl: '%env(default:jwt_mobile_preview_token_ttl_default:int:MOBILE_PREVIEW_TOKEN_TTL)%'
     jwt_mobile_preview_token_ttl_default: 900
+    # Auth brute-force limits (config/packages/rate_limiter.yaml). Override
+    # with the AUTH_* env vars; windows are relative time strings.
+    auth_login_max_attempts_default: 15
+    auth_login_window_default: '15minutes'
+    auth_2fa_max_attempts_default: 15
+    auth_2fa_window_default: '15minutes'
+    auth_recovery_max_requests_default: 3
+    auth_recovery_window_default: '1hour'
     # Response-schema validation (expensive). Opt in via env; defaults to false.
     # See docs/developer/05-api-patterns.md.
     validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'

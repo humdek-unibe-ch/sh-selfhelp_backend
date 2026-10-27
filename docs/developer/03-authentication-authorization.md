@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-10-23.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 ## Security Architecture Overview
@@ -187,6 +187,41 @@ sequenceDiagram
     JWTService-->>JWTTokenAuthenticator: Token payload
     JWTTokenAuthenticator-->>Client: Request processed
 ```
+
+### Brute-Force Rate Limiting
+
+`AuthController` throttles the credential endpoints with Symfony RateLimiter
+(`config/packages/rate_limiter.yaml`, sliding windows). Counters live in the
+`cache.app` pool (Redis); there are no database tables.
+
+| Endpoint | Counted per | Counts | Default | Over the limit |
+|---|---|---|---|---|
+| `POST /auth/login` | lowercased email | failed attempts only; a successful password check resets it | 15 / 15 minutes | `429` + `Retry-After` header + `data.retry_after` (seconds), even for the correct password |
+| `POST /auth/two-factor-verify` | `id_users` | wrong codes only; a valid code resets it | 15 / 15 minutes | `429` + `Retry-After` + `data.retry_after` |
+| `POST /auth/forgot-password` | lowercased email | every request, known account or not | 3 / 1 hour | no email is sent and it answers `429` + `Retry-After` + `data.retry_after`; below the limit the answer stays the generic `200 {requested: true}`. Unknown addresses are counted the same way, so the `429` cannot be used to enumerate accounts |
+
+There is no permanent lockout: a window frees up on its own, and other
+accounts are never affected.
+
+Every value is an environment variable, so the Manager can tune it per
+instance. Unset variables fall back to the defaults in `config/services.yaml`
+(`auth_*_default` parameters), so existing instances boot unchanged:
+
+| Variable | Default |
+|---|---|
+| `AUTH_LOGIN_MAX_ATTEMPTS` | `15` |
+| `AUTH_LOGIN_WINDOW` | `15minutes` |
+| `AUTH_2FA_MAX_ATTEMPTS` | `15` |
+| `AUTH_2FA_WINDOW` | `15minutes` |
+| `AUTH_RECOVERY_MAX_REQUESTS` | `3` |
+| `AUTH_RECOVERY_WINDOW` | `1hour` |
+
+Windows are relative time strings without spaces (`15minutes`, `1hour`):
+generated instance `.env` files are unquoted, and the dotenv parser rejects an
+unquoted value containing a space. The limits are
+per account, not per client IP: browser traffic reaches the backend through the
+frontend BFF, so the backend does not see the visitor's address. Tests:
+`tests/Controller/Api/V1/AuthRateLimitTest.php`.
 
 ### JWTService Implementation
 ```php

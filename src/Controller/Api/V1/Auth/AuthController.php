@@ -26,6 +26,8 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\RateLimiter\RateLimit;
+use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 
@@ -54,7 +56,27 @@ class AuthController extends AbstractController
         private readonly UserValidationService $userValidationService,
         private readonly RegistrationService $registrationService,
         private readonly PasswordResetService $passwordResetService,
+        private readonly RateLimiterFactoryInterface $authLoginLimiter,
+        private readonly RateLimiterFactoryInterface $authTwoFactorLimiter,
+        private readonly RateLimiterFactoryInterface $authForgotPasswordLimiter,
     ) {
+    }
+
+    /**
+     * 429 when an account's (or, for password recovery, an address's) window
+     * is full, with the remaining wait in `data.retry_after` + `Retry-After`.
+     */
+    private function tooManyAttempts(RateLimit $limit, string $message = 'Too many failed attempts. Please try again later.'): JsonResponse
+    {
+        $retryAfter = max(1, $limit->getRetryAfter()->getTimestamp() - time());
+        $response = $this->responseFormatter->formatError(
+            $message,
+            Response::HTTP_TOO_MANY_REQUESTS,
+            ['retry_after' => $retryAfter]
+        );
+        $response->headers->set('Retry-After', (string) $retryAfter);
+
+        return $response;
     }
 
     private function logDebugException(string $context, \Throwable $exception): void
@@ -86,14 +108,22 @@ class AuthController extends AbstractController
             $userInput = $this->asStringField($data, 'email'); // Schema ensures 'email' exists if valid
             $password = $this->asStringField($data, 'password'); // Schema ensures 'password' exists if valid
 
+            $loginLimiter = $this->authLoginLimiter->create('login:' . mb_strtolower(trim($userInput)));
+            $loginLimit = $loginLimiter->consume(0);
+            if ($loginLimit->getRemainingTokens() === 0) {
+                return $this->tooManyAttempts($loginLimit);
+            }
+
             $user = $this->loginService->validateUser($userInput, $password);
 
             if (!$user) {
+                $loginLimiter->consume(1);
                 return $this->responseFormatter->formatError(
                     'Invalid credentials',
                     Response::HTTP_UNAUTHORIZED
                 );
             }
+            $loginLimiter->reset();
 
             // If the user is found check if 2FA is required
             if ($user->isTwoFactorRequired()) {
@@ -161,14 +191,22 @@ class AuthController extends AbstractController
             $code = $this->asStringField($data, 'code'); // Schema ensures 'code' exists
             $userId = $this->asIntField($data, 'id_users'); // Schema ensures 'id_users' exists
 
+            $twoFactorLimiter = $this->authTwoFactorLimiter->create('2fa:' . $userId);
+            $twoFactorLimit = $twoFactorLimiter->consume(0);
+            if ($twoFactorLimit->getRemainingTokens() === 0) {
+                return $this->tooManyAttempts($twoFactorLimit);
+            }
+
             $verified = $this->authRepository->verify2faCode($userId, $code);
 
             if (!$verified) {
+                $twoFactorLimiter->consume(1);
                 return $this->responseFormatter->formatError(
                     'Invalid or expired verification code',
                     Response::HTTP_UNAUTHORIZED
                 );
             }
+            $twoFactorLimiter->reset();
 
             $user = $this->entityManager->getRepository(User::class)->find($userId);
 
@@ -399,6 +437,15 @@ class AuthController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/auth/forgot_password', $this->jsonSchemaValidationService);
             $email = $this->asStringField($data, 'email');
+
+            // Counted per address whether or not an account exists, so the 429
+            // reveals nothing about which emails are registered.
+            $forgotLimit = $this->authForgotPasswordLimiter
+                ->create('forgot:' . mb_strtolower(trim($email)))
+                ->consume(1);
+            if (!$forgotLimit->isAccepted()) {
+                return $this->tooManyAttempts($forgotLimit, 'Too many reset requests. Please try again later.');
+            }
 
             $this->passwordResetService->requestReset($email);
 

@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (auth API, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-24.
+Last verified: 2026-10-27.
 Source of truth: `ILoginStyle` in `@selfhelp/shared`, `LoginStyle.tsx`, the auth login endpoint, `migrations/Version20260604111011.php` (for `label_register`), and `migrations/Version20260619131830.php` (for `subtitle`).
 
 ## Summary
@@ -34,10 +34,13 @@ defaults are the frontend fallback used when the field is empty.
 | `label_pw_reset` | text | 1 | `Forgot password?` | Reset-password link label (→ `/reset`). |
 | `label_register` | text | 1 | `Create account` **(seeded)** | Registration link label (→ register page). |
 | `alert_fail` | text | 1 | `Invalid email or password.` | Failure notification message (overridden by the API error when present). |
+| `alert_rate_limited` | text | 1 | `Too many failed attempts. Please try again in {minutes} min.` **(seeded)** | Shown when too many failed attempts block sign-in (backend `429`). `{minutes}` is replaced with the remaining wait, rounded up. |
 | `color` | color-picker | 0 | `dark` | Submit button colour (cross-platform, via the shared mapper). Renderers treat the neutral `dark`/`black` accent **adaptively** so it stays readable in dark mode (see Frontend rendering). |
 | spacing fields | various | 0 | — | Inherited from `IStyleWithSpacing`. |
 
-de-CH translation seeded for `label_register`: `Konto erstellen`.
+de-CH translations seeded for `label_register`: `Konto erstellen`; for `alert_rate_limited`:
+`Zu viele fehlgeschlagene Versuche. Bitte versuchen Sie es in {minutes} Min. erneut.`
+(`Version20261027085407`, which also adds the field to `two-factor-auth` and `reset-password`).
 
 ## Behaviour
 
@@ -46,7 +49,15 @@ de-CH translation seeded for `label_register`: `Konto erstellen`.
 - On success it shows a notification and navigates to the `redirectTo` query
   param or the home route.
 - Failure surfaces the API error message (falling back to `alert_fail`) as a
-  notification — the form does not render an inline alert.
+  notification.
+- When the backend rate-limits the account (`429`, see the brute-force limits
+  in `docs/developer/03-authentication-authorization.md`), the form instead
+  renders the `alert_rate_limited` text in an inline orange alert
+  (`role="alert"`) above the submit button, with `{minutes}` filled from
+  `data.retry_after` (rounded up, at least 1). It clears on the next submit.
+  Mobile shows the same text as its inline error. Both use the shared
+  `getRateLimitRetryAfter` / `formatRateLimitMessage` helpers (`@selfhelp/shared`
+  `>= 1.22.0`), so the output is identical.
 
 ## Frontend rendering
 
@@ -86,6 +97,9 @@ backend seed default stays `dark`.
 
 ## Change history
 
+- `2026-10-27` — Added the translatable `alert_rate_limited` field
+  (`Version20261027085407`) shown on a `429` from the login brute-force limiter
+  (web inline alert + mobile inline error, shared formatter).
 - `2026-06-24` — Documented the **adaptive neutral accent**: both renderers now
   treat a `dark`/`black` `color` adaptively so the submit button and links stay
   readable in dark mode (frontend `>= 0.1.34`, mobile `>= 0.1.13`). Renderer-only;
