@@ -54,6 +54,37 @@ final class ApiRequestLoggerServiceTest extends QaKernelTestCase
         self::assertSame('********', $json['api_key'], 'API key must be masked.');
     }
 
+    public function testRefreshTokensAndPasswordChangesAreMaskedInTheLog(): void
+    {
+        $request = Request::create('/cms-api/v1/auth/refresh-token', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], (string) json_encode([
+            'refresh_token' => 'qa-secret-refresh',
+            'current_password' => 'qa-secret-old',
+            'new_password' => 'qa-secret-new',
+        ]));
+
+        $log = $this->logger->logRequest($request, new JsonResponse(['ok' => true]), $this->logger->startRequest($request));
+
+        $params = (string) $log->getRequestParams();
+        self::assertStringNotContainsString('qa-secret', $params, 'Token and password values must never be logged.');
+        self::assertStringContainsString('refresh_token', $params, 'Masked keys stay visible for debugging.');
+    }
+
+    public function testTokensInTheResponseAreMaskedInTheLog(): void
+    {
+        $request = $this->jsonRequestWithSecrets();
+        $response = new JsonResponse(['status' => 200, 'data' => [
+            'access_token' => 'qa-secret-access',
+            'refresh_token' => 'qa-secret-refresh',
+            'user' => ['email' => 'qa-logger@selfhelp.test'],
+        ]]);
+
+        $log = $this->logger->logRequest($request, $response, $this->logger->startRequest($request));
+
+        $body = (string) $log->getResponseData();
+        self::assertStringNotContainsString('qa-secret', $body, 'Issued tokens must never be logged.');
+        self::assertStringContainsString('qa-logger@selfhelp.test', $body, 'The rest of the response is kept.');
+    }
+
     public function testSensitiveHeadersAreStrippedFromTheLog(): void
     {
         $request = $this->jsonRequestWithSecrets();

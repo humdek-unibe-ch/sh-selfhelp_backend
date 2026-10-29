@@ -77,6 +77,19 @@ A headless `core` page therefore returns `menu_eligible: true`, asserted directl
 by `testMenuEligibilityCoversPageTypeOnlyNotHeadless`. Per-item reasons stay on
 `public_visibility`.
 
+## Fix: secrets no longer stored in the API request log
+
+- `api_request_logs` stored issued access/refresh tokens (login and refresh
+  responses) and request fields such as `refresh_token`, `new_password` and
+  `current_password` in plain text; only exact `password`/`token` keys were
+  masked. Any key containing `password`, `token` or `secret` is now masked, in
+  the request and in the logged JSON response.
+- Outside prod, validation errors echoed the request body
+  (`validation.request_data`) including passwords; secrets are now masked there too.
+
+**Upgrade note:** rows logged before this change may still hold tokens. Clear
+old `api_request_logs` rows if the database or its backups may be shared.
+
 ## Fix: form uploads are private and no longer dropped
 
 - Files uploaded through forms were written to `public/uploads/form-files/`, so

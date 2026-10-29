@@ -119,6 +119,11 @@ class ApiRequestLoggerService
         if ($responseContent === false) {
             $responseContent = '';
         }
+        // Login/refresh responses carry tokens: never store them.
+        $decoded = json_decode($responseContent, true);
+        if (is_array($decoded)) {
+            $responseContent = (string) json_encode(self::maskSecrets($decoded));
+        }
         if (strlen($responseContent) > 10000) {
             $responseContent = substr($responseContent, 0, 10000) . '... [truncated]';
         }
@@ -232,25 +237,35 @@ class ApiRequestLoggerService
     
     /**
      * Sanitize data, masking sensitive fields
-     * 
+     *
      * @param array<array-key, mixed> $data
      * @return array<array-key, mixed>
      */
     private function sanitizeData(array $data): array
     {
-        $sensitiveFields = [
-            'password', 'token', 'secret', 'key', 'apikey', 'api_key',
-            'credit_card', 'creditcard', 'card_number', 'cardnumber'
-        ];
-        
+        return self::maskSecrets($data);
+    }
+
+    /**
+     * Mask secret values at any depth: keys containing password/token/secret
+     * (refresh_token, new_password, ...) plus the exact key/card names.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    public static function maskSecrets(array $data): array
+    {
+        $exactFields = ['key', 'apikey', 'api_key', 'credit_card', 'creditcard', 'card_number', 'cardnumber'];
+
         foreach ($data as $key => $value) {
-            if (is_array($value)) {
-                $data[$key] = $this->sanitizeData($value);
-            } elseif (is_string($key) && in_array(strtolower($key), $sensitiveFields)) {
+            $name = strtolower((string) $key);
+            if (is_string($key) && (preg_match('/password|token|secret/', $name) === 1 || in_array($name, $exactFields, true))) {
                 $data[$key] = '********';
+            } elseif (is_array($value)) {
+                $data[$key] = self::maskSecrets($value);
             }
         }
-        
+
         return $data;
     }
 }
