@@ -3,6 +3,12 @@
 **Public-navigable page types are resolved by name, and the admin navigation
 payload now states whether an item actually renders publicly.**
 
+## Fix: last login is recorded for password logins
+
+- `users.last_login` was only set after a 2FA code, so every user without 2FA
+  showed `last_login: "never"` in Admin → Users. A successful password login
+  now records it too.
+
 ## Fix: the `[2, 3]` page-type filter was positional
 
 `PageService::getAllAccessiblePagesForUser()` restricted non-admin page trees

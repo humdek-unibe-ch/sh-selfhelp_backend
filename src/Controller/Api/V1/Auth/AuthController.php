@@ -141,6 +141,7 @@ class AuthController extends AbstractController
                 ], 'responses/auth/2fa_required', Response::HTTP_OK, true);
             }
 
+            $this->loginService->recordLogin($user);
             $token = $this->jwtService->createToken($user);
             $refreshToken = $this->jwtService->createRefreshToken($user);
 

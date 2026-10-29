@@ -10,6 +10,7 @@ namespace App\Service\Auth;
 
 use App\Entity\User;
 use App\Repository\UserRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 class LoginService
@@ -19,7 +20,8 @@ class LoginService
 
     public function __construct(
         UserRepository $userRepository,
-        UserPasswordHasherInterface $passwordHasher
+        UserPasswordHasherInterface $passwordHasher,
+        private readonly EntityManagerInterface $entityManager,
     ) {
         $this->userRepository = $userRepository;
         $this->passwordHasher = $passwordHasher;
@@ -41,6 +43,13 @@ class LoginService
             return false;
         }        
         return $userEntity;
+    }
+
+    /** Stamp a completed sign-in (the 2FA path does this in AuthRepository::verify2faCode). */
+    public function recordLogin(User $user): void
+    {
+        $user->setLastLogin(new \DateTimeImmutable());
+        $this->entityManager->flush();
     }
 
 }
