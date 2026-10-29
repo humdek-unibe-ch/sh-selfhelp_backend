@@ -40,10 +40,11 @@ class FormValidationService extends BaseService
      * @param int $pageId The page ID where form is submitted from
      * @param int $sectionId The section ID (form ID)
      * @param array<string, mixed> $formData The form data being submitted
+     * @param bool $hasFiles Uploaded files travel outside $formData; they count as content
      * @return array<string, mixed> Validation result with page and section info
      * @throws ServiceException If validation fails
      */
-    public function validateFormSubmission(int $pageId, int $sectionId, array $formData): array
+    public function validateFormSubmission(int $pageId, int $sectionId, array $formData, bool $hasFiles = false): array
     {
         // Find the page
         $page = $this->pageRepository->find($pageId);
@@ -73,7 +74,7 @@ class FormValidationService extends BaseService
         $this->validateSectionBelongsToPage($pageId, $sectionId);
 
         // Validate form data structure
-        $this->validateFormData($formData);
+        $this->validateFormData($formData, $hasFiles);
 
         return [
             'page' => $page,
@@ -92,9 +93,9 @@ class FormValidationService extends BaseService
      * @param array<string, mixed> $formData
      * @return array<string, mixed>
      */
-    public function validateFormUpdate(int $pageId, int $sectionId, array $formData): array
+    public function validateFormUpdate(int $pageId, int $sectionId, array $formData, bool $hasFiles = false): array
     {
-        $result = $this->validateFormSubmission($pageId, $sectionId, $formData);
+        $result = $this->validateFormSubmission($pageId, $sectionId, $formData, $hasFiles);
         $result['own_entries_only'] = ($this->readSectionFieldContent($sectionId, 'own_entries_only') ?? '1') === '1';
 
         return $result;
@@ -214,9 +215,9 @@ class FormValidationService extends BaseService
      * @param array<array-key, mixed> $formData The form data to validate
      * @throws ServiceException If validation fails
      */
-    private function validateFormData(array $formData): void
+    private function validateFormData(array $formData, bool $hasFiles = false): void
     {
-        if (empty($formData)) {
+        if (empty($formData) && !$hasFiles) {
             throw new ServiceException(
                 'Form data cannot be empty',
                 Response::HTTP_BAD_REQUEST

@@ -77,6 +77,31 @@ A headless `core` page therefore returns `menu_eligible: true`, asserted directl
 by `testMenuEligibilityCoversPageTypeOnlyNotHeadless`. Per-item reasons stay on
 `public_visibility`.
 
+## Fix: form uploads are private and no longer dropped
+
+- Files uploaded through forms were written to `public/uploads/form-files/`, so
+  anyone with the path could read them and an uploaded SVG ran its script on the
+  backend origin. They now live in `var/form-files/` and are served only by
+  `GET /cms-api/v1/forms/files/{record_id}/{field}` (migration
+  `Version20261028095413`) to the submitting user or users with READ on the
+  form's data table, sandboxed and with `nosniff`. A new `files_public`
+  checkbox on `file-input` (migration `Version20261028100251`, off by default)
+  makes a field's files readable by anyone, live for old and new files.
+- A field counted as a file upload only when its name contained "file"; any
+  other `file-input` lost its file while the form reported success. Detection
+  now uses the section style, and a file sent for a non-file field returns `400`.
+- Stored file names no longer get a doubled extension (`.svg.svg`).
+- Admins can download uploads as zips: all files of a multi-file field
+  (`GET /forms/files/{record_id}/{field}/zip`) or the files of the shown rows of
+  a data table (`GET /admin/data/tables/{tableName}/files`, `admin.data.read`).
+  Migration `Version20261028125153`.
+
+**Upgrade step:** move `public/uploads/form-files/` to `var/form-files/`,
+preserving the folder structure. Stored record values do not change. On an
+sh-manager instance (which mounts a `form_files` volume on `var/form-files`), run
+once after the update:
+`docker compose exec backend sh -c 'cp -a /app/public/uploads/form-files/. /app/var/form-files/ && rm -rf /app/public/uploads/form-files'`.
+
 ## Compatibility
 
 Additive response fields only — every existing response keeps its shape, so

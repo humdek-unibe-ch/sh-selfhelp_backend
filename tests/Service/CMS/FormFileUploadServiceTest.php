@@ -21,7 +21,7 @@ use Symfony\Component\HttpFoundation\Response;
  * path-traversal filename) and the cleanup helpers.
  *
  * Files are written under a dedicated `qa` user/section subtree of
- * `public/uploads/form-files/` and removed in tearDown, so the test never leaks
+ * `var/form-files/` and removed in tearDown, so the test never leaks
  * real uploaded files (plan "no real file storage").
  */
 final class FormFileUploadServiceTest extends QaKernelTestCase
@@ -51,7 +51,7 @@ final class FormFileUploadServiceTest extends QaKernelTestCase
                 @unlink($path);
             }
         }
-        $this->removeDir(sprintf('%s/public/uploads/form-files/user_%d', $this->projectDir, self::QA_USER_ID));
+        $this->removeDir(sprintf('%s/var/form-files/user_%d', $this->projectDir, self::QA_USER_ID));
 
         parent::tearDown();
     }
@@ -69,7 +69,7 @@ final class FormFileUploadServiceTest extends QaKernelTestCase
         self::assertStringNotContainsString('..', $relativePath, 'Stored path must not contain traversal segments.');
 
         // Public side effect: the file exists on disk.
-        $full = $this->projectDir . '/public/' . $relativePath;
+        $full = $this->storedFile($relativePath);
         self::assertFileExists($full);
 
         // Cleanup helper actually removes it.
@@ -124,7 +124,7 @@ final class FormFileUploadServiceTest extends QaKernelTestCase
         self::assertStringNotContainsString('etc/passwd', $relativePath);
         // The file must land inside the sanitized field directory only.
         self::assertStringContainsString('user_' . self::QA_USER_ID . '/section_' . self::QA_SECTION_ID, $relativePath);
-        self::assertFileExists($this->projectDir . '/public/' . $relativePath);
+        self::assertFileExists($this->storedFile($relativePath));
     }
 
     public function testExtractFileDataPicksOnlyUploadPaths(): void
@@ -143,14 +143,22 @@ final class FormFileUploadServiceTest extends QaKernelTestCase
         self::assertArrayHasKey('qa_files', $fileData);
     }
 
-    public function testIsFileInputFieldHeuristic(): void
+    public function testFieldNameAloneNeverMakesAFileField(): void
     {
-        self::assertTrue($this->service->isFileInputField('qa_file', self::QA_SECTION_ID));
-        self::assertTrue($this->service->isFileInputField('profile_FILE_upload', self::QA_SECTION_ID));
-        self::assertFalse($this->service->isFileInputField('qa_answer', self::QA_SECTION_ID));
+        // No file-input section backs these names, so "file" in the name is irrelevant
+        // (D3). The style-based positive path is covered by FormFileFieldSubmitTest.
+        self::assertFalse($this->service->isFileInputField('qa_file', (string) self::QA_SECTION_ID));
+        self::assertFalse($this->service->isFileInputField('profile_FILE_upload', (string) self::QA_SECTION_ID));
+        self::assertFalse($this->service->isFileInputField('qa_answer', (string) self::QA_SECTION_ID));
     }
 
     // -- helpers ------------------------------------------------------------
+
+    /** Files live outside the document root; the stored value is a logical key. */
+    private function storedFile(string $relativePath): string
+    {
+        return $this->projectDir . '/var/form-files/' . substr($relativePath, strlen('uploads/form-files/'));
+    }
 
     private function makeUpload(string $originalName, string $contents): UploadedFile
     {

@@ -53,6 +53,11 @@ final class StyleNames
     public const STYLE_LOOP = 'loop';
 
     /**
+     * Form file upload input; its files are stored by FormFileUploadService.
+     */
+    public const STYLE_FILE_INPUT = 'file-input';
+
+    /**
      * Styles that are allowed to be used for submitting data
      */
     public const FORM_STYLE_NAMES = [

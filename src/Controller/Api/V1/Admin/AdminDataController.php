@@ -7,6 +7,7 @@
 
 namespace App\Controller\Api\V1\Admin;
 
+use App\Controller\Api\V1\Frontend\FormFileController;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
@@ -14,6 +15,7 @@ use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\DataQueryPreviewService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\FormFileUploadService;
 use App\Service\CMS\Frontend\OptionLabelHydrator;
 use App\Service\Core\LookupService;
 use App\Service\Core\ApiResponseFormatter;
@@ -38,6 +40,7 @@ class AdminDataController extends AbstractController
         private readonly UserContextService $userContextService,
         private readonly TransactionService $transactionService,
         private readonly OptionLabelHydrator $optionLabelHydrator,
+        private readonly FormFileUploadService $formFileUploadService,
     ) {
     }
 
@@ -517,6 +520,53 @@ class AdminDataController extends AbstractController
             return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError('Export failed', Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Download the uploaded files of the given records of a form data table as
+     * one zip (`record_<id>/<field>/<file>`). Query: record_ids=1,2,3 — the rows
+     * the admin currently sees. Route permission admin.data.read + table READ.
+     */
+    public function downloadTableFiles(Request $request, string $tableName): Response
+    {
+        try {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
+            $recordIds = array_values(array_filter(
+                array_map('intval', explode(',', (string) $request->query->get('record_ids', ''))),
+                static fn (int $id): bool => $id > 0
+            ));
+            $files = $this->formFileUploadService->findTableFiles($tableName, $recordIds);
+            if ($files === []) {
+                return $this->responseFormatter->formatError('No files found for these records', Response::HTTP_NOT_FOUND);
+            }
+
+            $zipPath = $this->formFileUploadService->buildZip(array_map(
+                fn (array $file): array => [
+                    'entry' => sprintf('record_%d/%s/%s', $file['recordId'], $file['field'], $this->formFileUploadService->originalName($file['absolutePath'])),
+                    'absolutePath' => $file['absolutePath'],
+                ],
+                $files
+            ));
+            $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? $tableName;
+
+            return FormFileController::zipResponse($zipPath, (preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) ?? 'table') . '_files.zip');
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError('Download failed', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 

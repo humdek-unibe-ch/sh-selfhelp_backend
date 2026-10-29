@@ -73,6 +73,11 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'form_submit_v1',
         'form_update_v1',
         'form_delete_v1',
+        // Form file delivery: owner or READ on the form's data table, checked per record.
+        'form_files_serve_v1',
+        'form_files_zip_v1',
+        // Asset delivery: folder ACLs checked per request (open folders are anonymous-readable).
+        'assets_serve_v1',
         // Public frontend reads (page ACL handled per-page; lookups/languages
         // and CSS classes are public catalogue data).
         'frontend_css_classes_get_all_v1',

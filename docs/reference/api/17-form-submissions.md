@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-26.
+Last verified: 2026-10-28.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository (form storage keys resolved by `App\Service\CMS\DataColumnService`).
 
 ## Overview
@@ -56,8 +56,10 @@ Content-Type: multipart/form-data
 page_id=1
 section_id=5
 form_data={"name":"John","email":"john@example.com"}
-files[]=@document.pdf
+attachment=@document.pdf
 ```
+
+The file part's name must be the `name` of a `file-input` in that form (here `attachment`); any other name is rejected with `400`. Files are stored outside the document root and the record keeps a logical key (`uploads/form-files/user_<id>/section_<id>/field_<name>/<file>`), readable only through [Download an uploaded file](#download-an-uploaded-file).
 
 **Response:**
 ```json
@@ -121,6 +123,26 @@ Remove a form submission from the system.
 ```
 
 **Response:** Deletion confirmation
+
+### Download an uploaded file
+
+Return a file uploaded through a form.
+
+**Endpoint:** `GET /cms-api/v1/forms/files/{record_id}/{field}?index=0`
+
+- `field`: the `file-input` name (or its `section_<id>` column key).
+- `index`: which file of a multi-file field (default `0`).
+
+**Authentication:** JWT required unless the field's `files_public` switch is on (then anyone). Otherwise allowed for the user who submitted the record, or a user with READ on the form's data table (admins always). No route-level permission; access is checked per record.
+
+**Response:** the file bytes (not the JSON envelope), with `X-Content-Type-Options: nosniff`, a sandboxing `Content-Security-Policy`, and `Cache-Control: private`. HTML/XML are sent as `attachment`; everything else, including SVG, `inline` so it can be viewed (the sandbox CSP stops any script in it). Errors: `401` anonymous, `403` not allowed, `404` unknown record, non-file field or missing file.
+
+### Download several uploaded files as a zip
+
+- `GET /cms-api/v1/forms/files/{record_id}/{field}/zip`: every file of one multi-file field, as `record_<id>_<field>.zip`. Same access rule as a single file.
+- `GET /cms-api/v1/admin/data/tables/{tableName}/files?record_ids=1,2,3`: the files of the listed records of a form data table (the rows the admin is looking at), as `<table>_files.zip` with entries `record_<id>/<field>/<file>`. Requires the `admin.data.read` permission and READ on the table.
+
+Archives are built on demand and deleted after sending; more than 500 MB returns `413`.
 
 ## Form Data Structure
 
