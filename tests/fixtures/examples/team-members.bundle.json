@@ -96,11 +96,11 @@
                     "translations": [
                         {
                             "language_code": "de-CH",
-                            "content": "Teammitglied bearbeiten"
+                            "content": "Teammitglied"
                         },
                         {
                             "language_code": "en-GB",
-                            "content": "Edit team member"
+                            "content": "Team member"
                         }
                     ]
                 },

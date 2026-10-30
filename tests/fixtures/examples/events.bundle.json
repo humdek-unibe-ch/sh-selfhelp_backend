@@ -88,11 +88,11 @@
                     "translations": [
                         {
                             "language_code": "de-CH",
-                            "content": "Veranstaltung bearbeiten"
+                            "content": "Veranstaltung"
                         },
                         {
                             "language_code": "en-GB",
-                            "content": "Edit event"
+                            "content": "Event"
                         }
                     ]
                 },
