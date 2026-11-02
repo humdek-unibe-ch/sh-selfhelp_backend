@@ -38,7 +38,7 @@ final class Version20260716180311 extends AbstractMigration
         //     Takes no params: the tiles describe the caller's whole visible
         //     population, deliberately ignoring the list's active filters.
         $this->addRoute(
-            'admin_users_stats_v1',
+            'admin_users_stats',
             'GET',
             '/admin/users/stats',
             'AdminUserController::getUserStats',
@@ -47,7 +47,7 @@ final class Version20260716180311 extends AbstractMigration
 
         // (2) POST /admin/users/bulk-delete
         $this->addRoute(
-            'admin_users_bulk_delete_v1',
+            'admin_users_bulk_delete',
             'POST',
             '/admin/users/bulk-delete',
             'AdminUserController::bulkDeleteUsers',
@@ -57,7 +57,7 @@ final class Version20260716180311 extends AbstractMigration
 
         // (3) POST /admin/users/bulk-add-to-group
         $this->addRoute(
-            'admin_users_bulk_add_to_group_v1',
+            'admin_users_bulk_add_to_group',
             'POST',
             '/admin/users/bulk-add-to-group',
             'AdminUserController::bulkAddUsersToGroups',
@@ -67,7 +67,7 @@ final class Version20260716180311 extends AbstractMigration
 
         // (4) POST /admin/users/bulk-send-activation
         $this->addRoute(
-            'admin_users_bulk_send_activation_v1',
+            'admin_users_bulk_send_activation',
             'POST',
             '/admin/users/bulk-send-activation',
             'AdminUserController::bulkSendActivationMail',
@@ -79,7 +79,7 @@ final class Version20260716180311 extends AbstractMigration
         //     Honours the same filters as the list (no pagination: the full
         //     filtered set).
         $this->addRoute(
-            'admin_users_export_v1',
+            'admin_users_export',
             'GET',
             '/admin/users/export',
             'AdminUserController::exportUsers',
@@ -89,7 +89,7 @@ final class Version20260716180311 extends AbstractMigration
 
         // (6) POST /admin/users/import — multipart CSV upload.
         $this->addRoute(
-            'admin_users_import_v1',
+            'admin_users_import',
             'POST',
             '/admin/users/import',
             'AdminUserController::importUsers',
@@ -100,9 +100,9 @@ final class Version20260716180311 extends AbstractMigration
         //     existing list route. Re-declare its params so the route metadata
         //     documents them alongside the pagination/search params.
         //
-        //     The list route is named `admin_users_get_all` (no `_v1` suffix) —
-        //     the suffix convention is not universal in `api_routes`, so match
-        //     on the path/method instead of guessing the name.
+        //     Stored route names carry no version suffix (the version lives in
+        //     `api_routes.version`); match on the path/method instead of the
+        //     name anyway.
         $this->addSql(<<<SQL
             UPDATE `api_routes`
             SET `params` = JSON_OBJECT(
@@ -122,7 +122,7 @@ final class Version20260716180311 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        $routeNames = "'admin_users_stats_v1', 'admin_users_bulk_delete_v1', 'admin_users_bulk_add_to_group_v1', 'admin_users_bulk_send_activation_v1', 'admin_users_export_v1', 'admin_users_import_v1'";
+        $routeNames = "'admin_users_stats', 'admin_users_bulk_delete', 'admin_users_bulk_add_to_group', 'admin_users_bulk_send_activation', 'admin_users_export', 'admin_users_import'";
 
         $this->addSql(<<<SQL
             DELETE rap FROM `rel_api_routes_permissions` rap
