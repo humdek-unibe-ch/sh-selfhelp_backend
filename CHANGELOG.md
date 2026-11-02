@@ -1,3 +1,80 @@
+# v0.1.37
+
+The admin **user / group / role management** wave plus the **registration-code**
+and **scheduled-jobs stats** endpoints. All of these ship together in this
+release.
+
+## Feature: users management endpoints
+
+Adds `admin.user.{read,create,update,delete}` permissions and routes (migrations
+`Version20260716180311`, `Version20260717134503`):
+
+- `GET /cms-api/v1/admin/users` — paginated list with search / status / group
+  filters, scoped to the caller's visible users.
+- `GET /cms-api/v1/admin/users/stats` — counts per status bucket
+  (`total`/`active`/`invited`/`blocked`) for the page tiles, scoped like the list.
+- `GET /cms-api/v1/admin/users/{userId}` and `POST` / `PUT` / `DELETE` for CRUD.
+- Bulk operations: `POST /admin/users/bulk-delete`, `bulk-add-to-group`,
+  `bulk-remove-from-group`, `bulk-send-activation` (partial-success semantics).
+- CSV `GET /admin/users/export` and `POST /admin/users/import`.
+
+## Feature: group "View members" endpoint
+
+Adds `GET /cms-api/v1/admin/groups/{groupId}/members` (permission
+`admin.group.read`) backing the Groups page "View members" modal.
+
+## Feature: role / group member routes
+
+Adds `GET /cms-api/v1/admin/roles/{roleId}/users` and
+`GET /cms-api/v1/admin/groups/{groupId}/users` (permissions `admin.role.read`
+/ `admin.group.read`, migration `Version20260720132523`) listing the members of
+a role or group. The reusable member response JSON moves to
+`responses/admin/common/` so roles and groups share one schema.
+
+## Feature: registration-code stats endpoint
+
+Adds `GET /cms-api/v1/admin/registration-codes/stats` (permission
+`admin.registration_code.read`, migration `Version20260721085447`) for the admin
+Registration Codes page tiles. It returns the code counts as a breakdown of the
+whole visible set:
+
+```json
+{ "total": 120, "available": 84, "used": 36 }
+```
+
+`available` counts codes with no consumer (`consumed IS NULL`), `used` counts the
+rest, and `available + used === total`. The endpoint is **unfiltered** (it
+describes the whole set, not the current list filter) and, like the
+registration-codes list, is not group/ACL scoped — so `total` equals the
+unfiltered `totalCount` the list returns for the same caller.
+
+## Feature: scheduled-jobs stats endpoint
+
+Adds `GET /cms-api/v1/admin/scheduled-jobs/stats` (route
+`admin_scheduled_jobs_stats`, permission `admin.scheduled_job.read` — the same
+as the list endpoint, migration `Version20260721135036`) for the admin Scheduled
+Jobs page tiles. It returns a global status breakdown:
+
+```json
+{ "total": 200, "queued": 30, "done": 150, "failed": 12, "deleted": 8 }
+```
+
+`queued`/`done`/`failed`/`deleted` map to the `scheduledJobsStatus` lookup
+codes; `total` counts all jobs. The four status counts are **independent, not a
+partition** — deleted jobs still count toward `total`, so they need not sum to
+it. Computed from a single grouped aggregate (`GROUP BY status`). The endpoint
+is **unfiltered** (ignores date/search/status/type): it describes the whole set
+the caller can see, not the current list query.
+
+## Cross-repo
+
+All of the above are new (additive) admin API surface the frontend consumes, so
+`supports.frontend` is raised `0.1.63 → 0.1.64` (the first frontend that adopts
+this wave). These are admin-only surfaces the mobile app does not use, so their
+response types stay local to the frontend rather than in `@selfhelp/shared`;
+each response is anchored by its JSON Schema under `config/schemas/api/v1/`.
+`pluginApiVersion` is unchanged (`0.1.0`).
+
 # v0.1.36
 
 ## Fix: mobile Live Preview may call `GET /pages/resolve`
