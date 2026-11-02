@@ -377,14 +377,172 @@ class AdminUserServiceTest extends QaKernelTestCase
     /**
      * @group user-service
      */
-    public function testCleanUserDataReturnsTrue(): void
+    /**
+     * Seed one data row (with a cell) owned by the given user, so a clean-data
+     * test has real user-produced content to erase.
+     */
+    private function seedDataRowFor(int $userId): int
+    {
+        $dataTable = new \App\Entity\DataTable();
+        $dataTable->setName('qa_clean_' . uniqid('', false));
+        $this->em->persist($dataTable);
+
+        $dataCol = new \App\Entity\DataCol();
+        $dataCol->setFieldKey('qa_clean_col');
+        $dataCol->setDataTable($dataTable);
+        $this->em->persist($dataCol);
+
+        $dataRow = new \App\Entity\DataRow();
+        $dataRow->setDataTable($dataTable);
+        $dataRow->setIdUsers($userId);
+        $this->em->persist($dataRow);
+
+        $language = $this->em->getRepository(\App\Entity\Language::class)->find(1);
+        self::assertInstanceOf(\App\Entity\Language::class, $language);
+
+        $dataCell = new \App\Entity\DataCell();
+        $dataCell->setDataRow($dataRow);
+        $dataCell->setDataCol($dataCol);
+        $dataCell->setLanguage($language);
+        $dataCell->setValue('qa_clean_secret_value');
+        $this->em->persist($dataCell);
+
+        $this->em->flush();
+
+        return (int) $dataRow->getId();
+    }
+
+    /**
+     * The core erasure contract: everything the user produced goes, the account
+     * itself stays. Asserts the side effects rather than the return value —
+     * the previous stub returned true while deleting nothing.
+     *
+     * @group user-service
+     */
+    public function testCleanUserDataErasesProducedContentButKeepsTheAccount(): void
     {
         $created = $this->createQaUser('clean');
         $userId = $this->asInt($created['id']);
 
-        $this->assertTrue($this->adminUserService->cleanUserData($userId));
+        $user = $this->em->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $user);
 
-        $this->adminUserService->deleteUser($this->adminId, $userId);
+        // Seed each erasable kind: a data row + cell, and a scheduled job.
+        $dataRowId = $this->seedDataRowFor($userId);
+        $jobFactory = new \App\Tests\Support\Factories\ScheduledJobFactory($this->em);
+        $jobFactory->createDueQueuedEmailJob($user, 'qa_clean_job');
+
+        // Transaction.id_users is the ACTING user (TransactionService reads
+        // getCurrentUser()), and this kernel test has no authenticated request,
+        // so seed the user's activity rows directly. This is the same relation
+        // the admin Users list counts as its "Activity" column
+        // (User::$transactions, mappedBy 'user').
+        foreach (['qa_clean_activity_1', 'qa_clean_activity_2'] as $verbalLog) {
+            $transaction = new \App\Entity\Transaction();
+            $transaction->setUser($user);
+            $transaction->setTransactionLog($verbalLog);
+            $this->em->persist($transaction);
+        }
+        $this->em->flush();
+
+        $transactionsBefore = $this->countRowsForUser(\App\Entity\Transaction::class, 'user', $userId);
+        self::assertSame(2, $transactionsBefore, 'User must have activity before cleaning.');
+
+        $result = $this->adminUserService->cleanUserData($this->adminId, $userId);
+
+        self::assertTrue($result['cleaned']);
+        $removed = $this->asArray($result['removed']);
+        self::assertSame(1, $removed['data_rows']);
+        self::assertSame(1, $removed['data_cells']);
+        self::assertSame(1, $removed['scheduled_jobs']);
+        // DataAccessAudit is deliberately kept, so it has no count key.
+        self::assertArrayNotHasKey('data_access_audit', $removed);
+
+        $this->em->clear();
+
+        // The produced content is gone...
+        self::assertNull($this->em->getRepository(\App\Entity\DataRow::class)->find($dataRowId));
+        self::assertSame(0, $this->countRowsForUser(\App\Entity\ScheduledJob::class, 'user', $userId));
+        self::assertSame(0, $this->countRowsForUser(\App\Entity\DataCell::class, null, $userId));
+
+        // ...but the account survives — this is the whole point of clean-data.
+        $stillThere = $this->em->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $stillThere);
+        self::assertSame($created['email'], $stillThere->getEmail());
+
+        // The user's own activity is gone, so the admin Users list "Activity"
+        // column (User::$transactions) drops to zero as the UI promises.
+        self::assertSame(0, $this->countRowsForUser(\App\Entity\Transaction::class, 'user', $userId));
+
+        // The erasure itself is still audited. The entry is attributed to the
+        // ACTING admin (TransactionService uses getCurrentUser(), null here in
+        // a kernel test), so it is found by its log text, not by the subject.
+        $auditEntries = (int) $this->em
+            ->createQuery(
+                'SELECT COUNT(t) FROM App\Entity\Transaction t WHERE t.transactionLog LIKE :log'
+            )
+            // transaction_log stores a JSON blob, so the message is nested
+            // inside its "verbal_log" key rather than starting the column.
+            ->setParameter('log', '%User data cleaned: ' . $this->asString($created['email']) . '%')
+            ->getSingleScalarResult();
+        self::assertSame(1, $auditEntries, 'The erasure must leave an audit entry behind.');
+    }
+
+    /**
+     * Count rows of an entity belonging to a user. For DataCell (which has no
+     * id_users of its own) the ownership is resolved through its data row.
+     *
+     * @param class-string $entityClass
+     */
+    private function countRowsForUser(string $entityClass, ?string $field, int $userId): int
+    {
+        if ($entityClass === \App\Entity\DataCell::class) {
+            return (int) $this->em
+                ->createQuery(
+                    // COUNT(c.value): DataCell has a composite primary key, so
+                    // Doctrine cannot count the entity alias itself.
+                    'SELECT COUNT(c.value) FROM App\Entity\DataCell c WHERE c.dataRow IN ('
+                    . 'SELECT dr FROM App\Entity\DataRow dr WHERE dr.idUsers = :userId)'
+                )
+                ->setParameter('userId', $userId)
+                ->getSingleScalarResult();
+        }
+
+        return (int) $this->em
+            ->createQuery('SELECT COUNT(e) FROM ' . $entityClass . ' e WHERE e.' . $field . ' = :userId')
+            ->setParameter('userId', $userId)
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * @group user-service
+     */
+    public function testCleanUserDataOnSystemUserThrowsException(): void
+    {
+        $created = $this->createQaUser('cleansysguard');
+        $userId = $this->asInt($created['id']);
+
+        $entity = $this->em->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $entity);
+        $entity->setName('admin');
+        $this->em->flush();
+
+        $this->expectException(ServiceException::class);
+        $this->expectExceptionCode(Response::HTTP_FORBIDDEN);
+
+        $this->adminUserService->cleanUserData($this->adminId, $userId);
+    }
+
+    /**
+     * @group user-service
+     */
+    public function testCleanUserDataNotFoundThrowsException(): void
+    {
+        $this->expectException(ServiceException::class);
+        $this->expectExceptionMessage('User not found');
+        $this->expectExceptionCode(Response::HTTP_NOT_FOUND);
+
+        $this->adminUserService->cleanUserData($this->adminId, 999999);
     }
 
     /**

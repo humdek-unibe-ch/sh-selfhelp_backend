@@ -143,6 +143,51 @@ class AdminRoleService extends BaseService
     }
 
     /**
+     * List the users who hold a role, for the Roles page "View users" modal.
+     *
+     * Mirror of AdminGroupService::getGroupMembers(): a missing role is a 404
+     * (not an empty list) so the caller can tell "role does not exist" from
+     * "role has no users" (which is []). Users are scoped to the same VISIBLE
+     * set as the users list (`intern = false`, `id_status > 0`) so the role's
+     * user list and the Users page agree on who exists. The field set matches
+     * the shared frontend IMemberUser shape.
+     *
+     * @return list<array{id: int, email: string|null, name: string|null, user_name: string|null, status: string|null, blocked: bool}>
+     */
+    public function getRoleUsers(int $roleId): array
+    {
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_ROLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId)
+            ->getList("role_users_{$roleId}", function () use ($roleId) {
+                $role = $this->entityManager->getRepository(Role::class)->find($roleId);
+                if (!$role) {
+                    throw new ServiceException('Role not found', Response::HTTP_NOT_FOUND);
+                }
+
+                $users = [];
+                foreach ($role->getUsers() as $user) {
+                    if ($user->isIntern() || ($user->getIdStatus() ?? 0) <= 0) {
+                        continue;
+                    }
+
+                    $users[] = [
+                        'id' => (int) $user->getId(),
+                        'email' => $user->getEmail(),
+                        'name' => $user->getName(),
+                        'user_name' => $user->getUserName(),
+                        'status' => $user->getStatus()?->getLookupCode(),
+                        'blocked' => (bool) $user->isBlocked(),
+                    ];
+                }
+
+                usort($users, static fn(array $a, array $b): int => strcmp((string) $a['email'], (string) $b['email']));
+
+                return $users;
+            });
+    }
+
+    /**
      * Create new role
      *
      * @param array<string, mixed> $roleData

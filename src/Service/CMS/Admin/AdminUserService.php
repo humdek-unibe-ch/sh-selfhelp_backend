@@ -43,6 +43,40 @@ class AdminUserService extends BaseService
     private const MAX_PAGE_SIZE = 100;
     private const DEFAULT_PAGE_SIZE = 20;
 
+    /**
+     * Status buckets exposed by getUserStats() and accepted by the `status`
+     * filter on the user list / export.
+     *
+     * PRECEDENCE: `blocked` wins over every status. A blocked user is counted
+     * as `blocked` regardless of their status lookup, so the buckets are
+     * mutually exclusive — a blocked+invited user appears under `blocked`
+     * only, never under `invited`. The buckets describe "what should the admin
+     * do about this user", and for a blocked+invited user the answer is
+     * "unblock them first".
+     *
+     * NOT EXHAUSTIVE: the `userStatus` lookup group also seeds `interested`
+     * and `auto_created` (legacy codes with no writer in this codebase). Users
+     * holding those statuses are counted in `total` but in no bucket, so
+     * `active + invited + imported + blocked <= total`. Do not present the
+     * tiles as a breakdown that must sum. There is no `locked` status: the
+     * constant LookupService::USER_STATUS_LOCKED has no seeded lookup row and
+     * no writer, so it is deliberately not a bucket.
+     */
+    private const STATUS_BUCKETS = [
+        LookupService::USER_STATUS_ACTIVE,
+        LookupService::USER_STATUS_INVITED,
+        LookupService::USER_STATUS_IMPORTED,
+    ];
+
+    /** Bucket that is derived from the `blocked` column rather than a status lookup. */
+    private const STATUS_BUCKET_BLOCKED = RoleDataAccessRepository::STATUS_BUCKET_BLOCKED;
+
+    /** CSV header for the user export/import contract. */
+    private const EXPORT_COLUMNS = ['id', 'email', 'name', 'user_name', 'status', 'blocked', 'groups', 'roles', 'last_login'];
+
+    /** Required CSV header for user import. */
+    private const IMPORT_COLUMNS = ['email', 'name', 'user_name', 'groups'];
+
     public function __construct(
         private readonly UserRepository $userRepository,
         private readonly LookupService $lookupService,
@@ -68,20 +102,257 @@ class AdminUserService extends BaseService
      *
      * @return array<string, mixed>
      */
-    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = self::DEFAULT_PAGE_SIZE, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = self::DEFAULT_PAGE_SIZE, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $status = null, ?int $groupId = null): array
     {
         [$page, $pageSize, $sortDirection] = $this->validatePaginationParams($page, $pageSize, $sortDirection);
+        $status = $this->validateStatusBucket($status);
 
         // Create cache key based on user and parameters
-        $cacheKey = $this->buildCacheKey('filtered_users', $userId, $page, $pageSize, $search, $sort, $sortDirection);
+        $cacheKey = $this->buildCacheKey('filtered_users', $userId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId);
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList(
                 $cacheKey,
-                fn() => $this->fetchFilteredUsersFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection)
+                fn() => $this->fetchFilteredUsersFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId)
             );
+    }
+
+    /**
+     * Population counts for the admin Users page tiles.
+     *
+     * Scoped to the caller's VISIBLE user set (same `intern = false`,
+     * `id_status > 0` and group-access rules as the list) so the tiles always
+     * reconcile with the table underneath them: `total` equals the unfiltered
+     * list's `totalCount` for the same admin. Deliberately ignores the current
+     * search/status/group filters — the tiles describe the population the admin
+     * can see, not the current page.
+     *
+     * See self::STATUS_BUCKETS for the precedence rule and why the buckets do
+     * not necessarily sum to `total`.
+     *
+     * @return array<string, int>
+     */
+    public function getUserStats(int $userId): array
+    {
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getList(
+                $this->buildCacheKey('user_stats', $userId, 0),
+                fn() => $this->roleDataAccessRepository->countVisibleUsersByStatusBucket(
+                    $this->resolveAccessibleGroupIds($userId),
+                    self::STATUS_BUCKETS
+                )
+            );
+    }
+
+    /**
+     * Delete several users, collecting per-user failures instead of aborting.
+     *
+     * Partial success is the contract: a single bad id must not fail the whole
+     * request, so the admin's other selections still apply. Also used for the
+     * single-delete case (a one-element array) so bulk and single behave
+     * identically.
+     *
+     * @param array<mixed> $userIds
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    public function bulkDeleteUsers(int $currentUserId, array $userIds): array
+    {
+        return $this->processBulk(
+            $userIds,
+            function (int $userId) use ($currentUserId): void {
+                // Guard the caller's own account: deleting yourself mid-session
+                // is unrecoverable and never intentional in a bulk selection.
+                if ($userId === $currentUserId) {
+                    throw new ServiceException('Cannot delete your own account', Response::HTTP_FORBIDDEN);
+                }
+
+                $this->deleteUser($currentUserId, $userId);
+            }
+        );
+    }
+
+    /**
+     * Add every listed user to every listed group.
+     *
+     * Idempotent — an existing membership is a success, not a failure, and
+     * creates no duplicate row (assignGroupsToUser skips existing links).
+     * Unknown group IDs fail the whole request: that is a caller bug, not a
+     * per-user outcome.
+     *
+     * @param array<mixed> $userIds
+     * @param array<mixed> $groupIds
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    public function bulkAddUsersToGroups(int $currentUserId, array $userIds, array $groupIds): array
+    {
+        $normalizedGroupIds = $this->normalizeIdList($groupIds);
+        $this->assertGroupsExist($normalizedGroupIds);
+
+        return $this->processBulk(
+            $userIds,
+            function (int $userId) use ($currentUserId, $normalizedGroupIds): void {
+                if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+                    throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
+                }
+
+                $this->addGroupsToUser($userId, $normalizedGroupIds);
+            }
+        );
+    }
+
+    /**
+     * Remove every listed user from every listed group.
+     *
+     * Mirror of bulkAddUsersToGroups(): same request shape, same
+     * partial-success contract, opposite verb. Idempotent — a user who is not
+     * in the group is a success, not a failure (removeGroupsFromUser() simply
+     * finds no relationship to delete). Unknown group IDs fail the whole
+     * request: that is a caller bug, not a per-user outcome.
+     *
+     * NO self-lockout guard, deliberately: admin access comes from the `admin`
+     * ROLE (rel_roles_users), not from group membership — see
+     * DataAccessSecurityService::userHasAdminRole(), which joins u.roles and
+     * short-circuits hasPermission() before any group is consulted. So an
+     * admin removing themselves from every group keeps full admin access and
+     * can re-add themselves. Unlike bulk-delete (irreversible), this is
+     * recoverable, so a guard would block a legitimate action for no safety
+     * gain. If admin ever becomes group-derived, this needs revisiting.
+     *
+     * @param array<mixed> $userIds
+     * @param array<mixed> $groupIds
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    public function bulkRemoveUsersFromGroups(int $currentUserId, array $userIds, array $groupIds): array
+    {
+        $normalizedGroupIds = $this->normalizeIdList($groupIds);
+        $this->assertGroupsExist($normalizedGroupIds);
+
+        return $this->processBulk(
+            $userIds,
+            function (int $userId) use ($currentUserId, $normalizedGroupIds): void {
+                if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+                    throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
+                }
+
+                $this->removeGroupsFromUser($userId, $normalizedGroupIds);
+            }
+        );
+    }
+
+    /**
+     * Send the activation mail to several users.
+     *
+     * Reuses sendActivationMail() so bulk and single-user sends share one mail
+     * path. An already-active user is reported as a failure with a readable
+     * reason so the admin understands why the success count is lower than
+     * their selection.
+     *
+     * @param array<mixed> $userIds
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    public function bulkSendActivationMail(int $currentUserId, array $userIds): array
+    {
+        return $this->processBulk(
+            $userIds,
+            function (int $userId) use ($currentUserId): void {
+                if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+                    throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
+                }
+
+                $user = $this->findUserOrThrow($userId);
+                if ($user->getStatus()?->getLookupCode() === LookupService::USER_STATUS_ACTIVE) {
+                    throw new ServiceException('User is already active', Response::HTTP_BAD_REQUEST);
+                }
+
+                $this->sendActivationMail($userId);
+            }
+        );
+    }
+
+    /**
+     * Rows for the CSV export, honouring the same filters as the list.
+     *
+     * Exports the full filtered set (no pagination) for the caller's visible
+     * users.
+     *
+     * @return list<array<string, string>>
+     */
+    public function exportUsers(int $currentUserId, ?string $search = null, ?string $status = null, ?int $groupId = null): array
+    {
+        $status = $this->validateStatusBucket($status);
+
+        $users = $this->roleDataAccessRepository->findVisibleUsersForExport(
+            $this->resolveAccessibleGroupIds($currentUserId),
+            $search,
+            $status,
+            $groupId
+        );
+
+        return array_map(fn(User $user): array => $this->formatUserForExport($user), $users);
+    }
+
+    /**
+     * Import users from a parsed CSV.
+     *
+     * NOT atomic by design: valid rows import even when others fail, so a
+     * single typo does not discard a large file. Imported users are created
+     * WITHOUT an activation email (`enable_validation = false`) — a 200-row
+     * import must not fire 200 unrecallable emails; the admin invites them
+     * deliberately via the bulk send-activation action.
+     *
+     * @param list<array<string, string>> $rows       parsed data rows (header excluded)
+     * @param int                         $rowOffset  file line number of the first data row
+     * @return array{imported: int, skipped: int, errors: list<array{row: int, message: string}>}
+     */
+    public function importUsers(array $rows, int $rowOffset = 2): array
+    {
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+
+        foreach ($rows as $index => $row) {
+            // Report the row number as the admin sees it in their spreadsheet
+            // (1-based, header included) so they can find the bad line.
+            $rowNumber = $rowOffset + $index;
+
+            try {
+                $email = trim($row['email'] ?? '');
+                if ($email === '') {
+                    throw new ServiceException('Email is required', Response::HTTP_BAD_REQUEST);
+                }
+
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    throw new ServiceException('Invalid email address', Response::HTTP_BAD_REQUEST);
+                }
+
+                // An existing email is a skip, not an error: re-importing a
+                // superset of an earlier file is a normal admin workflow.
+                if ($this->userRepository->findOneByEmail($email) !== null) {
+                    $skipped++;
+                    continue;
+                }
+
+                $this->createUser([
+                    'email' => $email,
+                    'name' => $this->nullIfBlank($row['name'] ?? null),
+                    'user_name' => $this->nullIfBlank($row['user_name'] ?? null),
+                    'group_ids' => $this->resolveGroupNames($row['groups'] ?? null),
+                    'enable_validation' => false,
+                    // Mark CSV-created users as `imported` (duplicates are skipped above).
+                    'status_code' => LookupService::USER_STATUS_IMPORTED,
+                ]);
+
+                $imported++;
+            } catch (\Exception $e) {
+                $errors[] = ['row' => $rowNumber, 'message' => $this->describeFailure($e)];
+            }
+        }
+
+        return ['imported' => $imported, 'skipped' => $skipped, 'errors' => $errors];
     }
 
     /**
@@ -125,7 +396,7 @@ class AdminUserService extends BaseService
      *
      * @return array<string, mixed>
      */
-    private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
+    private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection, ?string $status = null, ?int $groupId = null): array
     {
         // Get resource type ID for groups (users are filtered via group access)
         $resourceTypeId = $this->lookupService->getLookupIdByCode(
@@ -149,11 +420,225 @@ class AdminUserService extends BaseService
 
         // Check if user is admin - use repository method for all users
         if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
-            return $this->roleDataAccessRepository->getAllUsersForAdmin($page, $pageSize, $search, $sort, $sortDirection);
+            return $this->roleDataAccessRepository->getAllUsersForAdmin($page, $pageSize, $search, $sort, $sortDirection, $status, $groupId);
         } else {
             // Use repository method for accessible users (via group permissions)
-            return $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection);
+            return $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId);
         }
+    }
+
+    /**
+     * Resolve the group scope for a caller: null for an admin (sees every
+     * non-intern user), otherwise the groups they have access to. Mirrors the
+     * branch in fetchFilteredUsersFromRepository() so stats/export and the
+     * list agree on who is visible.
+     *
+     * @return list<int>|null
+     */
+    private function resolveAccessibleGroupIds(int $userId): ?array
+    {
+        if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
+            return null;
+        }
+
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(
+            LookupService::RESOURCE_TYPES,
+            LookupService::RESOURCE_TYPES_GROUP
+        );
+
+        if (!$resourceTypeId) {
+            return [];
+        }
+
+        return $this->roleDataAccessRepository->getAccessibleGroupIdsForUser($userId, $resourceTypeId);
+    }
+
+    /**
+     * Validate a `status` filter value against the supported buckets.
+     *
+     * Unknown values are a caller error (400) rather than a silently ignored
+     * filter, which would show the admin an unfiltered list that contradicts
+     * their selection.
+     */
+    private function validateStatusBucket(?string $status): ?string
+    {
+        if ($status === null || $status === '') {
+            return null;
+        }
+
+        $allowed = array_merge(self::STATUS_BUCKETS, [self::STATUS_BUCKET_BLOCKED]);
+        if (!in_array($status, $allowed, true)) {
+            throw new ServiceException(
+                'Invalid status filter. Allowed values: ' . implode(', ', $allowed),
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        return $status;
+    }
+
+    /**
+     * Run a per-id operation, collecting successes and readable failures.
+     *
+     * Shared by the bulk endpoints so they report partial success identically.
+     *
+     * @param array<mixed>        $ids
+     * @param callable(int): void $operation
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    private function processBulk(array $ids, callable $operation): array
+    {
+        $succeeded = [];
+        $failed = [];
+
+        foreach ($this->normalizeIdList($ids) as $id) {
+            try {
+                $operation($id);
+                $succeeded[] = $id;
+            } catch (\Exception $e) {
+                $failed[] = ['id' => $id, 'reason' => $this->describeFailure($e)];
+            }
+        }
+
+        return ['succeeded' => $succeeded, 'failed' => $failed];
+    }
+
+    /**
+     * Turn an exception into a message an admin can act on.
+     *
+     * ServiceException messages are already written for humans and are shown
+     * verbatim. Anything else is an unexpected fault, so we log it and return
+     * a generic line rather than leaking an exception class or stack detail
+     * into the admin UI.
+     */
+    private function describeFailure(\Exception $e): string
+    {
+        if ($e instanceof ServiceException) {
+            return $e->getMessage();
+        }
+
+        $this->logger->error('Unexpected failure during bulk user operation', [
+            'exception' => $e->getMessage(),
+        ]);
+
+        return 'Unexpected error. Please try again or check the logs.';
+    }
+
+    /**
+     * Fail the request when any group ID does not exist.
+     *
+     * @param list<int> $groupIds
+     */
+    private function assertGroupsExist(array $groupIds): void
+    {
+        if (empty($groupIds)) {
+            throw new ServiceException('group_ids must not be empty', Response::HTTP_BAD_REQUEST);
+        }
+
+        $found = $this->batchLoadGroups($groupIds);
+        $missing = array_values(array_diff($groupIds, array_keys($found)));
+
+        if (!empty($missing)) {
+            throw new ServiceException(
+                'Unknown group_ids: ' . implode(', ', $missing),
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+    }
+
+    /**
+     * Resolve `;`-separated group names from a CSV cell to group IDs.
+     *
+     * An unknown name errors the row: silently creating groups from a CSV
+     * would let a typo spawn a permanent group.
+     *
+     * @return list<int>
+     */
+    private function resolveGroupNames(?string $groupNames): array
+    {
+        $names = array_values(array_filter(array_map('trim', explode(';', $groupNames ?? ''))));
+        if (empty($names)) {
+            return [];
+        }
+
+        /** @var list<Group> $groups */
+        $groups = $this->entityManager->getRepository(Group::class)
+            ->createQueryBuilder('g')
+            ->where('g.name IN (:names)')
+            ->setParameter('names', $names)
+            ->getQuery()
+            ->getResult();
+
+        $idsByName = [];
+        foreach ($groups as $group) {
+            $idsByName[(string) $group->getName()] = (int) $group->getId();
+        }
+
+        $missing = array_values(array_diff($names, array_keys($idsByName)));
+        if (!empty($missing)) {
+            throw new ServiceException(
+                'Unknown group name(s): ' . implode(', ', $missing),
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        return array_values($idsByName);
+    }
+
+    /**
+     * Format one user as a CSV export row.
+     *
+     * Group/role names are `;`-separated because `,` is the CSV delimiter.
+     * `last_login` is ISO 8601 (empty when never), unlike the list view's
+     * human-readable "N days ago" string, so the column stays machine-readable.
+     *
+     * @return array<string, string>
+     */
+    private function formatUserForExport(User $user): array
+    {
+        $groups = array_map(fn(Group $g): string => (string) $g->getName(), $user->getGroups()->toArray());
+        $roles = array_map(fn(Role $r): string => (string) $r->getName(), $user->getUserRoles()->toArray());
+
+        return [
+            'id' => (string) $user->getId(),
+            'email' => (string) $user->getEmail(),
+            'name' => (string) $user->getName(),
+            'user_name' => (string) $user->getUserName(),
+            'status' => (string) $user->getStatus()?->getLookupCode(),
+            'blocked' => $user->isBlocked() ? 'true' : 'false',
+            'groups' => implode('; ', $groups),
+            'roles' => implode('; ', $roles),
+            'last_login' => $user->getLastLogin()?->format(\DateTimeInterface::ATOM) ?? '',
+        ];
+    }
+
+    /**
+     * Normalize an optional CSV cell to a trimmed string or null.
+     */
+    private function nullIfBlank(?string $value): ?string
+    {
+        $trimmed = trim($value ?? '');
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    /**
+     * The CSV columns for export, in contract order.
+     *
+     * @return list<string>
+     */
+    public static function exportColumns(): array
+    {
+        return self::EXPORT_COLUMNS;
+    }
+
+    /**
+     * The CSV columns required for import.
+     *
+     * @return list<string>
+     */
+    public static function importColumns(): array
+    {
+        return self::IMPORT_COLUMNS;
     }
 
     /**
@@ -580,13 +1065,120 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Clean user data (placeholder)
+     * Erase the content a user produced while keeping the account itself.
+     *
+     * This is the GDPR "erase what I produced, keep the (inactive) account"
+     * path — deliberately not deleteUser(). Restores the behaviour of the
+     * SelfHelp v1 UserModel::clean_user_data().
+     *
+     * Scope decisions:
+     * - Transactions ARE erased. They are v2's user-activity record and the
+     *   admin Users list counts them as the "Activity" column. Note the column
+     *   holds the ACTING user, so this erases what the user DID, while admin
+     *   actions performed ON them survive attributed to that admin (see the
+     *   note at the delete itself). This operation writes its own transaction
+     *   entry AFTER the wipe so the erasure itself stays audited.
+     * - DataAccessAudit is intentionally KEPT: it records who accessed what,
+     *   which is a security audit surface rather than content this user
+     *   produced. Revisit only with a compliance decision.
+     * - Session/auth state (RefreshToken, Users2faCode, ValidationCode,
+     *   UserNavigationState) is out of scope — it is not user-produced content
+     *   and dies with the account or expires on its own.
+     * - PageView/PageViewReferrer hold no id_users (pseudonymous daily
+     *   aggregates), so there is nothing per-user to erase there.
+     *
+     * @return array{cleaned: bool, removed: array<string, int>}
      */
-    public function cleanUserData(int $userId): bool
+    public function cleanUserData(int $currentUserId, int $userId): array
     {
-        $user = $this->findUserOrThrow($userId);
-        // TODO: Implement data cleaning logic
-        return true;
+        // The ROUTE permission stays `admin.user.update` (see the api_routes
+        // row) and must not be raised — the frontend's client-side gate is
+        // pinned to it, so moving the route to `admin.user.delete` would lock
+        // out admins the UI still offers the action to. This is an ADDITIONAL
+        // resource-side check on top of it: erasure is irreversible, so the
+        // caller must also have delete-level access to this particular user.
+        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_DELETE)) {
+            throw new ServiceException('Insufficient permissions to clean user data', Response::HTTP_FORBIDDEN);
+        }
+
+        return $this->executeInTransaction(function () use ($userId) {
+            $user = $this->findUserOrThrow($userId);
+
+            if (in_array($user->getName(), self::SYSTEM_USERS, true)) {
+                throw new ServiceException('Cannot clean data of system users', Response::HTTP_FORBIDDEN);
+            }
+
+            $removed = [];
+
+            // Recipient rows pointing at this user on jobs owned by SOMEONE
+            // ELSE. These are not reachable from "jobs this user owns" below,
+            // but they are a record of what this user was sent, so an erasure
+            // request covers them. Their FK is ON DELETE SET NULL, so deleting
+            // the jobs would otherwise leave them behind with a null user.
+            $removed['scheduled_job_recipients'] = $this->asInt($this->entityManager
+                ->createQuery('DELETE FROM App\Entity\ScheduledJobRecipient r WHERE r.user = :userId')
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            // Jobs owned by the user. scheduled_job_recipients and
+            // scheduled_job_reminders both FK to scheduled_jobs with
+            // ON DELETE CASCADE, so their remaining rows go with these.
+            $removed['scheduled_jobs'] = $this->asInt($this->entityManager
+                ->createQuery('DELETE FROM App\Entity\ScheduledJob j WHERE j.user = :userId')
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            // Data cells are deleted explicitly rather than relying on the
+            // fk_data_cells_id_data_rows ON DELETE CASCADE: a bulk DQL DELETE
+            // bypasses Doctrine's ORM-level cascade entirely, so the erasure
+            // must not depend on the DB constraint staying in place.
+            $removed['data_cells'] = $this->asInt($this->entityManager
+                ->createQuery(
+                    'DELETE FROM App\Entity\DataCell c WHERE c.dataRow IN ('
+                    . 'SELECT dr FROM App\Entity\DataRow dr WHERE dr.idUsers = :userId)'
+                )
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            $removed['data_rows'] = $this->asInt($this->entityManager
+                ->createQuery('DELETE FROM App\Entity\DataRow dr WHERE dr.idUsers = :userId')
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            // NOTE: transactions.id_users is the ACTING user, not the subject —
+            // TransactionService::logTransaction() fills it from
+            // getCurrentUser(). So this erases what THIS USER DID; an admin
+            // action performed ON them (block, role change, impersonation) is
+            // attributed to that admin and SURVIVES the wipe. This is the same
+            // relation (User::$transactions) the admin Users list counts as its
+            // "Activity" column, so that column does drop to 0.
+            $removed['transactions'] = $this->asInt($this->entityManager
+                ->createQuery('DELETE FROM App\Entity\Transaction t WHERE t.user = :userId')
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            // Written AFTER the wipe so this entry survives the transaction
+            // delete above, and inside the same DB transaction so a failure
+            // here rolls the whole erasure back rather than leaving it
+            // unlogged.
+            $this->logUserTransaction(
+                LookupService::TRANSACTION_TYPES_DELETE,
+                $user,
+                'User data cleaned: ' . $user->getEmail() . ' (' . implode(', ', array_map(
+                    static fn(string $key, int $count): string => $key . '=' . $count,
+                    array_keys($removed),
+                    array_values($removed)
+                )) . ')'
+            );
+
+            $this->entityManager->flush();
+
+            // The Users list caches the activity count, so the list caches
+            // must go too (invalidateUserCaches covers both list + entity).
+            $this->invalidateUserCaches($userId);
+
+            return ['cleaned' => true, 'removed' => $removed];
+        });
     }
 
     /**
@@ -850,6 +1442,18 @@ class AdminUserService extends BaseService
 
         if (isset($userData['receives_emails'])) {
             $user->setReceivesEmails((bool) $userData['receives_emails']);
+        }
+
+        // Optional explicit initial status (CSV import sets `imported`).
+        if (isset($userData['status_code'])) {
+            $status = $this->lookupService->findByTypeAndCode(
+                LookupService::USER_STATUS,
+                $this->asString($userData['status_code'])
+            );
+            if (!$status) {
+                throw new ServiceException('Invalid user status', Response::HTTP_BAD_REQUEST);
+            }
+            $user->setStatus($status);
         }
 
         $this->setUserRelatedEntities($user, $userData);

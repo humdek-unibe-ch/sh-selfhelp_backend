@@ -132,6 +132,56 @@ class AdminGroupService extends BaseService
     }
 
     /**
+     * List the members of a group for the admin Groups page "View members" modal.
+     *
+     * A missing group is a 404 (not an empty list) so the caller can tell
+     * "group does not exist" apart from "group has no members" (which is []).
+     *
+     * Members are scoped to the same VISIBLE set as the users list
+     * (`intern = false`, `id_status > 0`): a member list that surfaced internal
+     * / system users the admin cannot see on the Users page would be
+     * inconsistent between the two screens. The field set matches the frontend
+     * IGroupMember shape (id/email/name/user_name/status/blocked).
+     *
+     * @return list<array{id: int, email: string|null, name: string|null, user_name: string|null, status: string|null, blocked: bool}>
+     */
+    public function getGroupMembers(int $groupId): array
+    {
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_GROUPS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_GROUP, $groupId)
+            ->getList("group_members_{$groupId}", function () use ($groupId) {
+                $group = $this->entityManager->getRepository(Group::class)->find($groupId);
+                if (!$group) {
+                    throw new ServiceException('Group not found', Response::HTTP_NOT_FOUND);
+                }
+
+                $members = [];
+                foreach ($group->getUsers() as $user) {
+                    // Same visibility filter as the users list, so the two
+                    // screens never disagree about who exists.
+                    if ($user->isIntern() || ($user->getIdStatus() ?? 0) <= 0) {
+                        continue;
+                    }
+
+                    $members[] = [
+                        'id' => (int) $user->getId(),
+                        'email' => $user->getEmail(),
+                        'name' => $user->getName(),
+                        'user_name' => $user->getUserName(),
+                        'status' => $user->getStatus()?->getLookupCode(),
+                        'blocked' => (bool) $user->isBlocked(),
+                    ];
+                }
+
+                // Stable order for the modal: by email, matching the users list default.
+                usort($members, static fn(array $a, array $b): int => strcmp((string) $a['email'], (string) $b['email']));
+
+                return $members;
+            });
+    }
+
+    /**
      * Create new group
      *
      * @param array<string, mixed> $groupData

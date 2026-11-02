@@ -127,8 +127,40 @@ class AdminScheduledJobController extends AbstractController
     }
 
     /**
+     * Global scheduled-job status breakdown for the admin page tiles.
+     *
+     * Unfiltered by design: it describes the whole set of scheduled jobs
+     * (ignores date/search/status/type), returned from a single grouped
+     * aggregate. `queued`/`done`/`failed`/`deleted` map to the
+     * `scheduledJobsStatus` lookup codes; the four are independent counts, not a
+     * partition, so they need not sum to `total`.
+     *
+     * Registered before `/{jobId}` so `stats` is not captured as a job id.
+     *
+     * @route /admin/scheduled-jobs/stats
+     * @method GET
+     */
+    public function stats(): JsonResponse
+    {
+        try {
+            $stats = $this->adminScheduledJobService->getStats();
+
+            return $this->responseFormatter->formatSuccess($stats, 'responses/admin/scheduled_jobs/stats');
+        } catch (\Exception $e) {
+            $statusCode = $e->getCode();
+            if ($statusCode < 100 || $statusCode > 599) {
+                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                $statusCode
+            );
+        }
+    }
+
+    /**
      * Get single scheduled job by ID
-     * 
+     *
      * @route /admin/scheduled-jobs/{jobId}
      * @method GET
      */

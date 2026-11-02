@@ -106,6 +106,11 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         // migrations/Version20260608174905.php.
         'manager_system_update_pending_v1',
         'manager_system_update_status_v1',
+        // ACL-enforced asset delivery: access is resource-side (per folder, in
+        // AssetFolderAclService::assertCanRead) so anonymous callers can read
+        // open-access folders. Denial paths are covered by AssetDeliveryAclTest;
+        // seeded by migrations/Version20260728091825.php.
+        'assets_serve_v1',
     ];
 
     public function testEveryDatabaseRouteResolvesToARealControllerMethod(): void

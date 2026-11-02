@@ -3,14 +3,14 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-04.
+Last verified: 2026-07-21.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
 
 Registration codes are admin-issued, single-use strings that gate self-registration on register pages where `open_registration = 0`. Each code carries one or more target groups: when a user registers with the code, the new account is assigned to **every** group the code grants (merged with the groups the register style itself configures) and the code is marked consumed and cannot be reused.
 
-The codes are stored in `validation_codes`; the full set of groups a code grants lives in `validation_code_groups`, with `validation_codes.id_groups` kept as the primary (first) group for backward-compatible listing and filtering. The admin endpoints expose read, generate, and export operations over the registration-code subset of that table.
+The codes are stored in `validation_codes`; the full set of groups a code grants lives in `validation_code_groups`, with `validation_codes.id_groups` kept as the primary (first) group for backward-compatible listing and filtering. The admin endpoints expose read, stats, generate, and export operations over the registration-code subset of that table.
 
 ## Core Concepts
 
@@ -79,6 +79,37 @@ Retrieve a paginated list of registration codes with optional filtering.
 ```
 
 Each code exposes both the primary group (`id_groups` / `group_name`, the first selected group, kept for backward compatibility) and the full set of granted groups (`group_ids` / `group_names`). For a legacy single-group code the arrays contain just the primary group.
+
+**Permissions:** `admin.registration_code.read`
+
+## Registration Code Stats
+
+Return the code counts for the page tiles as a breakdown of the whole visible set.
+
+**Endpoint:** `GET /cms-api/v1/admin/registration-codes/stats`
+
+**Authentication:** Required (JWT Bearer token)
+
+**Query Parameters:** none. The stats are **unfiltered by design** — they describe the whole set the caller can see, not the current list filter.
+
+**Response:** standard JSON envelope with a `data` object:
+
+```json
+{
+    "total": 120,
+    "available": 84,
+    "used": 36
+}
+```
+
+- `total` — all registration codes visible to the caller. Equal to the **unfiltered** `totalCount` the [list endpoint](#list-registration-codes) returns for the same caller.
+- `available` — codes with no consumer (`consumed IS NULL` / `is_consumed = false`).
+- `used` — consumed codes.
+- **Contract:** `available + used === total` (the frontend renders them as a breakdown of the whole, so this invariant always holds).
+
+The list is not group/ACL scoped, so neither is this — the two always agree on `total`.
+
+[View JSON Schema](../../../config/schemas/api/v1/responses/admin/registration_codes_stats.json)
 
 **Permissions:** `admin.registration_code.read`
 
@@ -186,10 +217,11 @@ X7QP1NR4,Participants,Used,2026-06-01 08:00:00,2026-06-01 09:15:22
 | Permission                          | Endpoint                                           |
 |-------------------------------------|----------------------------------------------------|
 | `admin.registration_code.read`      | `GET /admin/registration-codes`                    |
+| `admin.registration_code.read`      | `GET /admin/registration-codes/stats`              |
 | `admin.registration_code.read`      | `GET /admin/registration-codes/export`             |
 | `admin.registration_code.create`    | `POST /admin/registration-codes/generate`          |
 
-Both permissions are granted to the `admin` role by default (see migrations `Version20260529074436` and `Version20260601120000`).
+Both permissions are granted to the `admin` role by default (see migrations `Version20260529074436`, `Version20260601120000`, and `Version20260721085447` for the stats route).
 
 ## Related
 

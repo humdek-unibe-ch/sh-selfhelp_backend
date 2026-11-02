@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-07-09.
+Last verified: 2026-07-22.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -568,6 +568,147 @@ the same change wave:
 > `1.21.7`). Do not treat staged shared `2.x` /
 > `3.x` tags as this release line.
 
+> **Core 0.1.37 / frontend 0.1.64 (admin user/group/role management +
+> registration-code stats — additive):** a wave of new admin API surface the
+> frontend consumes, all additive (new routes/permissions/schemas, no existing
+> contract changed):
+> - **Users** (migrations `Version20260716180311`, `Version20260717134503`):
+>   `admin.user.{read,create,update,delete}`; `GET /admin/users` (filters),
+>   `GET /admin/users/stats` (`total`/`active`/`invited`/`blocked`, scoped to the
+>   caller's visible users), `GET /admin/users/{id}` + CRUD, bulk
+>   delete/add-to-group/remove-from-group/send-activation, CSV export/import.
+> - **Groups**: `GET /admin/groups/{groupId}/members` (View-members modal), and
+>   `GET /admin/groups/{groupId}/users` (member list; migration
+>   `Version20260720132523`).
+> - **Roles**: `GET /admin/roles/{roleId}/users` (member list, same migration);
+>   reusable member JSON moved to `responses/admin/common/`.
+> - **Registration codes**: `GET /admin/registration-codes/stats` (permission
+>   `admin.registration_code.read`, migration `Version20260721085447`) returning
+>   `{total, available, used}` with `available + used === total`. Unfiltered and
+>   unscoped (like the list), so `total` equals the list's unfiltered
+>   `totalCount` for the same caller.
+> - **Scheduled jobs**: `GET /admin/scheduled-jobs/stats` (route
+>   `admin_scheduled_jobs_stats`, permission `admin.scheduled_job.read` — same as
+>   the list, migration `Version20260721135036`) returning a global, unfiltered
+>   status breakdown `{total, queued, done, failed, deleted}` from a single
+>   grouped aggregate. `queued`/`done`/`failed`/`deleted` map to the
+>   `scheduledJobsStatus` lookup codes and are independent counts (deleted jobs
+>   still count toward `total`), so they need not sum to `total`.
+>
+> Frontend 0.1.64 adopts these admin surfaces (Users/Groups/Roles management +
+> the registration-codes and scheduled-jobs tiles). These are admin-only surfaces
+> the mobile app does not use, so their response types stay local to the frontend
+> rather than in `@selfhelp/shared`; each response is anchored by its JSON Schema
+> under `config/schemas/api/v1/`. Floors: frontend `supports.core`
+> `0.1.36 → 0.1.37`, backend `supports.frontend` `0.1.63 → 0.1.64`. Live
+> pairing: **frontend `>=0.1.64` ⇄ core `>=0.1.37`**. `pluginApiVersion`
+> unchanged (`0.1.0`).
+
+> **Core 0.1.38 (asset export/import + folder-ACL — additive):** a new admin
+> asset surface the frontend consumes, all additive (migration
+> `Version20260722092220`; existing asset endpoints keep their response shapes):
+> - **Bundle export/import**: `POST /admin/assets/export` (permission
+>   `admin.asset.read`) returns `application/zip` (`manifest.json`
+>   `{bundle_type: selfhelp/asset-bundle, bundle_version: 1.0, exported_at,
+>   assets[]}` + `files/<folder>/<name>`); `POST /admin/assets/import`
+>   (permission `admin.asset.create`) is `multipart` `file`+`overwrite` and
+>   returns `{imported, skipped, errors[]}`, re-using the normal asset-create
+>   path.
+> - **Folder ACLs (group-scoped, closed-by-default)**: new
+>   `assets_folders_groups` table (folder × `id_groups` × `access_level`
+>   `read`|`manage`), edited per group next to the page ACLs via
+>   `GET`/`PUT /admin/groups/{groupId}/asset-acls` (both reuse the existing
+>   `admin.group.acl` permission; PUT is a full replacement, empty `acls`
+>   clears the group's grants). Enforcement is a second layer over the asset
+>   route permissions, resource-side (union across the caller's groups),
+>   closed-by-default: a non-admin sees a folder only if one of their groups is
+>   granted on it (a folder with no grant for their groups — including one with
+>   no rows — is not visible); `read` = list/get, `manage` = also
+>   create/delete/import; the admin role bypasses folder ACLs entirely. `GET
+>   /admin/assets` returns only the caller's readable folders and
+>   get-by-id/create/delete/direct-denied return `403`.
+>
+> Admin-only surfaces the mobile app does not use, so response types stay local
+> to the frontend (anchored by JSON Schemas under `config/schemas/api/v1/`).
+> Because every change is additive, `supports.frontend` stays `>=0.1.64`; the
+> frontend that adopts the asset bundle + folder-ACL UI raises ITS
+> `supports.core` floor to `0.1.38`. `pluginApiVersion` unchanged (`0.1.0`).
+
+> **Core 0.1.42 / frontend 0.1.68 (clean user data actually erases —
+> behavioural fix, additive response):** `POST /admin/users/{userId}/clean-data`
+> existed end-to-end (route, controller, `admin.user.update` mapping,
+> impersonation block) but `AdminUserService::cleanUserData()` was a stub that
+> returned `true` without deleting anything, so the API answered
+> `200 {"cleaned": true}` while every record remained. The frontend shipped the
+> row action + confirmation modal against that no-op — an admin could confirm an
+> irreversible GDPR erasure and be told it succeeded. **This is exactly the
+> incompatible pair the registry gate exists to refuse**, which is why the floors
+> move even though no route or schema was added.
+>
+> The service now erases in one transaction: `Transaction` (the Users list
+> "Activity" column, `User::$transactions`, drops to 0), `DataRow` + `DataCell`
+> (cells deleted explicitly — a bulk DQL `DELETE` bypasses Doctrine's ORM-level
+> cascade), `ScheduledJob` (recipients + reminder metadata cascade via FK), and
+> `ScheduledJobRecipient` including rows on *other users'* jobs naming this user
+> (FK is `ON DELETE SET NULL`, so they would otherwise survive orphaned).
+> Deliberately kept: `DataAccessAudit` (security audit surface) and session/auth
+> state. The account itself is kept. The audit entry is written **after** the
+> wipe and **inside** the same transaction; failures surface as a non-2xx
+> `ServiceException` rather than `200 {"cleaned": false}`.
+>
+> Authorization tightens to `PERMISSION_DELETE` on the target plus a
+> `SYSTEM_USERS` guard, while the **route** permission stays `admin.user.update`
+> to match the frontend's client-side gate. The response is additive: `data`
+> gains `removed` (`{scheduled_job_recipients, scheduled_jobs, data_cells,
+> data_rows, transactions}`); kept entities have no key rather than a `0`. No
+> migration ships. Frontend `supports.core` `0.1.41 → 0.1.42`, backend
+> `supports.frontend` `0.1.67 → 0.1.68`. Live pairing: **frontend `>=0.1.68` ⇄
+> core `>=0.1.42`**. `pluginApiVersion` unchanged (`0.1.0`).
+
+> **Core 0.1.43 (public-navigable page types by name + `public_visibility` —
+> additive, floor-neutral):** two related navigation-builder fixes, no migration.
+>
+> `PageService::getAllAccessiblePagesForUser()` filtered non-admin page trees
+> with a positional `!in_array($item['id_page_types'], [2, 3])`. `page_types` is
+> a plain auto-increment table with no stable lookup codes (unlike
+> `pageAccessTypes` / `pageSurface`, which have named constants in
+> `LookupService`), so `2`/`3` meant `core`/`experiment` only by legacy seed
+> order — a fresh install seeding differently, or a plugin inserting a page type,
+> silently changed which pages the public menu may render, with no failing test.
+> The set is now named once on the entity
+> (`PageType::PUBLIC_NAVIGABLE_PAGE_TYPES = ['core', 'experiment']`) and resolved
+> to ids **by name** via `PageTypeRepository::findPublicNavigableIds()`.
+> Behaviour is identical for current seed data.
+>
+> Each item in the admin navigation payload gains `public_visibility`
+> (`{rendered: bool, reason: string|null}`), where `reason` is a stable
+> machine-readable code — `headless`, `page_type_excluded`, or
+> `page_not_accessible` (the per-user ACL-filtered `$pageMap` collapses ACL
+> denial and the page-type filter into one "absent" case during payload
+> building). The frontend owns the wording. The verdict comes from the **same**
+> predicate the public payload uses, and an integration test asserts the admin
+> verdict matches actual public `/navigation` rendering so the builder badge
+> cannot drift. This removes the frontend's duplicated
+> `PUBLIC_NAVIGABLE_PAGE_TYPE_IDS = [2, 3]` constant and fixes the
+> `dropdown`/`mega-menu` presets appearing broken when a nested child was
+> silently filtered server-side.
+>
+> The same wave adds `menu_eligible` (bool) to every item on `GET /admin/pages`
+> (anchored by `responses/common/_admin_page_definition.json`): may this page
+> **ever** be added to a public menu? `IAdminPage` already carries
+> `id_page_types`, so the frontend could filter client-side — but only by
+> hardcoding `[2, 3]` again, so the backend answers instead. It covers the
+> **page-type case only**: page type is permanently unfixable → filter it out of
+> the picker; **headless is a checkbox an admin can untick → stays
+> `menu_eligible: true`**, tagged not filtered, or you hide a page they could
+> legitimately fix; not-accessible is per-visitor → tag only. Conflating the
+> three is the one way this goes wrong.
+>
+> Every existing response keeps its shape, so `supports.frontend` stays
+> `>=0.1.68`; the frontend that adopts `public_visibility` + `menu_eligible`
+> raises ITS `supports.core` floor to `0.1.43`. `pluginApiVersion` unchanged
+> (`0.1.0`).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -575,13 +716,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.36` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.43` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.21.7` | npm (1.21.5 wave + resolve/prefill in 1.21.6 + `should_fallback` in 1.21.7). Do not use staged git tags `v2*` / `v3*` from this branch. |
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.7` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.63 <0.2.0` | frontend adopts filter preview UI + column/fields-map editors |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.68 <0.2.0` | frontend 0.1.68 ships the clean-user-data row action + confirmation modal, which requires a core that actually erases (core 0.1.42); carries the earlier admin user/group/role + asset-delivery floors |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding; pair via `supports.core` (package SemVer may stay `0.1.33`) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |

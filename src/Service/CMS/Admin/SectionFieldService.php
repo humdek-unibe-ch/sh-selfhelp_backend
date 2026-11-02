@@ -356,7 +356,9 @@ class SectionFieldService extends BaseService
 
                     return array_map(function (array $image): array {
                         return [
-                            'value' => $image['file_path'] ?? null, // Use relative path as value
+                            // The ACL-enforced delivery URL, not the raw storage
+                            // path: assets no longer live under the document root.
+                            'value' => $image['url'] ?? null,
                             'text' => $image['file_name'] ?? null
                         ];
                     }, array_values($images));
@@ -389,7 +391,9 @@ class SectionFieldService extends BaseService
 
                     return array_map(function (array $video): array {
                         return [
-                            'value' => $video['file_path'] ?? null, // Use relative path as value
+                            // The ACL-enforced delivery URL, not the raw storage
+                            // path: assets no longer live under the document root.
+                            'value' => $video['url'] ?? null,
                             'text' => $video['file_name'] ?? null
                         ];
                     }, array_values($videos));
