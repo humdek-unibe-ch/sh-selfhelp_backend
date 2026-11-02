@@ -20,7 +20,7 @@ final class ReleaseManifestWaveTest extends TestCase
 {
     use \App\Tests\Support\NarrowsJson;
 
-    public function testSupportsFrontendRequires068ForCore042(): void
+    public function testSupportsFrontendRequires068ForCore043(): void
     {
         $manifest = $this->loadManifest();
         self::assertSame('core', $manifest['kind'] ?? null);
@@ -28,13 +28,13 @@ final class ReleaseManifestWaveTest extends TestCase
         self::assertSame('>=0.1.68 <0.2.0', $supports['frontend'] ?? null);
     }
 
-    public function testCore042WithFrontend068IsSupportedByDeclaredRange(): void
+    public function testCore043WithFrontend068IsSupportedByDeclaredRange(): void
     {
         $range = $this->frontendSupportRange();
         self::assertTrue($this->satisfiesPre1Range('0.1.68', $range));
     }
 
-    public function testCore042RejectsFrontendBelow068(): void
+    public function testCore043RejectsFrontendBelow068(): void
     {
         $range = $this->frontendSupportRange();
         self::assertFalse($this->satisfiesPre1Range('0.1.67', $range));
