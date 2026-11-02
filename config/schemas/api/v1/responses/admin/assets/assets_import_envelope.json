@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Assets Import Response Envelope",
+  "description": "Standard API response envelope for an asset bundle import",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "imported": {
+          "type": "integer",
+          "description": "Number of assets created/overwritten from the bundle",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "description": "Number of assets skipped because they already existed and overwrite was off",
+          "minimum": 0
+        },
+        "errors": {
+          "type": "array",
+          "description": "Per-file import errors",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": { "type": "string", "description": "File name or bundle path that failed" },
+              "error": { "type": "string", "description": "Error message" }
+            },
+            "required": ["file", "error"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["imported", "skipped", "errors"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["data"]
+}

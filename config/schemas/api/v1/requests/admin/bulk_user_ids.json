@@ -1,0 +1,18 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Bulk User IDs Request Schema",
+    "description": "Request body for bulk user operations that take only user ids (bulk-delete, bulk-send-activation). A single-element array is the supported way to perform the operation on one user, so bulk and single behave identically.",
+    "type": "object",
+    "properties": {
+        "user_ids": {
+            "type": "array",
+            "description": "IDs of the users to operate on",
+            "items": {
+                "type": "integer"
+            },
+            "minItems": 1
+        }
+    },
+    "required": ["user_ids"],
+    "additionalProperties": false
+}

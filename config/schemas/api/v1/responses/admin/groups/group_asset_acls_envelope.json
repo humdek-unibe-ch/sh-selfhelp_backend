@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Group Asset Folder ACLs Response Envelope",
+  "description": "Standard API response envelope for the asset-folder ACLs a group holds",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "id_groups": {
+          "type": "integer",
+          "description": "Group the ACLs belong to"
+        },
+        "acls": {
+          "type": "array",
+          "description": "Per-folder access entries for this group. Empty means the group has no folder-specific grants.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "folder": { "type": "string", "description": "Folder the group may access" },
+              "access_level": {
+                "type": "string",
+                "enum": ["read", "manage"],
+                "description": "read = view/download; manage = also create/import/delete"
+              }
+            },
+            "required": ["folder", "access_level"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["id_groups", "acls"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["data"]
+}

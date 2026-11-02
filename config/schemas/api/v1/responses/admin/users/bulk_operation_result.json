@@ -1,0 +1,43 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "User Bulk Operation Result Schema",
+    "description": "Result of a bulk user operation (bulk-delete, bulk-add-to-group, bulk-send-activation). Partial success is the contract: each id is processed independently and per-id failures are reported here rather than failing the whole request. Distinct from responses/admin/data_access/bulk_operation_result, which is a counts-only summary with no per-id reasons.",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "succeeded": {
+                    "type": "array",
+                    "description": "IDs of users the operation applied to successfully",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "failed": {
+                    "type": "array",
+                    "description": "Per-user failures. Every id in the request appears in exactly one of succeeded/failed.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer",
+                                "description": "ID of the user that could not be processed"
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Human-readable reason, shown verbatim to the admin"
+                            }
+                        },
+                        "required": ["id", "reason"]
+                    }
+                }
+            },
+            "required": ["succeeded", "failed"]
+        }
+    },
+    "required": ["data"]
+}

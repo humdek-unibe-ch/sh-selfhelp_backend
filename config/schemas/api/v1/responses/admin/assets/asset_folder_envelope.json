@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Asset Folder Response Envelope",
+  "description": "Standard API response envelope for a single asset folder's open-access state",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "folder": { "type": "string", "description": "Folder name" },
+        "is_open_access": {
+          "type": "boolean",
+          "description": "true = readable by everyone including anonymous callers; false = closed-by-default"
+        }
+      },
+      "required": ["folder", "is_open_access"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["data"]
+}

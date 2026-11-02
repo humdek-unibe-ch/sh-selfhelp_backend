@@ -300,17 +300,13 @@ class RoleDataAccessRepository extends ServiceEntityRepository
     }
 
     /**
-     * Get accessible users for a user based on group permissions
-     * Returns users who belong to groups that the current user can access
+     * Resolve the group IDs a user may access (CRUD permissions > 0).
      *
-     * @param int $userId User ID
-     * @param int $resourceTypeId Resource type ID for groups
-     * @return array{users: list<array<string, mixed>>, pagination: array<string, mixed>} Users with their group membership info
+     * @return list<int>
      */
-    public function getAccessibleUsersForUser(int $userId, int $resourceTypeId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+    public function getAccessibleGroupIdsForUser(int $userId, int $resourceTypeId): array
     {
-        // First, get all groups that the user can access
-        $accessibleGroupIds = $this->createQueryBuilder('rda')
+        $ids = $this->createQueryBuilder('rda')
             ->select('rda.resourceId')
             ->innerJoin('rda.role', 'r')
             ->innerJoin('r.users', 'u')
@@ -322,6 +318,204 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->getQuery()
             ->getSingleColumnResult();
 
+        $groupIds = [];
+        foreach ($ids as $id) {
+            if (is_numeric($id)) {
+                $groupIds[] = (int) $id;
+            }
+        }
+
+        return $groupIds;
+    }
+
+    /**
+     * Build the base "users visible in the admin list" query.
+     *
+     * Single source of truth for admin user visibility: the list, the CSV
+     * export and the stats tiles all start here, so a tile can never count a
+     * user the table would not show. Callers pass $accessibleGroupIds = null
+     * for an admin (sees every non-intern user) or a list of group IDs for a
+     * group-scoped admin.
+     *
+     * The caller is responsible for the SELECT clause.
+     *
+     * @param list<int>|null $accessibleGroupIds
+     */
+    private function createVisibleUsersQueryBuilder(?array $accessibleGroupIds, ?string $search, ?int $groupId = null): QueryBuilder
+    {
+        $qb = $this->getEntityManager()->createQueryBuilder()
+            ->from(User::class, 'u')
+            ->leftJoin('u.userType', 'ut')
+            ->leftJoin('u.status', 'us')
+            ->where('u.intern = :intern')
+            ->andWhere('u.id_status > 0')
+            ->setParameter('intern', false);
+
+        // Group scoping: an admin passes null (no restriction); a group-scoped
+        // admin is limited to users in the groups they can access.
+        if ($accessibleGroupIds !== null) {
+            $qb->innerJoin('u.usersGroups', 'ug')
+                ->innerJoin('ug.group', 'g')
+                ->andWhere('g.id IN (:groupIds)')
+                ->setParameter('groupIds', $accessibleGroupIds);
+        }
+
+        // Explicit group filter (?id_groups=). Uses its own join alias so it
+        // intersects with (rather than replaces) the access scoping above.
+        if ($groupId !== null) {
+            $qb->innerJoin('u.usersGroups', 'fug')
+                ->innerJoin('fug.group', 'fg')
+                ->andWhere('fg.id = :filterGroupId')
+                ->setParameter('filterGroupId', $groupId);
+        }
+
+        if ($search) {
+            $qb->leftJoin('u.validationCodes', 'vc')
+                ->leftJoin('u.roles', 'ur');
+        }
+
+        $this->applyUserSearchFilter($qb, $search);
+
+        return $qb;
+    }
+
+    /**
+     * The one bucket derived from the `blocked` column rather than a status
+     * lookup code. Shared with the service so a rename cannot desync the
+     * filter from the counts.
+     */
+    public const STATUS_BUCKET_BLOCKED = 'blocked';
+
+    /**
+     * Apply a status bucket filter to a visible-users query.
+     *
+     * Buckets are mutually exclusive and `blocked` wins over any status, so a
+     * blocked+invited user counts as blocked only. See
+     * AdminUserService::STATUS_BUCKETS for the contract.
+     */
+    private function applyUserStatusBucket(QueryBuilder $qb, string $bucket): void
+    {
+        if ($bucket === self::STATUS_BUCKET_BLOCKED) {
+            $qb->andWhere('u.blocked = true');
+            return;
+        }
+
+        $qb->andWhere('u.blocked = false')
+            ->andWhere('us.lookupCode = :statusCode')
+            ->setParameter('statusCode', $bucket);
+    }
+
+    /**
+     * Count visible users per status bucket in a single aggregate query.
+     *
+     * Returns total plus one count per bucket. Because `blocked` wins over
+     * status, the buckets are disjoint; they do NOT necessarily sum to total
+     * (a user whose status is outside the counted buckets — e.g. the legacy
+     * `interested` / `auto_created` codes — is in total but no bucket).
+     *
+     * @param list<int>|null $accessibleGroupIds
+     * @param list<string>   $buckets status lookup codes to count (excl. `blocked`)
+     * @return array<string, int>
+     */
+    public function countVisibleUsersByStatusBucket(?array $accessibleGroupIds, array $buckets): array
+    {
+        // One grouped pass over the visible set: (blocked, status) -> count of
+        // DISTINCT users. Grouping rather than conditional aggregates keeps the
+        // DQL portable (DQL's CASE requires an explicit ELSE, which would make
+        // COUNT/SUM over a fan-out join miscount) and lets the caller apply the
+        // bucket precedence in one place below.
+        $qb = $this->createVisibleUsersQueryBuilder($accessibleGroupIds, null);
+        $qb->select('u.blocked AS blocked', 'us.lookupCode AS status_code', 'COUNT(DISTINCT u.id) AS n')
+            ->groupBy('u.blocked')
+            ->addGroupBy('us.lookupCode');
+
+        /** @var list<array<string, mixed>> $rows */
+        $rows = $qb->getQuery()->getResult();
+
+        $counts = ['total' => 0, self::STATUS_BUCKET_BLOCKED => 0];
+        foreach ($buckets as $bucket) {
+            $counts[$bucket] = 0;
+        }
+
+        foreach ($rows as $row) {
+            $n = is_numeric($row['n'] ?? null) ? (int) $row['n'] : 0;
+            $counts['total'] += $n;
+
+            // PRECEDENCE: blocked wins over status, so a blocked user is only
+            // ever counted under `blocked`.
+            if ((bool) ($row['blocked'] ?? false)) {
+                $counts[self::STATUS_BUCKET_BLOCKED] += $n;
+                continue;
+            }
+
+            $statusCode = $row['status_code'] ?? null;
+            if (is_string($statusCode) && array_key_exists($statusCode, $counts)) {
+                $counts[$statusCode] += $n;
+            }
+            // A status outside the buckets (legacy `interested` /
+            // `auto_created`) counts toward `total` only — see the contract on
+            // AdminUserService::STATUS_BUCKETS.
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Fetch every visible user for CSV export (no pagination).
+     *
+     * Honours the same filters as the list so the export matches what the
+     * admin sees on screen.
+     *
+     * @param list<int>|null $accessibleGroupIds
+     * @return list<User>
+     */
+    public function findVisibleUsersForExport(?array $accessibleGroupIds, ?string $search, ?string $statusBucket, ?int $groupId): array
+    {
+        $idQb = $this->createVisibleUsersQueryBuilder($accessibleGroupIds, $search, $groupId)
+            ->select('DISTINCT u.id');
+
+        if ($statusBucket !== null) {
+            $this->applyUserStatusBucket($idQb, $statusBucket);
+        }
+
+        /** @var list<array{id: int|string}> $idRows */
+        $idRows = $idQb->getQuery()->getScalarResult();
+        $userIds = array_map(static fn(array $row): int => (int) $row['id'], $idRows);
+
+        if (empty($userIds)) {
+            return [];
+        }
+
+        /** @var list<User> $users */
+        $users = $this->getEntityManager()->createQueryBuilder()
+            ->select('u', 'ug', 'g', 'ur', 'us')
+            ->from(User::class, 'u')
+            ->leftJoin('u.usersGroups', 'ug')
+            ->leftJoin('ug.group', 'g')
+            ->leftJoin('u.roles', 'ur')
+            ->leftJoin('u.status', 'us')
+            ->where('u.id IN (:ids)')
+            ->setParameter('ids', $userIds)
+            ->orderBy('u.email', 'asc')
+            ->getQuery()
+            ->getResult();
+
+        return $users;
+    }
+
+    /**
+     * Get accessible users for a user based on group permissions
+     * Returns users who belong to groups that the current user can access
+     *
+     * @param int $userId User ID
+     * @param int $resourceTypeId Resource type ID for groups
+     * @return array{users: list<array<string, mixed>>, pagination: array<string, mixed>} Users with their group membership info
+     */
+    public function getAccessibleUsersForUser(int $userId, int $resourceTypeId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $statusBucket = null, ?int $groupId = null): array
+    {
+        // First, get all groups that the user can access
+        $accessibleGroupIds = $this->getAccessibleGroupIdsForUser($userId, $resourceTypeId);
+
         if (empty($accessibleGroupIds)) {
             return [
                 'users' => [],
@@ -331,25 +525,13 @@ class RoleDataAccessRepository extends ServiceEntityRepository
 
         // Step 1: Build a paginated query for DISTINCT user IDs.
         // No fetch-join of collections + setMaxResults — that would truncate the result.
-        $idQb = $this->getEntityManager()->createQueryBuilder()
-            ->select('DISTINCT u.id')
-            ->from(User::class, 'u')
-            ->innerJoin('u.usersGroups', 'ug')
-            ->innerJoin('ug.group', 'g')
-            ->leftJoin('u.userType', 'ut')
-            ->leftJoin('u.status', 'us')
-            ->where('g.id IN (:groupIds)')
-            ->andWhere('u.intern = :intern')
-            ->andWhere('u.id_status > 0')
-            ->setParameter('groupIds', $accessibleGroupIds)
-            ->setParameter('intern', false);
+        $idQb = $this->createVisibleUsersQueryBuilder($accessibleGroupIds, $search, $groupId)
+            ->select('DISTINCT u.id');
 
-        if ($search) {
-            $idQb->leftJoin('u.validationCodes', 'vc')
-                ->leftJoin('u.roles', 'ur');
+        if ($statusBucket !== null) {
+            $this->applyUserStatusBucket($idQb, $statusBucket);
         }
 
-        $this->applyUserSearchFilter($idQb, $search);
         $this->applyUserSorting($idQb, $sort, $sortDirection);
 
         // Total count of distinct accessible users matching the filter
@@ -408,27 +590,18 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @return array{users: list<array<string, mixed>>, pagination: array<string, mixed>} Formatted users
      */
-    public function getAllUsersForAdmin(int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+    public function getAllUsersForAdmin(int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $statusBucket = null, ?int $groupId = null): array
     {
         // Step 1: Build a paginated query for DISTINCT user IDs.
         // We must NOT fetch-join collections here, otherwise setMaxResults() limits
         // the cartesian-product rows instead of the user rows.
-        $idQb = $this->getEntityManager()->createQueryBuilder()
-            ->select('DISTINCT u.id')
-            ->from(User::class, 'u')
-            ->leftJoin('u.userType', 'ut')
-            ->leftJoin('u.status', 'us')
-            ->where('u.intern = :intern')
-            ->andWhere('u.id_status > 0')
-            ->setParameter('intern', false);
+        $idQb = $this->createVisibleUsersQueryBuilder(null, $search, $groupId)
+            ->select('DISTINCT u.id');
 
-        // Search needs the validation/role joins so we mirror the user-facing search
-        if ($search) {
-            $idQb->leftJoin('u.validationCodes', 'vc')
-                ->leftJoin('u.roles', 'ur');
+        if ($statusBucket !== null) {
+            $this->applyUserStatusBucket($idQb, $statusBucket);
         }
 
-        $this->applyUserSearchFilter($idQb, $search);
         $this->applyUserSorting($idQb, $sort, $sortDirection);
 
         // Total count of distinct users matching the filter

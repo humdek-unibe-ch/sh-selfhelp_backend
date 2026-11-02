@@ -8,8 +8,8 @@
     "asset_type": { "type": "string", "description": "Asset type" },
     "folder": { "type": ["string", "null"], "description": "Asset folder" },
     "file_name": { "type": ["string", "null"], "description": "File name" },
-    "file_path": { "type": "string", "description": "File path" },
-    "url": { "type": "string", "description": "Asset URL" }
+    "file_path": { "type": "string", "description": "Logical storage key (uploads/assets/<folder>/<name>). NOT a fetchable path - assets live outside the document root. Use `url` to fetch bytes." },
+    "url": { "type": "string", "description": "ACL-enforced delivery URL (/cms-api/v1/assets/<folder>/<name>). The only way to fetch asset bytes; returns 403 when the caller may not read the folder." }
   },
   "required": ["id", "asset_type", "folder", "file_name", "file_path", "url"],
   "additionalProperties": false

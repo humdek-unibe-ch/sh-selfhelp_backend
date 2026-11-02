@@ -53,6 +53,23 @@ class AdminRegistrationCodeController extends AbstractController
     }
 
     /**
+     * Code counts for the admin Registration Codes page tiles.
+     *
+     * Unfiltered by design: it describes the whole set the caller can see, so
+     * `total` equals the unfiltered `totalCount` the list returns for the same
+     * caller. The list is not group/ACL scoped, so neither is this — the two
+     * agree on `total`. Contract: available + used === total.
+     *
+     * @route GET /admin/registration-codes/stats
+     */
+    public function stats(): JsonResponse
+    {
+        $stats = $this->registrationCodeService->getStats();
+
+        return $this->responseFormatter->formatSuccess($stats, 'responses/admin/registration_codes_stats', Response::HTTP_OK, true);
+    }
+
+    /**
      * @route GET /admin/registration-codes/export
      */
     public function export(Request $request): StreamedResponse
