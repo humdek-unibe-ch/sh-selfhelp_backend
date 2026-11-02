@@ -26,7 +26,7 @@ use Doctrine\Migrations\AbstractMigration;
  */
 final class Version20260717134503 extends AbstractMigration
 {
-    private const ROUTE_NAME = 'admin_users_bulk_remove_from_group_v1';
+    private const ROUTE_NAME = 'admin_users_bulk_remove_from_group';
 
     public function getDescription(): string
     {
