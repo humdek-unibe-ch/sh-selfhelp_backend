@@ -8,51 +8,53 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\Group;
 use App\Repository\AssetRepository;
 use App\Service\Core\BaseService;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Mime\MimeTypes;
 
 /**
  * Export/import assets as a ZIP bundle (physical files + manifest.json),
  * mirroring the pages/navigation bundle pattern.
  *
- * The bundle layout is:
- *   manifest.json          – bundle metadata + one entry per asset
- *   files/<folder>/<name>  – the physical asset bytes
+ * Bundle v2.0 layout:
+ *   manifest.json   – bundle metadata + one entry per asset (uuid, display
+ *                     name, alt, mime type, group names)
+ *   files/<uuid>    – the physical asset bytes
  *
- * Import re-uses {@see AdminAssetService::createAsset} so file-type validation,
- * transactions, cache invalidation, and folder-level manage ACL enforcement all
- * apply identically to a normal upload.
+ * Import never overwrites: an asset whose uuid already exists is skipped, so a
+ * bundle can be re-imported safely. v1.0 (folder-era) bundles still import, as
+ * public assets. Import re-uses
+ * {@see AdminAssetService::createAsset} so file-type validation, transactions
+ * and cache invalidation apply identically to a normal upload.
  */
 class AssetExportImportService extends BaseService
 {
     private const BUNDLE_TYPE = 'selfhelp/asset-bundle';
-    private const BUNDLE_VERSION = '1.0';
+    private const BUNDLE_VERSION = '2.0';
     private const MANIFEST_NAME = 'manifest.json';
     private const FILES_PREFIX = 'files/';
 
     public function __construct(
         private readonly AssetRepository $assetRepository,
         private readonly AdminAssetService $adminAssetService,
-        private readonly AssetFolderAclService $folderAclService,
+        private readonly AssetAccessService $accessService,
         private readonly AssetStorageService $storage,
     ) {
     }
 
     /**
-     * Build a ZIP bundle for the given folders (or every readable folder when
-     * `$folders` is empty). Returns the absolute path to a temporary ZIP file
+     * Build a ZIP bundle for the given assets (or every readable asset when
+     * `$assetIds` is empty). Returns the absolute path to a temporary ZIP file
      * the caller is responsible for streaming and deleting.
      *
-     * @param list<string> $folders
+     * @param list<int> $assetIds
      */
-    public function exportToZipFile(array $folders): string
+    public function exportToZipFile(array $assetIds): string
     {
-        // Closed-by-default allow-list: null = admin (no restriction).
-        $visibleFolders = $this->folderAclService->getVisibleFoldersOrNull();
-
-        $assets = $this->assetRepository->findForExport($folders, $visibleFolders);
+        $assets = $this->assetRepository->findForExport($assetIds, $this->accessService->manageableAssetIdsOrNull());
         if ($assets === []) {
             $this->throwNotFound('No assets found for export');
         }
@@ -66,23 +68,27 @@ class AssetExportImportService extends BaseService
 
         $manifestEntries = [];
         foreach ($assets as $asset) {
-            $sourcePath = $this->storage->absolutePath((string) $asset->getFilePath());
-            if (!is_file($sourcePath)) {
+            $sourcePath = $this->storage->resolveForDelivery((string) $asset->getFilePath());
+            if ($sourcePath === null) {
                 // Skip DB rows whose physical file is missing rather than failing
                 // the whole export; the manifest only lists files actually bundled.
                 continue;
             }
 
-            $folder = $asset->getFolder() ?? '';
-            $fileName = (string) $asset->getFileName();
-            $entryPath = self::FILES_PREFIX . ($folder !== '' ? $folder . '/' : '') . $fileName;
-
+            $entryPath = self::FILES_PREFIX . $asset->getUuid();
             $zip->addFile($sourcePath, $entryPath);
 
             $manifestEntries[] = [
-                'folder' => $asset->getFolder(),
-                'file_name' => $fileName,
+                'uuid' => $asset->getUuid(),
+                'name' => $asset->getName(),
+                'alt' => $asset->getAlt(),
+                'mime_type' => $asset->getMimeType(),
                 'asset_type' => $asset->getAssetType()->getLookupValue(),
+                // Group NAMES travel, not ids: ids differ between instances.
+                'groups' => array_values(array_filter(array_map(
+                    static fn (Group $group): ?string => $group->getName(),
+                    $asset->getGroups()->toArray()
+                ), 'is_string')),
                 'bundle_path' => $entryPath,
             ];
         }
@@ -112,11 +118,11 @@ class AssetExportImportService extends BaseService
 
     /**
      * Import an uploaded asset bundle ZIP. Each manifest entry is created via
-     * the normal asset-create path (so ACL + validation apply per folder).
+     * the normal asset-create path.
      *
      * @return array{imported: int, skipped: int, errors: list<array{file: string, error: string}>}
      */
-    public function importFromZip(UploadedFile $file, bool $overwrite): array
+    public function importFromZip(UploadedFile $file): array
     {
         if (!$file->isValid()) {
             $this->throwBadRequest('File upload failed: ' . $file->getErrorMessage());
@@ -135,7 +141,7 @@ class AssetExportImportService extends BaseService
         }
 
         try {
-            return $this->importManifestEntries($manifest, $extractDir, $overwrite);
+            return $this->importManifestEntries($manifest, $extractDir);
         } finally {
             $this->removeDir($extractDir);
         }
@@ -145,7 +151,7 @@ class AssetExportImportService extends BaseService
      * @param array<string, mixed> $manifest
      * @return array{imported: int, skipped: int, errors: list<array{file: string, error: string}>}
      */
-    private function importManifestEntries(array $manifest, string $extractDir, bool $overwrite): array
+    private function importManifestEntries(array $manifest, string $extractDir): array
     {
         $entries = $this->asArray($manifest['assets'] ?? null);
 
@@ -156,41 +162,58 @@ class AssetExportImportService extends BaseService
         foreach ($entries as $rawEntry) {
             $entry = $this->asAssocArray($rawEntry);
             $bundlePath = $this->asString($entry['bundle_path'] ?? '');
+            $uuid = $this->asStringOrNull($entry['uuid'] ?? null);
+            // v1 bundles name each file (with its extension); v2 bundles carry
+            // the mime type instead, as stored files have no extension.
             $fileName = $this->asString($entry['file_name'] ?? '');
-            $folder = $this->asStringOrNull($entry['folder'] ?? null);
+            if ($fileName === '') {
+                $mimeType = $this->asString($entry['mime_type'] ?? '');
+                $extension = $mimeType !== '' ? (MimeTypes::getDefault()->getExtensions($mimeType)[0] ?? '') : '';
+                $fileName = basename($bundlePath) . ($extension !== '' ? '.' . $extension : '');
+            }
+            $label = $uuid ?? $fileName;
 
             $sourcePath = $extractDir . '/' . $bundlePath;
 
             // Guard against path traversal in the manifest.
             if ($bundlePath === '' || !str_starts_with($bundlePath, self::FILES_PREFIX) || !$this->isInsideDir($extractDir, $sourcePath)) {
-                $errors[] = ['file' => $fileName !== '' ? $fileName : $bundlePath, 'error' => 'Invalid bundle path'];
+                $errors[] = ['file' => $label, 'error' => 'Invalid bundle path'];
                 continue;
             }
 
             if (!is_file($sourcePath)) {
-                $errors[] = ['file' => $fileName !== '' ? $fileName : $bundlePath, 'error' => 'File missing from bundle'];
+                $errors[] = ['file' => $label, 'error' => 'File missing from bundle'];
                 continue;
+            }
+
+            if ($uuid !== null && $this->assetRepository->findOneByUuid($uuid) !== null) {
+                $skipped++;
+                continue;
+            }
+
+            // v1 bundles have no `name`; their file name (no extension) is the label.
+            $data = ['name' => $entry['name'] ?? pathinfo($fileName, PATHINFO_FILENAME), 'alt' => $entry['alt'] ?? null];
+            if ($uuid !== null) {
+                $data['uuid'] = $uuid;
+            }
+            if (array_key_exists('groups', $entry)) {
+                $names = array_values(array_filter($this->asArray($entry['groups']), 'is_string'));
+                $data['group_ids'] = array_map(
+                    static fn (Group $group): int => (int) $group->getId(),
+                    $this->accessService->groupsByName($names)
+                );
             }
 
             try {
                 // Wrap the extracted file as an UploadedFile in test-mode (4th arg
-                // true) so ::createAsset moves it without an is_uploaded_file check.
-                $uploaded = new UploadedFile($sourcePath, $fileName !== '' ? $fileName : basename($sourcePath), null, null, true);
+                // true) so ::createAsset moves it without an is_uploaded_file
+                // check. The client name carries the extension for validation.
+                $uploaded = new UploadedFile($sourcePath, $fileName, null, null, true);
 
-                $this->adminAssetService->createAsset(
-                    $uploaded,
-                    ['folder' => $folder, 'file_name' => $fileName],
-                    $overwrite
-                );
+                $this->adminAssetService->createAsset($uploaded, $data);
                 $imported++;
-            } catch (\App\Exception\ServiceException $e) {
-                if ($e->getCode() === Response::HTTP_CONFLICT) {
-                    $skipped++;
-                    continue;
-                }
-                $errors[] = ['file' => $fileName !== '' ? $fileName : $bundlePath, 'error' => $e->getMessage()];
             } catch (\Exception $e) {
-                $errors[] = ['file' => $fileName !== '' ? $fileName : $bundlePath, 'error' => $e->getMessage()];
+                $errors[] = ['file' => $label, 'error' => $e->getMessage()];
             }
         }
 

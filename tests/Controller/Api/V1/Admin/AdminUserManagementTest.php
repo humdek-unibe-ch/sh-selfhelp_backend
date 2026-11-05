@@ -211,18 +211,18 @@ final class AdminUserManagementTest extends QaWebTestCase
     public function testGroupFilterReturnsOnlyMembersOfThatGroup(): void
     {
         $token = $this->loginAsQaAdmin();
-        $groupId = $this->groupIdByName('admin');
+        $groupId = $this->groupIdByName('researcher');
 
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', self::USERS_URI . '?id_groups=' . $groupId . '&pageSize=100', null, $token)
         );
 
         $emails = $this->emailsOf($data);
-        self::assertContains(QaBaselineFixture::QA_ADMIN_EMAIL, $emails);
+        self::assertContains(QaBaselineFixture::QA_EDITOR_EMAIL, $emails);
         self::assertNotContains(
             QaBaselineFixture::QA_USER_EMAIL,
             $emails,
-            'qa.user is in the subject group, so it must not appear under the admin group filter'
+            'qa.user is in the subject group, so it must not appear under the researcher group filter'
         );
     }
 
@@ -298,7 +298,7 @@ final class AdminUserManagementTest extends QaWebTestCase
     {
         $token = $this->loginAsQaAdmin();
         $userId = $this->createQaUser('qa.bulk.grouped@selfhelp.test', LookupService::USER_STATUS_ACTIVE);
-        $groupId = $this->groupIdByName('therapist');
+        $groupId = $this->groupIdByName('researcher');
 
         $body = ['user_ids' => [$userId], 'group_ids' => [$groupId]];
 
@@ -324,7 +324,7 @@ final class AdminUserManagementTest extends QaWebTestCase
     {
         $token = $this->loginAsQaAdmin();
         $userId = $this->createQaUser('qa.bulk.ungrouped@selfhelp.test', LookupService::USER_STATUS_ACTIVE);
-        $groupId = $this->groupIdByName('therapist');
+        $groupId = $this->groupIdByName('researcher');
 
         $body = ['user_ids' => [$userId], 'group_ids' => [$groupId]];
 
@@ -373,7 +373,11 @@ final class AdminUserManagementTest extends QaWebTestCase
     {
         $token = $this->loginAsQaAdmin();
         $adminId = $this->userIdByEmail(QaBaselineFixture::QA_ADMIN_EMAIL);
-        $adminGroupId = $this->groupIdByName('admin');
+        // There is no admin group: put the admin in one, then remove them.
+        $adminGroupId = $this->groupIdByName('researcher');
+        $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', self::BULK_ADD_GROUP_URI, ['user_ids' => [$adminId], 'group_ids' => [$adminGroupId]], $token)
+        );
 
         $result = $this->assertEnvelopeSuccess(
             $this->jsonRequest(

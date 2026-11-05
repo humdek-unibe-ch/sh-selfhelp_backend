@@ -302,7 +302,7 @@ System variables contain context about the current request and user session.
 | `system.user_email` | string | Current user's email | `stefan@example.com` |
 | `system.user_code` | string | User's validation code | `admin_stef` |
 | `system.user_id` | int | User's ID | `9` |
-| `system.user_group` | array | User's group names | `["admin", "therapist"]` |
+| `system.user_group` | array | User's group names | `["subject", "researcher"]` |
 | `system.page_keyword` | string | Current page keyword | `test_test` |
 | `system.platform` | string | Platform (web/mobile) | `web` |
 | `system.language` | int | Current language ID | `3` |

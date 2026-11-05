@@ -42,7 +42,6 @@ final class LookupService
     public const STYLE_RENDER_TARGETS = 'styleRenderTargets';
     public const HOOK_TYPES = 'hookTypes';
     public const ASSET_TYPES = 'assetTypes';
-    public const ASSET_FOLDER_ACCESS_LEVELS = 'assetFolderAccessLevels';
     public const GROUP_TYPES = 'groupTypes';
     public const USER_TYPES = 'userTypes';
     public const USER_STATUS = 'userStatus';
@@ -233,9 +232,6 @@ final class LookupService
     public const ASSET_TYPES_ASSET = 'asset';
     public const ASSET_TYPES_STATIC = 'static';
 
-    // Asset folder access levels. Ordered scale: `manage` contains `read`.
-    public const ASSET_FOLDER_ACCESS_LEVELS_READ = 'read';
-    public const ASSET_FOLDER_ACCESS_LEVELS_MANAGE = 'manage';
 
     // groupTypes
     public const GROUP_TYPES_DB_ROLE = 'db_role';
@@ -263,6 +259,7 @@ final class LookupService
     public const RESOURCE_TYPES_GROUP = 'group';    
     public const RESOURCE_TYPES_DATA_TABLE = 'data_table';
     public const RESOURCE_TYPES_PAGES = 'pages';
+    public const RESOURCE_TYPES_ASSET = 'asset';
 
     // auditActions
     public const AUDIT_ACTIONS = 'auditActions';

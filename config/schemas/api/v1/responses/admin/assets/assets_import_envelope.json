@@ -11,12 +11,12 @@
       "properties": {
         "imported": {
           "type": "integer",
-          "description": "Number of assets created/overwritten from the bundle",
+          "description": "Number of assets created from the bundle",
           "minimum": 0
         },
         "skipped": {
           "type": "integer",
-          "description": "Number of assets skipped because they already existed and overwrite was off",
+          "description": "Number of assets skipped because an asset with the same uuid already exists (import never overwrites)",
           "minimum": 0
         },
         "errors": {

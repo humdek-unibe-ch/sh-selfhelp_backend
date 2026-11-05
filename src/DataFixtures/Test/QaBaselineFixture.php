@@ -35,12 +35,13 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * simplified fake role here (plan §16 / AGENTS.md Testing Rule 8).
  *
  * Persona → real seeded group/role mapping. The baseline schema seeds
- * exactly three groups (`admin`, `therapist`, `subject`) and one role
- * (`admin`) — there is no `editor`/`user`/`guest` role in production, so
- * the personas map onto the REAL groups instead of fabricating roles:
+ * two groups (`researcher`, `subject`) and one role (`admin`); admin rights
+ * come from the role, there is no admin group. There is no
+ * `editor`/`user`/`guest` role in production, so the personas map onto the
+ * REAL groups instead of fabricating roles:
  *
- *   qa.admin   group=admin     role=admin   full admin access
- *   qa.editor  group=therapist (no role)    content/experiment manager
+ *   qa.admin   (no group)       role=admin   full admin access
+ *   qa.editor  group=researcher (no role)    content/experiment manager
  *   qa.user    group=subject   (no role)    ordinary end user
  *   qa.guest   (no group)      (no role)    authenticated but unprivileged
  *
@@ -61,7 +62,7 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
      * fast with a clear message instead of producing confusing downstream
      * failures (plan §32 / AGENTS.md Testing Rule 32).
      */
-    public const QA_FIXTURE_VERSION = '2026_05_22_001';
+    public const QA_FIXTURE_VERSION = '2026_11_04_001';
 
     /** Shared password for every QA persona. Test-only, never a real secret. */
     public const QA_PASSWORD = 'QaPassw0rd!2026';
@@ -108,19 +109,18 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
             );
         }
 
-        $adminGroup = $manager->getRepository(Group::class)->findOneBy(['name' => 'admin']);
         $adminRole = $manager->getRepository(Role::class)->findOneBy(['name' => 'admin']);
-        if (!$adminGroup instanceof Group || !$adminRole instanceof Role) {
+        if (!$adminRole instanceof Role) {
             throw new \RuntimeException(
-                'QA baseline cannot seed qa.admin: the seeded "admin" group/role is missing. '
+                'QA baseline cannot seed qa.admin: the seeded "admin" role is missing. '
                 . 'The schema baseline migrations must run first.'
             );
         }
 
-        // therapist/subject are part of the production seed too; map the
+        // researcher/subject are part of the production seed too; map the
         // editor/user personas onto them. Resolve defensively so the
         // fixture still seeds the critical admin persona on an unusual DB.
-        $therapistGroup = $manager->getRepository(Group::class)->findOneBy(['name' => 'therapist']);
+        $researcherGroup = $manager->getRepository(Group::class)->findOneBy(['name' => 'researcher']);
         $subjectGroup = $manager->getRepository(Group::class)->findOneBy(['name' => 'subject']);
 
         $this->createPersona(
@@ -129,8 +129,7 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
             'QA Admin',
             $activeStatus,
             $userType,
-            // $adminGroup is guaranteed non-null by the guard above, so no filter.
-            [$adminGroup],
+            [],
             $adminRole,
         );
         $this->createPersona(
@@ -139,7 +138,7 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
             'QA Editor',
             $activeStatus,
             $userType,
-            array_filter([$therapistGroup]),
+            array_filter([$researcherGroup]),
             null,
         );
         $this->createPersona(

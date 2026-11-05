@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 media styles (`@selfhelp/shared` `media` category).
-Last verified: 2026-06-22.
+Last verified: 2026-11-03.
 Source of truth: `src/types/styles/media.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Media styles embed images, video, and audio. Read
@@ -17,11 +17,11 @@ for how files are stored and validated.
 
 **Purpose.** Mantine `Image` on web / native `Image` on mobile.
 
-**Administrators.** Place a single image. Set the source, alternative text (`alt`, important for accessibility), and how it fits its box (`web_image_fit`). Use `is_fluid` to make it scale to the container width.
+**Administrators.** Place a single image. Set the source, alternative text (`alt`, important for accessibility), and how it fits its box (`web_image_fit`). Use `is_fluid` to make it scale to the container width. If the image is an uploaded asset, you can leave `alt` empty: the asset's default alt (set once in Admin → Assets) is used. Fill `alt` here only when this page needs a different description.
 
-**Developers.** Renders `<Image src fit radius>`. `width`/`height` and `web_width`/`web_height` constrain the box; `web_image_fit` maps to `object-fit`. `fallback_src` maps to Mantine `Image.fallbackSrc` and is shown if the main source 404s/errors.
+**Developers.** Renders `<Image src fit radius>`. `width`/`height` and `web_width`/`web_height` constrain the box; `web_image_fit` maps to `object-fit`. `fallback_src` maps to Mantine `Image.fallbackSrc` and is shown if the main source 404s/errors. When `alt` is empty and `img_src` references an uploaded asset, the backend fills `alt` from the asset's default alt in the page payload (`PageService::withAssetDefaultAlts`), so web and mobile renderers just read `alt`; a section's own alt always wins. See [`06-admin-assets.md`](../api/06-admin-assets.md).
 
-**Distinctive fields.** `img_src` (source), `alt` (alt text), `title`, `is_fluid` (responsive width), `height` / `width`, `web_image_fit` (contain/cover/fill/none/scale-down), `web_width` / `web_height`, `web_radius`, `fallback_src` (image shown when the main source fails to load).
+**Distinctive fields.** `img_src` (Image Source), `alt` (Alt; empty = the asset's default alt), `title`, `is_fluid` (responsive width), `height` / `width`, `web_image_fit` (contain/cover/fill/none/scale-down), `web_width` / `web_height`, `web_radius`, `fallback_src` (image shown when the main source fails to load).
 
 **Children.** No.
 
@@ -63,7 +63,7 @@ for how files are stored and validated.
 
 **Developers.** Renders `<figure>` with a `<figcaption>`. When `img_src` is set the renderer draws that image itself (with `alt`); otherwise the media is provided as a child section. The built-in image is a render-only convenience — it never auto-creates a child section.
 
-**Distinctive fields.** `caption_title`, `caption` (both translatable), `img_src` (optional built-in image), `alt` (alt text for the built-in image).
+**Distinctive fields.** `caption_title`, `caption` (both translatable), `img_src` (optional built-in image), `alt` (alt text for the built-in image; falls back to the asset's default alt when empty, as for `image`).
 
 **Children.** Yes (a media style) — optional when `img_src` is used instead.
 

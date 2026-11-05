@@ -54,7 +54,7 @@ final class AdminGroupMembersTest extends QaWebTestCase
     public function testReturnsMembersOfTheGroupWithTheContractFields(): void
     {
         $token = $this->loginAsQaAdmin();
-        $groupId = $this->groupIdByName('therapist');
+        $groupId = $this->groupIdByName('researcher');
         $userId = $this->createQaUserInGroup('qa.member.one@selfhelp.test', $groupId, LookupService::USER_STATUS_ACTIVE);
 
         $members = $this->assertEnvelopeSuccessList(
@@ -131,7 +131,7 @@ final class AdminGroupMembersTest extends QaWebTestCase
     public function testBlockedMemberIsReportedAsBlocked(): void
     {
         $token = $this->loginAsQaAdmin();
-        $groupId = $this->groupIdByName('therapist');
+        $groupId = $this->groupIdByName('researcher');
         $blockedId = $this->createQaUserInGroup('qa.member.blocked@selfhelp.test', $groupId, LookupService::USER_STATUS_INVITED, blocked: true);
 
         $members = $this->assertEnvelopeSuccessList(
@@ -152,8 +152,8 @@ final class AdminGroupMembersTest extends QaWebTestCase
 
     public function testGroupMembersEnforcesAdminOnlyMatrix(): void
     {
-        // groupId 1 is the seeded `admin` group; a read route, so the full matrix.
-        $this->assertAdminOnlyMatrix('GET', self::BASE . '/1/users');
+        // A seeded group; a read route, so the full matrix.
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/' . $this->groupIdByName('subject') . '/users');
     }
 
     // -- Helpers ------------------------------------------------------------

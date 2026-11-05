@@ -709,6 +709,23 @@ the same change wave:
 > raises ITS `supports.core` floor to `0.1.43`. `pluginApiVersion` unchanged
 > (`0.1.0`).
 
+> **Core 0.1.43 asset rework (floor-raising):** assets get a stable `uuid`
+> that replaces the file name (`file_name` leaves the table, the response and
+> the upload fields; the old name becomes the editable `name`), a default `alt`
+> that fills empty image `alt` fields in the page payload, viewing by group
+> (`rel_assets_groups`; no groups = public), managing per asset by role
+> (`role_data_access`, resource type `asset`) and organisation-only nested
+> folders. The asset response gains `uuid`, `name`, `mime_type`, `size`, `alt`,
+> `folder_id`, `roles`, `groups`, `created_at`, `updated_at`; the folder-ACL
+> routes are gone; edit, bulk groups, bulk delete, folder CRUD and
+> `GET /assets/{uuid}` are new, with permission `admin.asset.update`. Folder-era
+> URLs in content are rewritten to uuid URLs by the migration, so stored
+> content and the mobile renderer keep working. Groups: `therapist` →
+> `researcher`, the `admin` group is removed. A 0.1.68 frontend calls the
+> removed routes, so backend `supports.frontend` rises `0.1.68 → 0.1.69`;
+> frontend `supports.core` is already `>=0.1.43`. Migration
+> `Version20261103112133`. `pluginApiVersion` unchanged (`0.1.0`).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -722,7 +739,7 @@ the same change wave:
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.7` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.68 <0.2.0` | frontend 0.1.68 ships the clean-user-data row action + confirmation modal, which requires a core that actually erases (core 0.1.42); carries the earlier admin user/group/role + asset-delivery floors |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.69 <0.2.0` | frontend 0.1.69 adopts the core 0.1.43 asset rework (uuid assets, per-asset groups, folder routes removed); carries the earlier clean-user-data, admin user/group/role + asset-delivery floors |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding; pair via `supports.core` (package SemVer may stay `0.1.33`) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |

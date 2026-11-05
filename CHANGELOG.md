@@ -1,7 +1,60 @@
 # v0.1.43
 
 **Public-navigable page types are resolved by name, and the admin navigation
-payload now states whether an item actually renders publicly.**
+payload now states whether an item actually renders publicly. Assets are
+reworked: stable uuid, no overwrite, edit/replace, default alt, public unless
+restricted by group, managed per asset by role, and organised in nested
+folders. The `therapist` group becomes `researcher` and the `admin` group goes.**
+
+## Change: assets get a stable id, access by group and role (breaking)
+
+- **Uuid identity.** Every asset has a `uuid`, and it replaces the file name:
+  the file is stored on disk under it with no extension, and `file_name` is
+  removed. The old file name, without extension, becomes the editable `name`.
+  Uploads never collide or overwrite; the `overwrite`, `file_name` and
+  `file_names` upload fields are gone. Downloads and email attachments are
+  named `<uuid>.<extension>`.
+- **Edit and replace.** `POST /admin/assets/{id}` changes the name, alt,
+  groups, managing roles and folder, and can replace the file under the same
+  uuid. New permission `admin.asset.update`, granted to every role that could
+  upload.
+- **Viewing: public unless restricted.** An asset with no groups is public;
+  with groups, only their members (and the admin role) can view it. New uploads
+  are public, and the upload form says so in large letters.
+- **Managing: per asset, by role.** A new `asset` resource type in
+  `role_data_access` decides which roles may list, edit, delete and export each
+  asset, like data tables; uploads are granted to the uploader's roles and the
+  admin role manages all. Existing assets go to the roles that can read assets.
+  Fixed `RoleDataAccessRepository::getUserPermissionsForResources()`, which used
+  an unsupported DQL `BIT_OR` and could not run.
+- **Folders organise, nested.** `assets_folders` becomes an organisation-only
+  tree with `GET|POST /admin/asset-folders` and `PUT|DELETE
+  /admin/asset-folders/{id}`; assets have a `folder_id`, the asset list filters
+  by it (`folder_id=0` = assets in no folder) and each folder reports its
+  `asset_count`. Folder ACLs, open access and
+  `GET|PUT /admin/groups/{id}/asset-acls` are removed.
+- **Bulk actions.** `POST /admin/assets/bulk-groups` and
+  `POST /admin/assets/bulk-delete`.
+- **Default alt.** An image section with an empty `alt` gets the asset's alt in
+  the page payload; a section's own alt wins. The image style's fields get
+  titles (Image Source, Alt, Title, Fluid) and the Alt help explains this.
+- **Groups.** `therapist` is renamed `researcher`; new public pages are readable
+  by subject + researcher. The `admin` group is removed (admin rights come from
+  the admin role, which bypasses page ACLs), together with its memberships,
+  page ACL rows and validation codes. `app:create-admin-user` no longer adds a
+  group.
+- **Migration** `Version20261103112133` does all of the above. It does not
+  rewrite folder-era asset URLs in content or move existing files: old
+  `/assets/<folder>/<file>` URLs stop working; re-pick those assets.
+- **Export/import** bundles are keyed by uuid (bundle 2.0); import skips
+  existing uuids instead of overwriting.
+- `supports.frontend` rises to `>=0.1.69`.
+
+## Fix: asset email attachments were never attached
+
+- Action emails store attachments as the asset URL, and the mailer only
+  attached real file paths, so asset attachments were silently dropped. The URL
+  is now resolved to the stored file.
 
 ## Fix: last login is recorded for password logins
 

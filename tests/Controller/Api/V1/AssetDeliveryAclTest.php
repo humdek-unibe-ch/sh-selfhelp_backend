@@ -10,11 +10,10 @@ declare(strict_types=1);
 namespace App\Tests\Controller\Api\V1;
 
 use App\DataFixtures\Test\QaBaselineFixture;
-use App\Entity\AssetFolder;
+use App\Entity\Asset;
 use App\Entity\Group;
-use App\Repository\AssetFolderRepository;
-use App\Service\CMS\Admin\AssetFolderAclService;
 use App\Service\CMS\Admin\AssetStorageService;
+use App\Service\Core\LookupService;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group as TestGroup;
@@ -22,139 +21,107 @@ use PHPUnit\Framework\Attributes\Group as TestGroup;
 /**
  * Security regression coverage for asset DELIVERY (Testing Rule 27).
  *
- * The gap this closes: assets used to be served straight off disk from
- * `public/uploads/assets/`, so `GET /uploads/assets/champ/<file>` returned the
- * bytes to ANYONE with the URL — folder ACLs only ever filtered the admin
- * listing endpoint, never the files themselves. Delivery now runs through
- * `GET /cms-api/v1/assets/{folder}/{filename}`, which authorizes every request.
- *
- * Asserts the three cases that matter:
- *  - a closed folder is refused to an anonymous caller (the reported hole),
- *  - an open-access folder is served to an anonymous caller (public assets keep
- *    working, which is what makes moving files out of `public/` survivable),
- *  - path traversal cannot escape the folder.
+ * Bytes are only ever served through `GET /cms-api/v1/assets/{uuid}`, and each
+ * request is authorized against the asset's own groups:
+ *  - an asset with no groups is public (anonymous callers included),
+ *  - otherwise it is readable by anyone in ANY of its groups,
+ *  - the admin role reads every asset.
  */
 #[TestGroup('security')]
 final class AssetDeliveryAclTest extends QaWebTestCase
 {
-    private const CLOSED_FOLDER = 'qa_delivery_closed';
-    private const OPEN_FOLDER = 'qa_delivery_open';
-    private const FILE_NAME = 'qa-pixel.txt';
-    private const SVG_NAME = 'qa-script.svg';
+    private const BODY = 'qa-delivery-body';
 
-    private AssetFolderAclService $aclService;
-    private AssetFolderRepository $folderRepo;
     private AssetStorageService $storage;
     private EntityManagerInterface $entityManager;
+
+    /** @var list<string> files written by the test, removed in tearDown */
+    private array $writtenFiles = [];
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        // The kernel is booted by parent::setUp()'s createClient(); pull services
-        // from that container rather than booting a second one.
         $container = self::getContainer();
-        /** @var AssetFolderAclService $aclService */
-        $aclService = $container->get(AssetFolderAclService::class);
-        $this->aclService = $aclService;
-        /** @var AssetFolderRepository $folderRepo */
-        $folderRepo = $container->get(AssetFolderRepository::class);
-        $this->folderRepo = $folderRepo;
         /** @var AssetStorageService $storage */
         $storage = $container->get(AssetStorageService::class);
         $this->storage = $storage;
         /** @var EntityManagerInterface $em */
         $em = $container->get(EntityManagerInterface::class);
         $this->entityManager = $em;
-
-        // Both folders exist; only OPEN_FOLDER is flagged open-access. Grants are
-        // created through the normal service so the folder rows exist.
-        $subjectId = $this->groupId('subject');
-        $this->aclService->updateGroupAssetAcls($subjectId, [
-            ['folder' => self::CLOSED_FOLDER, 'access_level' => 'read'],
-            ['folder' => self::OPEN_FOLDER, 'access_level' => 'read'],
-        ]);
-        $this->aclService->setFolderOpenAccess(self::OPEN_FOLDER, true);
-
-        // Real bytes on disk for each folder.
-        foreach ([self::CLOSED_FOLDER, self::OPEN_FOLDER] as $folder) {
-            $dir = $this->storage->folderPath($folder);
-            if (!is_dir($dir)) {
-                mkdir($dir, 0755, true);
-            }
-            file_put_contents($dir . '/' . self::FILE_NAME, 'qa-delivery-body');
-        }
-        file_put_contents(
-            $this->storage->folderPath(self::OPEN_FOLDER) . '/' . self::SVG_NAME,
-            '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
-        );
     }
 
     protected function tearDown(): void
     {
-        foreach ([self::CLOSED_FOLDER, self::OPEN_FOLDER] as $folder) {
-            foreach ([self::FILE_NAME, self::SVG_NAME] as $name) {
-                $file = $this->storage->folderPath($folder) . '/' . $name;
-                if (is_file($file)) {
-                    unlink($file);
-                }
-            }
-            if (is_dir($this->storage->folderPath($folder))) {
-                rmdir($this->storage->folderPath($folder));
+        foreach ($this->writtenFiles as $file) {
+            if (is_file($file)) {
+                unlink($file);
             }
         }
-
-        $subject = $this->entityManager->getRepository(Group::class)->findOneBy(['name' => 'subject']);
-        if ($subject instanceof Group) {
-            $this->aclService->updateGroupAssetAcls((int) $subject->getId(), []);
-        }
-        foreach ([self::CLOSED_FOLDER, self::OPEN_FOLDER] as $folder) {
-            $row = $this->folderRepo->findOneByFolder($folder);
-            if ($row instanceof AssetFolder) {
-                $this->entityManager->remove($row);
-            }
-        }
-        $this->entityManager->flush();
 
         parent::tearDown();
     }
 
-    public function testAnonymousCallerIsRefusedAssetBytesFromAClosedFolder(): void
+    public function testAnonymousCallerIsRefusedAnAssetThatIsNotPublic(): void
     {
-        $this->client->request('GET', sprintf(
-            '/cms-api/v1/assets/%s/%s',
-            self::CLOSED_FOLDER,
-            self::FILE_NAME
-        ));
+        $asset = $this->createAsset('qa-private.txt', 'text/plain', ['subject']);
 
-        self::assertSame(
-            403,
-            $this->client->getResponse()->getStatusCode(),
-            'A closed folder must never serve bytes to an anonymous caller'
-        );
-        self::assertStringNotContainsString(
-            'qa-delivery-body',
-            (string) $this->client->getResponse()->getContent(),
-            'The refused response must not leak the file body'
-        );
+        $this->client->request('GET', '/cms-api/v1/assets/' . $asset->getUuid());
+
+        self::assertSame(403, $this->client->getResponse()->getStatusCode(), 'An asset with groups must never reach an anonymous caller');
+        self::assertStringNotContainsString(self::BODY, (string) $this->client->getResponse()->getContent());
     }
 
-    public function testAnonymousCallerReceivesAssetBytesFromAnOpenAccessFolder(): void
+    public function testAnonymousCallerReceivesAnAssetWithoutGroupsWithItsStoredTypeAndName(): void
     {
-        $this->client->request('GET', sprintf(
-            '/cms-api/v1/assets/%s/%s',
-            self::OPEN_FOLDER,
-            self::FILE_NAME
-        ));
+        $asset = $this->createAsset('qa-public.txt', 'text/plain', []);
+
+        $this->client->request('GET', '/cms-api/v1/assets/' . $asset->getUuid());
 
         $response = $this->client->getResponse();
-        self::assertSame(200, $response->getStatusCode(), 'An open-access folder must be publicly readable');
+        self::assertSame(200, $response->getStatusCode(), 'An asset without groups must be publicly readable');
+        self::assertStringStartsWith('text/plain', (string) $response->headers->get('Content-Type'));
+        // Downloaded as the uuid plus the extension of the stored mime type.
+        self::assertStringContainsString($asset->getUuid() . '.txt', (string) $response->headers->get('Content-Disposition'));
+        self::assertStringContainsString(self::BODY, $this->streamedBody());
+    }
 
-        // BinaryFileResponse streams, so capture the body explicitly.
-        ob_start();
-        $response->sendContent();
-        $body = (string) ob_get_clean();
-        self::assertStringContainsString('qa-delivery-body', $body);
+    /**
+     * `qa.editor` is in the `researcher` group: an asset shared only with
+     * `subject` is refused, one shared with `researcher` is served.
+     */
+    public function testUserReceivesOnlyAssetsSharedWithOneOfTheirGroups(): void
+    {
+        $subjectOnly = $this->createAsset('qa-subject.txt', 'text/plain', ['subject']);
+        $shared = $this->createAsset('qa-shared.txt', 'text/plain', ['subject', 'researcher']);
+        $token = $this->loginAs(QaBaselineFixture::QA_EDITOR_EMAIL);
+        $headers = ['HTTP_AUTHORIZATION' => 'Bearer ' . $token];
+
+        $this->client->request('GET', '/cms-api/v1/assets/' . $subjectOnly->getUuid(), [], [], $headers);
+        self::assertSame(403, $this->client->getResponse()->getStatusCode(), 'A user outside every asset group must be refused');
+
+        $this->client->request('GET', '/cms-api/v1/assets/' . $shared->getUuid(), [], [], $headers);
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'Membership in any one group is enough');
+    }
+
+    public function testTheAdminRoleReadsAnAssetOutsideItsGroups(): void
+    {
+        $asset = $this->createAsset('qa-subject-only.txt', 'text/plain', ['subject']);
+
+        $editor = $this->loginAs(QaBaselineFixture::QA_EDITOR_EMAIL);
+        $this->client->request('GET', '/cms-api/v1/assets/' . $asset->getUuid(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $editor]);
+        self::assertSame(403, $this->client->getResponse()->getStatusCode());
+
+        $admin = $this->loginAs(QaBaselineFixture::QA_ADMIN_EMAIL);
+        $this->client->request('GET', '/cms-api/v1/assets/' . $asset->getUuid(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $admin]);
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'The admin role reads every asset');
+    }
+
+    public function testUnknownUuidIsNotFound(): void
+    {
+        $this->client->request('GET', '/cms-api/v1/assets/' . $this->storage->generateUuid());
+
+        self::assertSame(404, $this->client->getResponse()->getStatusCode());
     }
 
     /**
@@ -164,7 +131,14 @@ final class AssetDeliveryAclTest extends QaWebTestCase
      */
     public function testSvgAssetIsServedSandboxedSoItsScriptCannotRun(): void
     {
-        $this->client->request('GET', sprintf('/cms-api/v1/assets/%s/%s', self::OPEN_FOLDER, self::SVG_NAME));
+        $svg = $this->createAsset(
+            'qa-script.svg',
+            'image/svg+xml',
+            [],
+            '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+        );
+
+        $this->client->request('GET', '/cms-api/v1/assets/' . $svg->getUuid());
 
         $response = $this->client->getResponse();
         self::assertSame(200, $response->getStatusCode());
@@ -175,7 +149,9 @@ final class AssetDeliveryAclTest extends QaWebTestCase
 
     public function testPlainAssetIsServedWithoutTheSandboxPolicy(): void
     {
-        $this->client->request('GET', sprintf('/cms-api/v1/assets/%s/%s', self::OPEN_FOLDER, self::FILE_NAME));
+        $asset = $this->createAsset('qa-plain.txt', 'text/plain', []);
+
+        $this->client->request('GET', '/cms-api/v1/assets/' . $asset->getUuid());
 
         $response = $this->client->getResponse();
         self::assertSame(200, $response->getStatusCode());
@@ -183,74 +159,51 @@ final class AssetDeliveryAclTest extends QaWebTestCase
     }
 
     /**
-     * The reported scenario: a therapist-group user who holds a grant on one
-     * folder but not another must be refused the ungranted folder's BYTES, not
-     * merely have it hidden from the admin listing.
+     * Persist an asset stored under its uuid, as an upload would.
      *
-     * `qa.editor` is in the `therapist` group, and setUp grants only `subject`,
-     * so the closed folder is ungranted for this caller.
+     * @param list<string> $groupNames
      */
-    public function testTherapistWithoutAGrantIsRefusedTheClosedFoldersBytes(): void
+    private function createAsset(string $fileName, string $mimeType, array $groupNames, string $body = self::BODY): Asset
     {
-        $token = $this->loginAs(QaBaselineFixture::QA_EDITOR_EMAIL);
+        $uuid = $this->storage->generateUuid();
 
-        $this->client->request(
-            'GET',
-            sprintf('/cms-api/v1/assets/%s/%s', self::CLOSED_FOLDER, self::FILE_NAME),
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]
-        );
+        $type = $this->entityManager->getRepository(\App\Entity\Lookup::class)->findOneBy([
+            'typeCode' => LookupService::ASSET_TYPES,
+            'lookupCode' => LookupService::ASSET_TYPES_ASSET,
+        ]);
+        self::assertInstanceOf(\App\Entity\Lookup::class, $type);
 
-        self::assertSame(
-            403,
-            $this->client->getResponse()->getStatusCode(),
-            'A logged-in user without a grant on the folder must not receive its bytes'
-        );
+        $asset = new Asset();
+        $asset->setUuid($uuid);
+        $asset->setAssetType($type);
+        $asset->setName($fileName);
+        $asset->setMimeType($mimeType);
+        $asset->setFilePath($this->storage->filePathForUuid($uuid));
+        foreach ($groupNames as $name) {
+            $group = $this->entityManager->getRepository(Group::class)->findOneBy(['name' => $name]);
+            self::assertInstanceOf(Group::class, $group, sprintf('Seeded "%s" group is required', $name));
+            $asset->addGroup($group);
+        }
+        $this->entityManager->persist($asset);
+        $this->entityManager->flush();
+
+        $root = $this->storage->storageRoot();
+        if (!is_dir($root)) {
+            mkdir($root, 0755, true);
+        }
+        $path = $this->storage->absolutePath($this->storage->filePathForUuid($uuid));
+        file_put_contents($path, $body);
+        $this->writtenFiles[] = $path;
+
+        return $asset;
     }
 
-    /**
-     * The same caller DOES receive an open-access folder, so marking a folder
-     * public is what keeps legitimately-public assets rendering.
-     */
-    public function testTherapistReceivesTheOpenAccessFoldersBytes(): void
+    /** BinaryFileResponse streams, so capture the body explicitly. */
+    private function streamedBody(): string
     {
-        $token = $this->loginAs(QaBaselineFixture::QA_EDITOR_EMAIL);
+        ob_start();
+        $this->client->getResponse()->sendContent();
 
-        $this->client->request(
-            'GET',
-            sprintf('/cms-api/v1/assets/%s/%s', self::OPEN_FOLDER, self::FILE_NAME),
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]
-        );
-
-        self::assertSame(200, $this->client->getResponse()->getStatusCode());
-    }
-
-    public function testTraversalCannotEscapeTheRequestedFolder(): void
-    {
-        // Reach for the open folder's file from inside the closed folder. The
-        // route requirement rejects separators, so this must never yield bytes.
-        $this->client->request('GET', sprintf(
-            '/cms-api/v1/assets/%s/..%%2F..%%2F%s/%s',
-            self::CLOSED_FOLDER,
-            self::OPEN_FOLDER,
-            self::FILE_NAME
-        ));
-
-        self::assertNotSame(
-            200,
-            $this->client->getResponse()->getStatusCode(),
-            'Path traversal must not serve a file from another folder'
-        );
-    }
-
-    private function groupId(string $name): int
-    {
-        $group = $this->entityManager->getRepository(Group::class)->findOneBy(['name' => $name]);
-        self::assertInstanceOf(Group::class, $group, sprintf('Seeded "%s" group is required', $name));
-
-        return (int) $group->getId();
+        return (string) ob_get_clean();
     }
 }

@@ -111,7 +111,7 @@ composer test:release     # before pushing
 
 - `qa.admin@selfhelp.test`, `qa.editor@selfhelp.test`, `qa.user@selfhelp.test`, `qa.guest@selfhelp.test`
 - Shared password constant `QaBaselineFixture::QA_PASSWORD`.
-- `QaBaselineFixture::QA_FIXTURE_VERSION` (e.g. `2026_05_22_001`) is written to a DB marker. The smoke test prints and asserts it, so a stale/missing seed fails loudly.
+- `QaBaselineFixture::QA_FIXTURE_VERSION` (e.g. `2026_11_04_001`) is written to a DB marker. The smoke test prints and asserts it, so a stale/missing seed fails loudly.
 
 `QaWebTestCase::setUp()` asserts the baseline is loaded (via `InteractsWithQaBaseline`) before any test runs.
 

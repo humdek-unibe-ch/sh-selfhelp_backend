@@ -8,588 +8,522 @@
 
 namespace App\Tests\Controller\Api\V1;
 
+use App\Entity\Group;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * Admin asset management: uuid storage (no overwrite), edit + replace under
+ * the same uuid, default alt, per-asset view groups (none = public), folders,
+ * and bulk group changes and deletes.
+ */
 class AdminAssetControllerTest extends BaseControllerTest
 {
     /** @var list<int> */
     private array $createdAssetIds = [];
 
-    /**
-     * @group asset-management
-     */
-    public function testGetAllAssetsSuccess(): void
+    public function testListReturnsAssetsWithTheirUuidUrlAltAndGroups(): void
     {
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/assets',
-            [],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
+        $created = $this->upload('qa-list.png', ['alt' => 'qa list alt']);
 
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+        $this->client->request('GET', '/cms-api/v1/admin/assets', ['search' => 'qa list alt'], [], $this->adminHeaders());
 
-        $data = $this->decodeArray();
-        
-        // Validate response structure with pagination
-        $this->assertArrayHasKey('status', $data);
-        $this->assertArrayHasKey('data', $data);
-        $payload = $this->asArray($data['data']);
-        $this->assertArrayHasKey('assets', $payload);
-        $this->assertArrayHasKey('pagination', $payload);
-        
-        // Validate pagination structure
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $payload = $this->asArray($this->decodeArray()['data']);
         $pagination = $this->asArray($payload['pagination']);
-        $this->assertArrayHasKey('page', $pagination);
-        $this->assertArrayHasKey('pageSize', $pagination);
-        $this->assertArrayHasKey('total', $pagination);
-        $this->assertArrayHasKey('totalPages', $pagination);
-        $this->assertIsInt($pagination['page']);
-        $this->assertIsInt($pagination['pageSize']);
-        $this->assertIsInt($pagination['total']);
-        
-        // Validate assets array
-        $assets = $this->asList($payload['assets']);
-        
-        if (!empty($assets)) {
-            $asset = $this->asArray($assets[0]);
-            $this->assertArrayHasKey('id', $asset);
-            $this->assertArrayHasKey('asset_type', $asset);
-            $this->assertArrayHasKey('folder', $asset);
-            $this->assertArrayHasKey('file_name', $asset);
-            $this->assertArrayHasKey('file_path', $asset);
-            $this->assertArrayHasKey('url', $asset);
-            $this->assertIsInt($asset['id']);
-            $this->assertIsString($asset['asset_type']);
-        }
+        $this->assertSame(1, $pagination['total']);
+
+        $asset = $this->asArray($this->asList($payload['assets'])[0]);
+        $this->assertSame($created['id'], $asset['id']);
+        $this->assertSame('/cms-api/v1/assets/' . $this->asString($created['uuid']), $asset['url']);
+        $this->assertSame('qa list alt', $asset['alt']);
+        $this->assertArrayNotHasKey('folder', $asset);
     }
 
     /**
-     * @group asset-management
+     * The uuid replaces the uploaded name on disk (no extension) and in the
+     * delivered file's name; the uploaded name stays only as the editable
+     * `name` label.
      */
-    public function testGetAllAssetsWithPaginationAndSearch(): void
+    public function testUploadStoresUnderTheUuidKeepsTheNameAsLabelIsPublicAndManagedByTheUploader(): void
     {
-        // Test with pagination parameters
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/assets?page=1&pageSize=5&search=test&folder=test',
-            [],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
+        $asset = $this->upload('qa-upload.png');
+        $uuid = $this->asString($asset['uuid']);
 
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+        $this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', $uuid);
+        $this->assertArrayNotHasKey('file_name', $asset);
+        $this->assertSame('qa-upload', $asset['name'], 'The default name drops the extension');
+        $this->assertSame('uploads/assets/' . $uuid, $asset['file_path']);
+        $this->assertSame([], $this->groupNames($asset), 'A new upload has no groups, so it is public');
+        $this->assertContains('admin', array_map(
+            fn (mixed $role): mixed => $this->asArray($role)['name'],
+            $this->asList($asset['roles'])
+        ), "The uploader's roles manage it");
 
-        $data = $this->decodeArray();
-        $payload = $this->asArray($data['data']);
-        
-        // Validate pagination reflects requested parameters
-        $pagination = $this->asArray($payload['pagination']);
-        $this->assertSame(1, $pagination['page']);
-        $this->assertSame(5, $pagination['pageSize']);
-        
-        // Validate assets array size doesn't exceed pageSize
-        $this->assertLessThanOrEqual(5, count($this->asList($payload['assets'])));
+        $this->deliveredBody($asset);
+        $disposition = (string) $this->client->getResponse()->headers->get('Content-Disposition');
+        $this->assertStringContainsString($uuid, $disposition);
+        $this->assertStringNotContainsString('qa-upload', $disposition);
     }
 
     /**
-     * @group asset-management
+     * Uploading a file whose name is already taken must never replace the
+     * existing asset: both live side by side under different uuids.
      */
-    public function testCreateAssetSuccess(): void
+    public function testUploadingTheSameNameTwiceKeepsBothAssets(): void
     {
-        // Create a temporary test file
-        $testFilePath = tempnam(sys_get_temp_dir(), 'test_image');
-        self::assertNotFalse($testFilePath, 'Failed to create temp file');
-        file_put_contents($testFilePath, 'test image content');
-        
-        $uploadedFile = new UploadedFile(
-            $testFilePath,
-            'test-image.jpg',
-            'image/jpeg',
-            null,
-            true
-        );
+        $first = $this->upload('qa-same.png');
+        $second = $this->upload('qa-same.png');
 
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test',
-                'file_name' => 'test-upload.jpg'
-            ],
-            ['file' => $uploadedFile],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode());
-
-        $data = $this->decodeArray();
-        
-        // Validate response structure
-        $this->assertArrayHasKey('status', $data);
-        $this->assertArrayHasKey('data', $data);
-        $payload = $this->asArray($data['data']);
-        $this->assertArrayHasKey('id', $payload);
-        $this->assertArrayHasKey('file_name', $payload);
-        $this->assertArrayHasKey('folder', $payload);
-        $this->assertArrayHasKey('url', $payload);
-        
-        // Validate data
-        $this->assertSame('test-upload.jpg', $payload['file_name']);
-        $this->assertSame('test', $payload['folder']);
-        $this->assertStringContainsString('test-upload.jpg', $this->asString($payload['file_path']));
-        
-        // Store for cleanup
-        $this->createdAssetIds[] = $this->asInt($payload['id']);
+        $this->assertNotSame($first['id'], $second['id']);
+        $this->assertNotSame($first['uuid'], $second['uuid']);
+        $this->assertSame('first-bytes', $this->deliveredBody($first));
+        $this->assertSame('first-bytes', $this->deliveredBody($second));
     }
 
-    /**
-     * @group asset-management
-     */
-    public function testCreateAssetWithOverwrite(): void
+    public function testUploadWithExplicitGroupsAndWithNoGroups(): void
     {
-        // Create first asset
-        $testFilePath1 = tempnam(sys_get_temp_dir(), 'test_image1');
-        self::assertNotFalse($testFilePath1, 'Failed to create temp file');
-        file_put_contents($testFilePath1, 'test image content 1');
-        
-        $uploadedFile1 = new UploadedFile(
-            $testFilePath1,
-            'overwrite-test.jpg',
-            'image/jpeg',
-            null,
-            true
-        );
+        $restricted = $this->upload('qa-restricted.png', ['group_ids' => (string) $this->groupId('researcher')]);
+        $this->assertSame(['researcher'], $this->groupNames($restricted));
 
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test',
-                'file_name' => 'overwrite-test.jpg'
-            ],
-            ['file' => $uploadedFile1],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
-        );
-
-        $firstResponse = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_CREATED, $firstResponse->getStatusCode());
-        
-        $firstData = $this->decodeArray();
-        $this->createdAssetIds[] = $this->asInt($this->jsonGet($firstData, 'data', 'id'));
-
-        // Try to create second asset with same name (should fail without overwrite)
-        $testFilePath2 = tempnam(sys_get_temp_dir(), 'test_image2');
-        self::assertNotFalse($testFilePath2, 'Failed to create temp file');
-        file_put_contents($testFilePath2, 'test image content 2');
-        
-        $uploadedFile2 = new UploadedFile(
-            $testFilePath2,
-            'overwrite-test.jpg',
-            'image/jpeg',
-            null,
-            true
-        );
-
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test',
-                'file_name' => 'overwrite-test.jpg'
-            ],
-            ['file' => $uploadedFile2],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
-        );
-
-        $conflictResponse = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_CONFLICT, $conflictResponse->getStatusCode());
-
-        // Now try with overwrite flag
-        $testFilePath3 = tempnam(sys_get_temp_dir(), 'test_image3');
-        self::assertNotFalse($testFilePath3, 'Failed to create temp file');
-        file_put_contents($testFilePath3, 'test image content 3');
-        
-        $uploadedFile3 = new UploadedFile(
-            $testFilePath3,
-            'overwrite-test.jpg',
-            'image/jpeg',
-            null,
-            true
-        );
-
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test',
-                'file_name' => 'overwrite-test.jpg',
-                'overwrite' => '1'
-            ],
-            ['file' => $uploadedFile3],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
-        );
-
-        $overwriteResponse = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_CREATED, $overwriteResponse->getStatusCode());
+        $public = $this->upload('qa-public.png', ['group_ids' => '']);
+        $this->assertSame([], $this->groupNames($public));
     }
 
-    /**
-     * @group asset-management
-     */
     public function testCreateAssetInvalidFileType(): void
     {
-        // Create a temporary test file with invalid extension
-        $testFilePath = tempnam(sys_get_temp_dir(), 'test_invalid');
-        self::assertNotFalse($testFilePath, 'Failed to create temp file');
-        file_put_contents($testFilePath, 'invalid file content');
-        
-        $uploadedFile = new UploadedFile(
-            $testFilePath,
-            'test-invalid.exe',
-            'application/octet-stream',
-            null,
-            true
-        );
+        $file = $this->tempUpload('qa-bad.exe', 'nope');
 
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test',
-                'file_name' => 'test-invalid.exe'
-            ],
-            ['file' => $uploadedFile],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
-        );
+        $this->client->request('POST', '/cms-api/v1/admin/assets', [], ['file' => $file], $this->adminHeaders());
 
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
     }
 
-    /**
-     * @group asset-management
-     */
     public function testCreateAssetMissingFile(): void
     {
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test'
-            ],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
-        );
+        $this->client->request('POST', '/cms-api/v1/admin/assets', ['alt' => 'qa none'], [], $this->adminHeaders());
 
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
     }
 
-    /**
-     * @group asset-management
-     */
-    public function testGetAssetByIdSuccess(): void
+    public function testGetAssetByIdAndNotFound(): void
     {
-        // First create an asset
-        $testFilePath = tempnam(sys_get_temp_dir(), 'test_get_by_id');
-        self::assertNotFalse($testFilePath, 'Failed to create temp file');
-        file_put_contents($testFilePath, 'test content for get by id');
-        
-        $uploadedFile = new UploadedFile(
-            $testFilePath,
-            'get-by-id-test.txt',
-            'text/plain',
-            null,
-            true
-        );
+        $asset = $this->upload('qa-get.png');
+
+        $this->client->request('GET', '/cms-api/v1/admin/assets/' . $this->asInt($asset['id']), [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $this->assertSame($asset['uuid'], $this->asArray($this->decodeArray()['data'])['uuid']);
+
+        $this->client->request('GET', '/cms-api/v1/admin/assets/2147483600', [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_NOT_FOUND, $this->client->getResponse()->getStatusCode());
+    }
+
+    public function testEditRenamesTheLabelSetsAltAndReplacesGroupsAndKeepsTheUuid(): void
+    {
+        $asset = $this->upload('qa-edit.png');
+        $researcherId = $this->groupId('researcher');
 
         $this->client->request(
             'POST',
-            '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test',
-                'file_name' => 'get-by-id-test.txt'
-            ],
-            ['file' => $uploadedFile],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
+            '/cms-api/v1/admin/assets/' . $this->asInt($asset['id']),
+            ['name' => 'qa edited', 'alt' => 'qa edited alt', 'group_ids' => (string) $researcherId],
+            [],
+            $this->adminHeaders()
         );
 
-        $createResponse = $this->client->getResponse();
-        $createData = $this->decodeArray();
-        $assetId = $this->asInt($this->jsonGet($createData, 'data', 'id'));
-        $this->createdAssetIds[] = $assetId;
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $edited = $this->asArray($this->decodeArray()['data']);
+        $this->assertSame('qa edited', $edited['name']);
 
-        // Now get the asset by ID
-        $this->client->request(
-            'GET',
-            "/cms-api/v1/admin/assets/{$assetId}",
-            [],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
-
-        $data = $this->decodeArray();
-        
-        // Validate response structure
-        $this->assertArrayHasKey('status', $data);
-        $this->assertArrayHasKey('data', $data);
-        $payload = $this->asArray($data['data']);
-        $this->assertSame($assetId, $payload['id']);
-        $this->assertSame('get-by-id-test.txt', $payload['file_name']);
-        $this->assertSame('test', $payload['folder']);
+        $this->client->request('GET', '/cms-api/v1/admin/assets', ['search' => 'qa edited'], [], $this->adminHeaders());
+        $found = $this->asList($this->asArray($this->decodeArray()['data'])['assets']);
+        $this->assertSame([$asset['id']], array_map(fn (mixed $row): mixed => $this->asArray($row)['id'], $found), 'Search finds the asset by its name');
+        $this->assertSame('qa edited alt', $edited['alt']);
+        $this->assertSame(['researcher'], $this->groupNames($edited));
+        $this->assertSame($asset['uuid'], $edited['uuid']);
     }
 
     /**
-     * @group asset-management
+     * Replace keeps the uuid (and so the URL every page already uses) and
+     * serves the new bytes from it.
      */
-    public function testGetAssetByIdNotFound(): void
+    public function testReplacingTheFileKeepsTheUuidAndServesTheNewBytes(): void
     {
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/assets/99999',
-            [],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
-    }
-
-    /**
-     * @group asset-management
-     */
-    public function testDeleteAssetSuccess(): void
-    {
-        // First create an asset
-        $testFilePath = tempnam(sys_get_temp_dir(), 'test_delete');
-        self::assertNotFalse($testFilePath, 'Failed to create temp file');
-        file_put_contents($testFilePath, 'test content for delete');
-        
-        $uploadedFile = new UploadedFile(
-            $testFilePath,
-            'delete-test.txt',
-            'text/plain',
-            null,
-            true
-        );
+        $asset = $this->upload('qa-replace.png');
 
         $this->client->request(
             'POST',
-            '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test',
-                'file_name' => 'delete-test.txt'
-            ],
-            ['file' => $uploadedFile],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
+            '/cms-api/v1/admin/assets/' . $this->asInt($asset['id']),
+            [],
+            ['file' => $this->tempUpload('qa-replace-v2.png', 'second-bytes')],
+            $this->adminHeaders()
         );
 
-        $createResponse = $this->client->getResponse();
-        $createData = $this->decodeArray();
-        $assetId = $this->asInt($this->jsonGet($createData, 'data', 'id'));
-
-        // Now delete the asset
-        $this->client->request(
-            'DELETE',
-            "/cms-api/v1/admin/assets/{$assetId}",
-            [],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
-
-        $data = $this->decodeArray();
-        $this->assertArrayHasKey('data', $data);
-        $payload = $this->asArray($data['data']);
-        $this->assertTrue($payload['deleted']);
-
-        // Verify asset is deleted
-        $this->client->request(
-            'GET',
-            "/cms-api/v1/admin/assets/{$assetId}",
-            [],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
-
-        $getResponse = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_NOT_FOUND, $getResponse->getStatusCode());
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $replaced = $this->asArray($this->decodeArray()['data']);
+        $this->assertSame($asset['uuid'], $replaced['uuid']);
+        $this->assertSame($asset['url'], $replaced['url']);
+        $this->assertSame('second-bytes', $this->deliveredBody($replaced));
     }
 
-    /**
-     * @group asset-management
-     */
-    public function testDeleteAssetNotFound(): void
+    public function testBulkAddAndRemoveAGroup(): void
     {
-        $this->client->request(
-            'DELETE',
-            '/cms-api/v1/admin/assets/99999',
-            [],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
+        $first = $this->upload('qa-bulk-1.png');
+        $second = $this->upload('qa-bulk-2.png');
+        $researcherId = $this->groupId('researcher');
+        $ids = [$this->asInt($first['id']), $this->asInt($second['id'])];
 
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        $this->bulkGroups($ids, [$researcherId], 'add');
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $this->assertSame(2, $this->asArray($this->decodeArray()['data'])['updated']);
+        $this->assertContains('researcher', $this->groupNames($this->fetch($ids[0])));
+        $this->assertContains('researcher', $this->groupNames($this->fetch($ids[1])));
+
+        $this->bulkGroups($ids, [$researcherId], 'remove');
+        $this->assertNotContains('researcher', $this->groupNames($this->fetch($ids[0])));
     }
 
-    /**
-     * @group asset-management
-     */
-    public function testUnauthorizedAccess(): void
-    {
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/assets',
-            [],
-            [],
-            [
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
-    }
-
-    /**
-     * @group asset-management
-     */
     public function testCreateMultipleAssetsSuccess(): void
     {
-        // Create multiple temporary test files
-        $testFiles = [];
+        $files = [];
         for ($i = 1; $i <= 3; $i++) {
-            $testFilePath = tempnam(sys_get_temp_dir(), "test_image_$i");
-            self::assertNotFalse($testFilePath, 'Failed to create temp file');
-            file_put_contents($testFilePath, "test image content $i");
-            
-            $testFiles[] = new UploadedFile(
-                $testFilePath,
-                "test-multi-$i.jpg",
-                'image/jpeg',
-                null,
-                true
-            );
+            $files[] = $this->tempUpload("qa-multi-$i.png", "multi $i");
         }
 
         $this->client->request(
             'POST',
             '/cms-api/v1/admin/assets',
-            [
-                'folder' => 'test-multi',
-                'file_names' => ['custom-1.jpg', 'custom-2.jpg', 'custom-3.jpg']
-            ],
-            ['files' => $testFiles],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()
-            ]
+            [],
+            ['files' => $files],
+            $this->adminHeaders()
         );
 
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode());
-
-        $data = $this->decodeArray();
-        
-        // Validate multiple upload response structure
-        $this->assertArrayHasKey('status', $data);
-        $this->assertArrayHasKey('data', $data);
-        $payload = $this->asArray($data['data']);
-        $this->assertArrayHasKey('uploaded', $payload);
-        $this->assertArrayHasKey('errors', $payload);
-        $this->assertArrayHasKey('total_files', $payload);
-        $this->assertArrayHasKey('successful_uploads', $payload);
-        $this->assertArrayHasKey('failed_uploads', $payload);
-        
-        // Validate upload statistics
-        $this->assertSame(3, $payload['total_files']);
+        $this->assertSame(Response::HTTP_CREATED, $this->client->getResponse()->getStatusCode());
+        $payload = $this->asArray($this->decodeArray()['data']);
         $this->assertSame(3, $payload['successful_uploads']);
-        $this->assertSame(0, $payload['failed_uploads']);
-        $this->assertEmpty($payload['errors']);
-        
-        // Validate uploaded assets
-        $uploaded = $this->asList($payload['uploaded']);
-        $this->assertCount(3, $uploaded);
-        
-        foreach ($uploaded as $index => $assetRaw) {
-            $asset = $this->asArray($assetRaw);
-            $this->assertArrayHasKey('id', $asset);
-            $this->assertArrayHasKey('file_name', $asset);
-            $this->assertArrayHasKey('folder', $asset);
-            $this->assertSame('test-multi', $asset['folder']);
-            $this->assertSame("custom-" . ($index + 1) . ".jpg", $asset['file_name']);
-            
-            // Store for cleanup
+        foreach ($this->asList($payload['uploaded']) as $raw) {
+            $asset = $this->asArray($raw);
+            $this->assertStringStartsWith('qa-multi-', $this->asString($asset['name']));
             $this->createdAssetIds[] = $this->asInt($asset['id']);
         }
     }
 
+    /**
+     * A bundle carries uuid, name, alt and group names. Re-importing it where the
+     * uuid exists skips (never overwrites); after a delete it restores the
+     * asset under the same uuid, so page URLs keep working.
+     */
+    public function testExportImportRoundTripKeepsTheUuidAndNeverOverwrites(): void
+    {
+        $asset = $this->upload('qa-bundle.png', ['alt' => 'qa bundle alt', 'group_ids' => (string) $this->groupId('researcher')]);
+        $id = $this->asInt($asset['id']);
+
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/assets/export',
+            [],
+            [],
+            $this->adminHeaders() + ['CONTENT_TYPE' => 'application/json'],
+            (string) json_encode(['asset_ids' => [$id]])
+        );
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $zipPath = (string) tempnam(sys_get_temp_dir(), 'qa_bundle');
+        file_put_contents($zipPath, (string) $this->client->getResponse()->getContent());
+
+        $this->assertSame(['imported' => 0, 'skipped' => 1, 'errors' => []], $this->importBundle($zipPath));
+
+        $this->client->request('DELETE', '/cms-api/v1/admin/assets/' . $id, [], [], $this->adminHeaders());
+        $this->createdAssetIds = array_values(array_diff($this->createdAssetIds, [$id]));
+
+        $this->assertSame(['imported' => 1, 'skipped' => 0, 'errors' => []], $this->importBundle($zipPath));
+
+        $this->client->request('GET', '/cms-api/v1/admin/assets', ['search' => 'qa bundle alt'], [], $this->adminHeaders());
+        $restored = $this->asArray($this->asList($this->asArray($this->decodeArray()['data'])['assets'])[0]);
+        $this->createdAssetIds[] = $this->asInt($restored['id']);
+        $this->assertSame($asset['uuid'], $restored['uuid']);
+        $this->assertSame('qa-bundle', $restored['name']);
+        $this->assertSame(['researcher'], $this->groupNames($restored));
+        $this->assertSame('first-bytes', $this->deliveredBody($restored));
+    }
+
+    public function testDeleteAssetRemovesIt(): void
+    {
+        $asset = $this->upload('qa-delete.png');
+        $id = $this->asInt($asset['id']);
+
+        $this->client->request('DELETE', '/cms-api/v1/admin/assets/' . $id, [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $this->createdAssetIds = array_values(array_diff($this->createdAssetIds, [$id]));
+
+        $this->client->request('GET', '/cms-api/v1/admin/assets/' . $id, [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_NOT_FOUND, $this->client->getResponse()->getStatusCode());
+    }
+
+    public function testBulkDeleteRemovesTheSelectedAssets(): void
+    {
+        $first = $this->upload('qa-bulk-delete-1.png');
+        $second = $this->upload('qa-bulk-delete-2.png');
+        $ids = [$this->asInt($first['id']), $this->asInt($second['id'])];
+
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/assets/bulk-delete',
+            [],
+            [],
+            $this->adminHeaders() + ['CONTENT_TYPE' => 'application/json'],
+            (string) json_encode(['asset_ids' => $ids])
+        );
+
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $this->assertSame(2, $this->asArray($this->decodeArray()['data'])['deleted']);
+        $this->createdAssetIds = array_values(array_diff($this->createdAssetIds, $ids));
+        $this->client->request('GET', '/cms-api/v1/admin/assets/' . $ids[0], [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_NOT_FOUND, $this->client->getResponse()->getStatusCode());
+    }
+
+    /**
+     * Folders only organise: they nest, an asset can sit in one and be listed
+     * by it, a folder cannot move into its own subfolder, and deleting a folder
+     * deletes its subfolders while their assets move to the top level.
+     */
+    public function testFoldersNestFilterTheListAndLeaveTheirAssetsOnDelete(): void
+    {
+        $parent = $this->saveFolder(['name' => 'qa-folder-parent']);
+        $child = $this->saveFolder(['name' => 'qa-folder-child', 'parent_id' => $parent]);
+
+        $asset = $this->upload('qa-in-folder.png', ['folder_id' => (string) $child]);
+        $this->assertSame($child, $asset['folder_id']);
+
+        $this->client->request('GET', '/cms-api/v1/admin/assets', ['folder_id' => (string) $child], [], $this->adminHeaders());
+        $listed = $this->asList($this->asArray($this->decodeArray()['data'])['assets']);
+        $this->assertSame([$asset['id']], array_map(fn (mixed $row): mixed => $this->asArray($row)['id'], $listed));
+
+        $this->client->request(
+            'PUT',
+            '/cms-api/v1/admin/asset-folders/' . $parent,
+            [],
+            [],
+            $this->adminHeaders() + ['CONTENT_TYPE' => 'application/json'],
+            (string) json_encode(['name' => 'qa-folder-parent', 'parent_id' => $child])
+        );
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode(), 'A folder cannot move into its own subfolder');
+
+        $this->client->request('DELETE', '/cms-api/v1/admin/asset-folders/' . $parent, [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $remaining = array_map(fn (mixed $row): mixed => $this->asArray($row)['id'], $this->asList($this->decodeArray()['data']));
+        $this->assertNotContains($child, $remaining, 'Subfolders go with their folder');
+        $this->assertNull($this->fetch($this->asInt($asset['id']))['folder_id'], 'Its assets move to the top level');
+    }
+
+    /**
+     * Browsing a folder lists only the assets directly in it (`folder_id=0`
+     * = the assets in no folder), and the folder list counts each folder's
+     * own assets.
+     */
+    public function testBrowsingAFolderListsOnlyItsOwnAssetsAndTheFolderListCountsThem(): void
+    {
+        $parent = $this->saveFolder(['name' => 'qa-browse-parent']);
+        $child = $this->saveFolder(['name' => 'qa-browse-child', 'parent_id' => $parent]);
+        $loose = $this->upload('qa-browse-loose.png');
+        $inParent = $this->upload('qa-browse-in-parent.png', ['folder_id' => (string) $parent]);
+        $inChild = $this->upload('qa-browse-in-child.png', ['folder_id' => (string) $child]);
+
+        $topLevel = $this->listedIds(['folder_id' => '0']);
+        $this->assertContains($loose['id'], $topLevel);
+        $this->assertNotContains($inParent['id'], $topLevel, 'Assets in a folder are not at the top level');
+        $this->assertNotContains($inChild['id'], $topLevel);
+
+        $this->assertSame([$inParent['id']], $this->listedIds(['folder_id' => (string) $parent]), 'A folder lists its own assets, not its subfolders\'');
+
+        $this->client->request('GET', '/cms-api/v1/admin/asset-folders', [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $counts = [];
+        foreach ($this->asList($this->decodeArray()['data']) as $row) {
+            $row = $this->asArray($row);
+            $counts[$this->asInt($row['id'])] = $row['asset_count'];
+        }
+        $this->assertSame(1, $counts[$parent]);
+        $this->assertSame(1, $counts[$child]);
+    }
+
+    public function testUnauthorizedAccess(): void
+    {
+        $this->client->request('GET', '/cms-api/v1/admin/assets', [], [], ['CONTENT_TYPE' => 'application/json']);
+
+        $this->assertSame(Response::HTTP_UNAUTHORIZED, $this->client->getResponse()->getStatusCode());
+    }
+
     protected function tearDown(): void
     {
-        // Clean up created assets
+        // Delete through the API so the stored files are removed too (DAMA
+        // only rolls back the database).
         foreach ($this->createdAssetIds as $assetId) {
-            $this->client->request(
-                'DELETE',
-                "/cms-api/v1/admin/assets/{$assetId}",
-                [],
-                [],
-                [
-                    'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                    'CONTENT_TYPE' => 'application/json'
-                ]
-            );
+            $this->client->request('DELETE', "/cms-api/v1/admin/assets/{$assetId}", [], [], $this->adminHeaders());
         }
 
         $this->createdAssetIds = [];
         parent::tearDown();
     }
-} 
+
+    /**
+     * @param array<string, string> $fields
+     * @return array<string, mixed>
+     */
+    private function upload(string $name, array $fields = []): array
+    {
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/assets',
+            $fields,
+            ['file' => $this->tempUpload($name, 'first-bytes')],
+            $this->adminHeaders()
+        );
+
+        $this->assertSame(Response::HTTP_CREATED, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+        $asset = $this->asArray($this->decodeArray()['data']);
+        $this->createdAssetIds[] = $this->asInt($asset['id']);
+
+        return $asset;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function importBundle(string $zipPath): array
+    {
+        // UploadedFile in test mode moves the source, so import a copy.
+        $copy = (string) tempnam(sys_get_temp_dir(), 'qa_bundle_copy');
+        copy($zipPath, $copy);
+
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/assets/import',
+            [],
+            ['file' => new UploadedFile($copy, 'qa-bundle.zip', 'application/zip', null, true)],
+            $this->adminHeaders()
+        );
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+
+        return $this->asArray($this->decodeArray()['data']);
+    }
+
+    private function tempUpload(string $clientName, string $body): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'qa_asset');
+        self::assertNotFalse($path);
+        file_put_contents($path, $body);
+
+        return new UploadedFile($path, $clientName, null, null, true);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fetch(int $id): array
+    {
+        $this->client->request('GET', '/cms-api/v1/admin/assets/' . $id, [], [], $this->adminHeaders());
+
+        return $this->asArray($this->decodeArray()['data']);
+    }
+
+    /**
+     * @param list<int> $assetIds
+     * @param list<int> $groupIds
+     */
+    private function bulkGroups(array $assetIds, array $groupIds, string $mode): void
+    {
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/assets/bulk-groups',
+            [],
+            [],
+            $this->adminHeaders() + ['CONTENT_TYPE' => 'application/json'],
+            (string) json_encode(['asset_ids' => $assetIds, 'group_ids' => $groupIds, 'mode' => $mode])
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $asset
+     */
+    private function deliveredBody(array $asset): string
+    {
+        $this->client->request('GET', $this->asString($asset['url']), [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+
+        ob_start();
+        $this->client->getResponse()->sendContent();
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @param array<string, mixed> $asset
+     * @return list<string>
+     */
+    private function groupNames(array $asset): array
+    {
+        $names = array_map(
+            fn (mixed $group): string => $this->asString($this->asArray($group)['name']),
+            $this->asList($asset['groups'])
+        );
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * Ids of the listed assets for these query parameters.
+     *
+     * @param array<string, string> $query
+     * @return list<mixed>
+     */
+    private function listedIds(array $query): array
+    {
+        $this->client->request('GET', '/cms-api/v1/admin/assets', $query + ['pageSize' => '1000'], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+
+        return array_map(fn (mixed $row): mixed => $this->asArray($row)['id'], $this->asList($this->asArray($this->decodeArray()['data'])['assets']));
+    }
+
+    /**
+     * @param array<string, mixed> $folder
+     */
+    private function saveFolder(array $folder): int
+    {
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/asset-folders',
+            [],
+            [],
+            $this->adminHeaders() + ['CONTENT_TYPE' => 'application/json'],
+            (string) json_encode($folder)
+        );
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+        foreach ($this->asList($this->decodeArray()['data']) as $row) {
+            $row = $this->asArray($row);
+            if ($row['name'] === $folder['name']) {
+                return $this->asInt($row['id']);
+            }
+        }
+        self::fail('Saved folder missing from the folder list');
+    }
+
+    private function groupId(string $name): int
+    {
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $group = $em->getRepository(Group::class)->findOneBy(['name' => $name]);
+        self::assertInstanceOf(Group::class, $group, sprintf('Seeded "%s" group is required', $name));
+
+        return (int) $group->getId();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function adminHeaders(): array
+    {
+        return ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()];
+    }
+}

@@ -4,14 +4,10 @@
   "title": "Export Assets Request",
   "description": "Request schema for exporting assets as a ZIP bundle",
   "properties": {
-    "folders": {
+    "asset_ids": {
       "type": "array",
-      "description": "Folders to include in the bundle. Empty or omitted exports every folder the caller may read.",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]+$",
-        "maxLength": 100
-      }
+      "description": "Assets to include in the bundle. Empty or omitted exports every asset the caller may read.",
+      "items": { "type": "integer", "minimum": 1 }
     }
   },
   "additionalProperties": false

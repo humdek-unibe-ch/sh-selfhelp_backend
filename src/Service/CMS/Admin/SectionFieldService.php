@@ -44,6 +44,7 @@ class SectionFieldService extends BaseService
         private readonly AdminAssetService $adminAssetService,
         private readonly SectionRepository $sectionRepository,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly AssetAccessService $assetAccessService,
     ) {
     }
 
@@ -338,7 +339,7 @@ class SectionFieldService extends BaseService
      */
     private function getImages(): array
     {
-        $cacheKey = "images_list";
+        $cacheKey = "images_list_" . $this->assetScopeKey();
         return $this->cache
             ->withCategory(CacheService::CATEGORY_ASSETS)
             ->getList(
@@ -349,21 +350,68 @@ class SectionFieldService extends BaseService
                     /** @var list<array<string, mixed>> $assetList */
                     $assetList = is_array($allAssets['assets'] ?? null) ? $allAssets['assets'] : [];
 
-                    $images = array_filter($assetList, function (array $asset): bool {
-                        $extension = strtolower(pathinfo($this->asString($asset['file_name'] ?? ''), PATHINFO_EXTENSION));
-                        return in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
-                    });
+                    $images = array_filter(
+                        $assetList,
+                        fn (array $asset): bool => $this->assetIsOfKind($asset, 'image/', ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'])
+                    );
 
                     return array_map(function (array $image): array {
                         return [
                             // The ACL-enforced delivery URL, not the raw storage
                             // path: assets no longer live under the document root.
                             'value' => $image['url'] ?? null,
-                            'text' => $image['file_name'] ?? null
+                            'text' => $this->assetPickerLabel($image)
                         ];
                     }, array_values($images));
                 }
             );
+    }
+
+    /**
+     * Pickers list only the assets the caller may manage, so their cache is
+     * per access scope.
+     */
+    private function assetScopeKey(): string
+    {
+        $ids = $this->assetAccessService->manageableAssetIdsOrNull();
+
+        return $ids === null ? 'all' : md5(implode(',', $ids));
+    }
+
+    /**
+     * Picker label: the asset's name (or uuid) plus the extension of its
+     * MIME type, e.g. `team-photo.png`.
+     *
+     * @param array<string, mixed> $asset
+     */
+    private function assetPickerLabel(array $asset): string
+    {
+        $base = $this->asString($asset['name'] ?? '');
+
+        return AssetStorageService::withExtension(
+            $base !== '' ? $base : $this->asString($asset['uuid'] ?? ''),
+            $this->asStringOrNull($asset['mime_type'] ?? null)
+        );
+    }
+
+    /**
+     * Whether an asset (API shape) is of a media kind: by its recorded MIME
+     * type, else by its name's extension (folder-era rows have no MIME type;
+     * uuid-stored files have no extension on disk).
+     *
+     * @param array<string, mixed> $asset
+     * @param list<string> $extensions
+     */
+    private function assetIsOfKind(array $asset, string $mimePrefix, array $extensions): bool
+    {
+        $mimeType = $this->asString($asset['mime_type'] ?? '');
+        if ($mimeType !== '' && $mimeType !== 'application/octet-stream') {
+            return str_starts_with($mimeType, $mimePrefix);
+        }
+
+        $extension = strtolower(pathinfo($this->asString($asset['name'] ?? ''), PATHINFO_EXTENSION));
+
+        return in_array($extension, $extensions, true);
     }
 
     /**
@@ -373,7 +421,7 @@ class SectionFieldService extends BaseService
      */
     private function getVideos(): array
     {
-        $cacheKey = "videos_list";
+        $cacheKey = "videos_list_" . $this->assetScopeKey();
         return $this->cache
             ->withCategory(CacheService::CATEGORY_ASSETS)
             ->getList(
@@ -384,17 +432,17 @@ class SectionFieldService extends BaseService
                     /** @var list<array<string, mixed>> $assetList */
                     $assetList = is_array($allAssets['assets'] ?? null) ? $allAssets['assets'] : [];
 
-                    $videos = array_filter($assetList, function (array $asset): bool {
-                        $extension = strtolower(pathinfo($this->asString($asset['file_name'] ?? ''), PATHINFO_EXTENSION));
-                        return in_array($extension, ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm']);
-                    });
+                    $videos = array_filter(
+                        $assetList,
+                        fn (array $asset): bool => $this->assetIsOfKind($asset, 'video/', ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm'])
+                    );
 
                     return array_map(function (array $video): array {
                         return [
                             // The ACL-enforced delivery URL, not the raw storage
                             // path: assets no longer live under the document root.
                             'value' => $video['url'] ?? null,
-                            'text' => $video['file_name'] ?? null
+                            'text' => $this->assetPickerLabel($video)
                         ];
                     }, array_values($videos));
                 }

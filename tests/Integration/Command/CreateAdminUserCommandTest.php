@@ -134,9 +134,9 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
             'The stored hash must verify against the supplied password.',
         );
 
-        // Admin group + admin role membership + production security shape.
+        // Admin role (no group: admin rights come from the role) + production security shape.
         $userId = (int) $user->getId();
-        self::assertSame(1, $this->countRows('rel_groups_users', $userId), 'Admin user joins exactly one group.');
+        self::assertSame(0, $this->countRows('rel_groups_users', $userId), 'Admin user joins no group by default.');
         self::assertSame(1, $this->countRows('rel_roles_users', $userId), 'Admin user holds exactly one role.');
         self::assertContains('ROLE_ADMIN', $user->getRoles(), 'Admin user must carry ROLE_ADMIN.');
         self::assertSame(['ROLE_ADMIN'], array_values($user->getRoles()), 'getRoles() must equal the admin shape.');
@@ -188,7 +188,7 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
             )),
             'Re-run must not duplicate the user row.',
         );
-        self::assertSame(1, $this->countRows('rel_groups_users', $firstId), 'Group membership must not be duplicated.');
+        self::assertSame(0, $this->countRows('rel_groups_users', $firstId), 'No group membership is added by default.');
         self::assertSame(1, $this->countRows('rel_roles_users', $firstId), 'Role membership must not be duplicated.');
 
         // Password was reset: the new one verifies, the old one no longer does.
@@ -233,12 +233,12 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
     {
         $email = $this->email('custom-group');
 
-        // therapist group + admin role both exist in the production seed.
+        // researcher group + admin role both exist in the production seed.
         $this->runCommand([
             'email' => $email,
             'display-name' => 'QA Custom Membership',
             '--password' => self::PASSWORD,
-            '--group' => 'therapist',
+            '--group' => 'researcher',
             '--role' => 'admin',
         ])->assertCommandIsSuccessful();
 
@@ -246,14 +246,14 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
         self::assertInstanceOf(User::class, $user);
         $userId = (int) $user->getId();
 
-        $therapist = $this->em->getRepository(Group::class)->findOneBy(['name' => 'therapist']);
-        self::assertInstanceOf(Group::class, $therapist);
+        $researcher = $this->em->getRepository(Group::class)->findOneBy(['name' => 'researcher']);
+        self::assertInstanceOf(Group::class, $researcher);
 
         $membershipGroupId = $this->em->getConnection()->fetchOne(
             'SELECT id_groups FROM rel_groups_users WHERE id_users = :u',
             ['u' => $userId],
         );
-        self::assertSame((int) $therapist->getId(), $this->coerceInt($membershipGroupId), 'User must join the requested group.');
+        self::assertSame((int) $researcher->getId(), $this->coerceInt($membershipGroupId), 'User must join the requested group.');
         self::assertContains('ROLE_ADMIN', $user->getRoles(), 'User must hold the requested role.');
     }
 

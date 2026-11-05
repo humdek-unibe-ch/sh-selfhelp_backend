@@ -11,23 +11,13 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * An asset folder as a first-class record, so folder-level settings have a row
- * to live on.
- *
- * `is_open_access` mirrors the page contract ({@see Page::isOpenAccess}): an
- * open-access folder is readable by everyone, including anonymous (not
- * logged-in) callers, and bypasses group ACLs entirely. Closed folders stay
- * closed-by-default — only explicitly granted groups (and the admin role) may
- * read them ({@see \App\Service\CMS\Admin\AssetFolderAclService}).
- *
- * Note that `assets.folder` remains a plain varchar: that column doubles as the
- * on-disk path segment, so it is matched to this table by folder name rather
- * than by FK. The grants in `assets_folders_groups` DO reference this table by
- * FK, so a grant can never point at a folder that does not exist.
+ * A folder in the asset library: organisation only, nestable. Access is never
+ * decided by folders (see {@see \App\Service\CMS\Admin\AssetAccessService}).
+ * Deleting a folder deletes its subfolders; their assets move to the top level.
  */
-#[ORM\Entity(repositoryClass: \App\Repository\AssetFolderRepository::class)]
+#[ORM\Entity]
 #[ORM\Table(name: 'assets_folders')]
-#[ORM\UniqueConstraint(name: 'uq_assets_folders_folder', columns: ['folder'])]
+#[ORM\Index(name: 'idx_assets_folders_id_parent', columns: ['id_parent'])]
 class AssetFolder
 {
     #[ORM\Id]
@@ -35,37 +25,38 @@ class AssetFolder
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'folder', type: 'string', length: 100)]
-    private string $folder;
+    #[ORM\Column(name: 'name', type: 'string', length: 100)]
+    private string $name;
 
-    #[ORM\Column(name: 'is_open_access', type: 'boolean', options: ['default' => 0])]
-    private bool $isOpenAccess = false;
+    #[ORM\ManyToOne(targetEntity: self::class)]
+    #[ORM\JoinColumn(name: 'id_parent', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    private ?AssetFolder $parent = null;
 
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getFolder(): string
+    public function getName(): string
     {
-        return $this->folder;
+        return $this->name;
     }
 
-    public function setFolder(string $folder): static
+    public function setName(string $name): static
     {
-        $this->folder = $folder;
+        $this->name = $name;
 
         return $this;
     }
 
-    public function isOpenAccess(): bool
+    public function getParent(): ?AssetFolder
     {
-        return $this->isOpenAccess;
+        return $this->parent;
     }
 
-    public function setIsOpenAccess(bool $isOpenAccess): static
+    public function setParent(?AssetFolder $parent): static
     {
-        $this->isOpenAccess = $isOpenAccess;
+        $this->parent = $parent;
 
         return $this;
     }

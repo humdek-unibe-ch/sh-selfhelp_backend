@@ -50,11 +50,11 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *   - blocked    = 0
  *   - intern     = 0
  *   - user_type  = user     (id_user_types -> lookups['userTypes']['user'])
- *   - groups     = [admin]
- *   - roles      = [admin]
+ *   - roles      = [admin]   (admin rights come from the role; there is no
+ *                            admin group. `--group` adds one if wanted.)
  *
  * Re-running the command with the same email updates the password and
- * re-asserts admin group/role membership instead of erroring out, so it
+ * re-asserts admin role membership instead of erroring out, so it
  * doubles as an "I forgot my admin password" recovery tool.
  */
 #[AsCommand(
@@ -78,7 +78,7 @@ class CreateAdminUserCommand extends Command
             ->addArgument('display-name', InputArgument::OPTIONAL, 'Display name shown in the admin UI.', 'Admin')
             ->addOption('password', 'p', InputOption::VALUE_REQUIRED, 'Password (prompted if omitted).')
             ->addOption('name', null, InputOption::VALUE_REQUIRED, 'user_name column (defaults to email).')
-            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Group keyword to add the user to.', 'admin')
+            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Group keyword to add the user to (optional).')
             ->addOption('role', null, InputOption::VALUE_REQUIRED, 'Role keyword to add the user to.', 'admin')
             ->addOption('no-admin', null, InputOption::VALUE_NONE, 'Skip admin group/role assignment (creates a plain validated user).');
     }
@@ -165,7 +165,7 @@ class CreateAdminUserCommand extends Command
             $group = $em->getRepository(Group::class)->findOneBy(['name' => $groupKw]);
             $role = $em->getRepository(Role::class)->findOneBy(['name' => $roleKw]);
 
-            if (!$group instanceof Group) {
+            if ($groupKw !== '' && !$group instanceof Group) {
                 $io->warning("Group '{$groupKw}' not found — skipping group assignment.");
             }
             if (!$role instanceof Role) {

@@ -41,10 +41,10 @@ class AdminPageService extends BaseService
 {
     use TranslationManagerTrait;
 
-    // ACL group name constants
-    private const GROUP_ADMIN = 'admin';
+    // Groups every new public page is readable by. Admins need no group: the
+    // admin role bypasses page ACLs (ACLService::hasAccess).
     private const GROUP_SUBJECT = 'subject';
-    private const GROUP_THERAPIST = 'therapist';
+    private const GROUP_RESEARCHER = 'researcher';
 
     /**
      * Constructor
@@ -228,27 +228,23 @@ class AdminPageService extends BaseService
 
             // Fetch groups by name
             $groupRepo = $this->entityManager->getRepository(Group::class);
-            $adminGroup = $groupRepo->findOneBy(['name' => self::GROUP_ADMIN]);
             $subjectGroup = $groupRepo->findOneBy(['name' => self::GROUP_SUBJECT]);
-            $therapistGroup = $groupRepo->findOneBy(['name' => self::GROUP_THERAPIST]);
-            if (!$adminGroup || !$subjectGroup || !$therapistGroup) {
+            $researcherGroup = $groupRepo->findOneBy(['name' => self::GROUP_RESEARCHER]);
+            if (!$subjectGroup || !$researcherGroup) {
                 throw new ServiceException('One or more required groups not found.', Response::HTTP_INTERNAL_SERVER_ERROR);
             }
 
-            // Admin always gets full access, regardless of surface. Track the
-            // group ids already granted so author-selected groups never create
-            // duplicate ACL rows.
+            // Track the group ids already granted so author-selected groups
+            // never create duplicate ACL rows.
             $grantedGroupIds = [];
-            $this->aclService->addGroupAcl($page, $adminGroup, true, true, true, true, $this->entityManager);
-            $grantedGroupIds[(int) $adminGroup->getId()] = true;
 
             if (!$isCmsSurface) {
-                // Public website pages keep the historical default reader ACL
-                // for the subject + therapist groups (select only).
+                // Public website pages are readable by the subject +
+                // researcher groups (select only).
                 $this->aclService->addGroupAcl($page, $subjectGroup, true, false, false, false, $this->entityManager);
                 $grantedGroupIds[(int) $subjectGroup->getId()] = true;
-                $this->aclService->addGroupAcl($page, $therapistGroup, true, false, false, false, $this->entityManager);
-                $grantedGroupIds[(int) $therapistGroup->getId()] = true;
+                $this->aclService->addGroupAcl($page, $researcherGroup, true, false, false, false, $this->entityManager);
+                $grantedGroupIds[(int) $researcherGroup->getId()] = true;
             }
             // CMS application pages stay admin/editor-only: no default reader
             // groups are added; the author grants editor groups explicitly.

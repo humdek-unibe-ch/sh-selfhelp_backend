@@ -800,16 +800,17 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      */
     public function getUserPermissionsForResources(int $userId, int $resourceTypeId, ?array $resourceIds = null): array
     {
+        // DQL has no BIT_OR aggregate: OR the role rows together in PHP, as
+        // getUserPermissionsForResource() does.
         $qb = $this->createQueryBuilder('rda')
-            ->select('rda.resourceId, BIT_OR(rda.crudPermissions) as permissions')
+            ->select('rda.resourceId, rda.crudPermissions as permissions')
             ->innerJoin('rda.role', 'r')
             ->innerJoin('r.users', 'u')
             ->where('u.id = :userId')
             ->andWhere('rda.idResourceTypes = :resourceTypeId')
             ->andWhere('rda.crudPermissions > 0')
             ->setParameter('userId', $userId)
-            ->setParameter('resourceTypeId', $resourceTypeId)
-            ->groupBy('rda.resourceId');
+            ->setParameter('resourceTypeId', $resourceTypeId);
 
         if ($resourceIds !== null) {
             $qb->andWhere('rda.resourceId IN (:resourceIds)')
@@ -822,7 +823,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         // Convert to associative array
         $permissions = [];
         foreach ($results as $result) {
-            $permissions[(int) $result['resourceId']] = (int) $result['permissions'];
+            $resourceId = (int) $result['resourceId'];
+            $permissions[$resourceId] = ($permissions[$resourceId] ?? 0) | (int) $result['permissions'];
         }
 
         return $permissions;

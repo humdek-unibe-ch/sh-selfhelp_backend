@@ -2,738 +2,153 @@
 
 Audience: Developers and technical operators.
 Status: active.
-Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
-Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+Applies to: SelfHelp2 Symfony backend, core 0.1.43 and later.
+Last verified: 2026-11-04.
+Source of truth: `src/Entity/{Asset,AssetFolder}.php`, `src/Service/CMS/Admin/{AdminAssetService,AssetAccessService,AssetStorageService,AssetExportImportService}.php`, `src/Controller/Api/V1/{AssetController,Admin/AdminAssetController}.php`, migration `Version20261103112133`, and the tests named below.
 
-## Overview
+The endpoint-by-endpoint contract is in
+[`docs/reference/api/06-admin-assets.md`](../reference/api/06-admin-assets.md).
+This page explains how the pieces fit and the decisions behind them.
 
-The SelfHelp Symfony Backend includes a comprehensive asset management system for handling file uploads, storage, and serving. The system supports various file types including images, documents, CSS, JavaScript, and other media files.
-
-## Asset Architecture
+## Model
 
 ```mermaid
-graph TD
-    A[File Upload Request] --> B[AdminAssetController]
-    B --> C[File Validation]
-    C --> D[AdminAssetService]
-    D --> E[File Storage]
-    E --> F[Database Record]
-    F --> G[Asset Response]
-    
-    subgraph "File Types"
-        H[Images<br/>jpg, png, gif, webp, svg]
-        I[Documents<br/>pdf, doc, xls, ppt]
-        J[Web Assets<br/>css, js, json]
-        K[Archives<br/>zip, rar, 7z]
-        L[Media<br/>mp4, avi, mov]
-    end
-    
-    subgraph "Storage Structure"
-        M[uploads/assets/]
-        N[├── general/]
-        O[├── images/]
-        P[├── documents/]
-        Q[└── custom_folder/]
-    end
-    
-    C --> H
-    C --> I
-    C --> J
-    C --> K
-    C --> L
-    
-    E --> M
+erDiagram
+    assets ||--o{ rel_assets_groups : "viewable by"
+    groups ||--o{ rel_assets_groups : ""
+    assets }o--o| assets_folders : "organised in"
+    assets_folders }o--o| assets_folders : "parent"
+    assets ||--o{ role_data_access : "managed by (resource type asset)"
+    assets {
+        int id
+        string uuid "identity and stored file name"
+        string name "editable label, no extension"
+        string file_path "uploads/assets/<uuid> (logical key)"
+        string mime_type
+        int size
+        string alt "default alt"
+        int id_assets_folders "nullable"
+    }
 ```
 
-## Database Schema
-
-### Asset Entity
-```php
-<?php
-namespace App\Entity;
-
-#[ORM\Entity]
-#[ORM\Table(name: 'assets')]
-class Asset
-{
-    #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column(name: 'id', type: 'integer')]
-    private ?int $id = null;
-
-    #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_asset_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private Lookup $assetType;
-
-    #[ORM\Column(name: 'folder', type: 'string', length: 100, nullable: true)]
-    private ?string $folder = null;
-
-    #[ORM\Column(name: 'file_name', type: 'string', length: 100, unique: true, nullable: true)]
-    private ?string $fileName = null;
-
-    #[ORM\Column(name: 'file_path', type: 'string', length: 1000)]
-    private string $filePath;
-
-    // Getters and setters...
-}
-// ENTITY RULE
-```
-
-### Database Table Structure
-```sql
-CREATE TABLE `assets` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_asset_types` int NOT NULL,
-  `folder` varchar(100) DEFAULT NULL,
-  `file_name` varchar(100) DEFAULT NULL,
-  `file_path` varchar(1000) NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_79D17D8ED7DF1668` (`file_name`),
-  FOREIGN KEY (`id_asset_types`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-```
-
-### Asset Types (Lookup System)
-```sql
--- Asset types in lookups table
-INSERT INTO `lookups` (`type_code`, `code`, `description`) VALUES
-('ASSET_TYPES', 'IMAGE', 'Image files (jpg, png, gif, webp, svg)'),
-('ASSET_TYPES', 'DOCUMENT', 'Document files (pdf, doc, xls, ppt)'),
-('ASSET_TYPES', 'CSS', 'Stylesheet files'),
-('ASSET_TYPES', 'JAVASCRIPT', 'JavaScript files'),
-('ASSET_TYPES', 'VIDEO', 'Video files (mp4, avi, mov, wmv)'),
-('ASSET_TYPES', 'AUDIO', 'Audio files (mp3, wav, ogg)'),
-('ASSET_TYPES', 'ARCHIVE', 'Archive files (zip, rar, 7z)'),
-('ASSET_TYPES', 'ASSET', 'General asset files');
-```
-
-## AdminAssetService
-
-### Core Implementation
-```php
-<?php
-namespace App\Service\CMS\Admin;
-
-class AdminAssetService extends BaseService
-{
-    private const UPLOAD_DIR = 'uploads/assets/';
-    private const ALLOWED_EXTENSIONS = [
-        'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', // Images
-        'pdf', // Documents
-        'mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', // Videos
-        'css', 'js', // Web files
-        'zip', 'rar', '7z', // Archives
-        'json', // JSON files
-        'txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx' // Office files
-    ];
-
-    public function __construct(
-        private readonly AssetRepository $assetRepository,
-        private readonly EntityManagerInterface $entityManager,
-        private readonly TransactionService $transactionService,
-        private readonly LookupService $lookupService,
-        private readonly string $projectDir
-    ) {}
-
-    /**
-     * Create/Upload new asset
-     */
-    public function createAsset(UploadedFile $file, array $data, bool $overwrite = false): array
-    {
-        $this->entityManager->beginTransaction();
-        
-        try {
-            // Validate file
-            if (!$file->isValid()) {
-                throw new ServiceException('File upload failed: ' . $file->getErrorMessage());
-            }
-
-            // Validate extension
-            $extension = strtolower($file->getClientOriginalExtension());
-            if (!in_array($extension, self::ALLOWED_EXTENSIONS)) {
-                throw new ServiceException(
-                    'File type not allowed. Allowed types: ' . implode(', ', self::ALLOWED_EXTENSIONS)
-                );
-            }
-
-            // Determine asset type
-            $assetType = $this->determineAssetType($extension);
-            
-            // Get folder and filename
-            $folder = $data['folder'] ?? 'general';
-            $fileName = !empty($data['file_name']) ? $data['file_name'] : $file->getClientOriginalName();
-            
-            // Check if file exists
-            $existingAsset = $this->assetRepository->findByFileName($fileName);
-            if ($existingAsset && !$overwrite) {
-                throw new ServiceException('File already exists. Use overwrite option to replace it.');
-            }
-
-            // Create upload directory
-            $uploadPath = $this->projectDir . '/public/' . self::UPLOAD_DIR . $folder;
-            if (!is_dir($uploadPath)) {
-                mkdir($uploadPath, 0755, true);
-            }
-
-            // Move file
-            $filePath = self::UPLOAD_DIR . $folder . '/' . $fileName;
-            $file->move($uploadPath, $fileName);
-
-            // Create or update asset entity
-            if ($existingAsset && $overwrite) {
-                $asset = $existingAsset;
-                $transactionType = LookupService::TRANSACTION_TYPES_UPDATE;
-                $logMessage = 'Asset updated (overwrite): ' . $fileName;
-            } else {
-                $asset = new Asset();
-                $transactionType = LookupService::TRANSACTION_TYPES_INSERT;
-                $logMessage = 'Asset created: ' . $fileName;
-            }
-
-            $asset->setAssetType($assetType);
-            $asset->setFolder($folder);
-            $asset->setFileName($fileName);
-            $asset->setFilePath($filePath);
-
-            $this->entityManager->persist($asset);
-            $this->entityManager->flush();
-
-            // Log transaction
-            $this->transactionService->logTransaction(
-                $transactionType,
-                LookupService::TRANSACTION_BY_BY_USER,
-                'assets',
-                $asset->getId(),
-                $asset,
-                $logMessage
-            );
-
-            $this->entityManager->commit();
-            return $this->getAssetById($asset->getId());
-            
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
-    }
-
-    /**
-     * Determine asset type based on file extension
-     */
-    private function determineAssetType(string $extension): Lookup
-    {
-        $typeCode = match ($extension) {
-            'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg' => LookupService::ASSET_TYPES_IMAGE,
-            'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx' => LookupService::ASSET_TYPES_DOCUMENT,
-            'css' => LookupService::ASSET_TYPES_CSS,
-            'js' => LookupService::ASSET_TYPES_JAVASCRIPT,
-            'mp4', 'avi', 'mov', 'wmv', 'flv', 'webm' => LookupService::ASSET_TYPES_VIDEO,
-            'zip', 'rar', '7z' => LookupService::ASSET_TYPES_ARCHIVE,
-            default => LookupService::ASSET_TYPES_ASSET
-        };
-
-        return $this->lookupService->findByTypeAndCode(LookupService::ASSET_TYPES, $typeCode);
-    }
-
-    /**
-     * Get assets with pagination and search
-     */
-    public function getAssets(array $filters = [], int $page = 1, int $perPage = 20): array
-    {
-        $queryBuilder = $this->assetRepository->createQueryBuilder('a')
-            ->leftJoin('a.assetType', 'at')
-            ->addSelect('at');
-
-        // Apply filters
-        if (!empty($filters['search'])) {
-            $queryBuilder->andWhere('a.fileName LIKE :search OR a.folder LIKE :search')
-                ->setParameter('search', '%' . $filters['search'] . '%');
-        }
-
-        if (!empty($filters['folder'])) {
-            $queryBuilder->andWhere('a.folder = :folder')
-                ->setParameter('folder', $filters['folder']);
-        }
-
-        if (!empty($filters['asset_type'])) {
-            $queryBuilder->andWhere('at.code = :assetType')
-                ->setParameter('assetType', $filters['asset_type']);
-        }
-
-        // Pagination
-        $totalItems = (clone $queryBuilder)->select('COUNT(a.id)')->getQuery()->getSingleScalarResult();
-        $totalPages = ceil($totalItems / $perPage);
-
-        $assets = $queryBuilder
-            ->setFirstResult(($page - 1) * $perPage)
-            ->setMaxResults($perPage)
-            ->orderBy('a.id', 'DESC')
-            ->getQuery()
-            ->getResult();
-
-        return [
-            'data' => array_map([$this, 'formatAssetForResponse'], $assets),
-            'pagination' => [
-                'current_page' => $page,
-                'per_page' => $perPage,
-                'total_items' => $totalItems,
-                'total_pages' => $totalPages,
-                'has_next' => $page < $totalPages,
-                'has_previous' => $page > 1
-            ]
-        ];
-    }
-
-    /**
-     * Format asset for API response
-     */
-    private function formatAssetForResponse(Asset $asset): array
-    {
-        return [
-            'id' => $asset->getId(),
-            'fileName' => $asset->getFileName(),
-            'folder' => $asset->getFolder(),
-            'filePath' => $asset->getFilePath(),
-            'assetType' => [
-                'id' => $asset->getAssetType()->getId(),
-                'code' => $asset->getAssetType()->getCode(),
-                'description' => $asset->getAssetType()->getDescription()
-            ],
-            'url' => '/' . $asset->getFilePath(),
-            'fullUrl' => $this->getFullAssetUrl($asset)
-        ];
-    }
-
-    private function getFullAssetUrl(Asset $asset): string
-    {
-        // In production, this might be a CDN URL
-        return 'https://your-domain.com/' . $asset->getFilePath();
-    }
-}
-```
-
-## AdminAssetController
-
-### Controller Implementation
-```php
-<?php
-namespace App\Controller\Api\V1\Admin;
-
-class AdminAssetController extends AbstractController
-{
-    use RequestValidatorTrait;
-
-    public function __construct(
-        private readonly AdminAssetService $adminAssetService,
-        private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
-    ) {}
-
-    /**
-     * Get all assets with pagination and search
-     * @route /admin/assets
-     * @method GET
-     */
-    public function getAssets(Request $request): JsonResponse
-    {
-        try {
-            $filters = [
-                'search' => $request->query->get('search'),
-                'folder' => $request->query->get('folder'),
-                'asset_type' => $request->query->get('asset_type')
-            ];
-            
-            $page = (int)$request->query->get('page', 1);
-            $perPage = min((int)$request->query->get('per_page', 20), 100);
-
-            $result = $this->adminAssetService->getAssets($filters, $page, $perPage);
-
-            return $this->responseFormatter->formatSuccess(
-                $result['data'],
-                'responses/admin/assets/assets'
-            );
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Upload/Create new asset(s) - supports single or multiple files
-     * @route /admin/assets
-     * @method POST
-     */
-    public function createAsset(Request $request): JsonResponse
-    {
-        try {
-            // Validate form data
-            $formData = $this->validateAssetFormData($request);
-            
-            $files = $request->files->get('files', []);
-            $singleFile = $request->files->get('file');
-            
-            // Handle both single file and multiple files
-            if ($singleFile) {
-                $files = [$singleFile];
-            } elseif (!is_array($files)) {
-                $files = [$files];
-            }
-
-            if (empty($files) || (count($files) === 1 && !$files[0])) {
-                return $this->responseFormatter->formatError('At least one file is required');
-            }
-
-            $data = [
-                'folder' => $formData['folder'] ?? null,
-                'file_name' => $formData['file_name'] ?? null,
-                'file_names' => $formData['file_names'] ?? []
-            ];
-
-            $overwrite = $formData['overwrite'] ?? false;
-
-            if (count($files) === 1) {
-                // Single file upload
-                $asset = $this->adminAssetService->createAsset($files[0], $data, $overwrite);
-                return $this->responseFormatter->formatSuccess(
-                    $asset,
-                    'responses/admin/assets/asset',
-                    Response::HTTP_CREATED
-                );
-            } else {
-                // Multiple file upload
-                $assets = $this->adminAssetService->createMultipleAssets($files, $data, $overwrite);
-                return $this->responseFormatter->formatSuccess(
-                    $assets,
-                    'responses/admin/assets/assets',
-                    Response::HTTP_CREATED
-                );
-            }
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Delete an asset
-     * @route /admin/assets/{assetId}
-     * @method DELETE
-     */
-    public function deleteAsset(int $assetId): JsonResponse
-    {
-        try {
-            $this->adminAssetService->deleteAsset($assetId);
-            return $this->responseFormatter->formatSuccess(
-                null,
-                null,
-                Response::HTTP_NO_CONTENT
-            );
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Validate asset form data
-     */
-    private function validateAssetFormData(Request $request): array
-    {
-        // For file uploads, we validate form data instead of JSON
-        $formData = [
-            'folder' => $request->request->get('folder'),
-            'file_name' => $request->request->get('file_name'),
-            'file_names' => $request->request->get('file_names', []),
-            'overwrite' => $request->request->getBoolean('overwrite', false)
-        ];
-
-        // Basic validation
-        if ($formData['folder'] && !preg_match('/^[a-zA-Z0-9_-]+$/', $formData['folder'])) {
-            throw new \InvalidArgumentException('Invalid folder name');
-        }
-
-        return $formData;
-    }
-}
-```
-
-## File Storage Structure
-
-### Directory Organization
-```
-public/uploads/assets/
-├── general/           # Default folder for miscellaneous files
-├── images/           # Image files
-├── documents/        # PDF, Office documents
-├── css/             # Stylesheet files
-├── js/              # JavaScript files
-├── videos/          # Video files
-├── archives/        # ZIP, RAR files
-└── custom_folders/  # User-defined folders
-```
-
-### File Naming Strategy
-- **Original Names**: Preserve original filenames when possible
-- **Unique Names**: Ensure uniqueness in database (unique constraint on `file_name`)
-- **Overwrite Protection**: Require explicit overwrite flag for existing files
-- **Safe Characters**: Validate filenames for filesystem compatibility
-
-## Security Considerations
-
-### File Validation
-```php
-private function validateFile(UploadedFile $file): void
-{
-    // Check file upload status
-    if (!$file->isValid()) {
-        throw new ServiceException('File upload failed: ' . $file->getErrorMessage());
-    }
-
-    // Validate file extension
-    $extension = strtolower($file->getClientOriginalExtension());
-    if (!in_array($extension, self::ALLOWED_EXTENSIONS)) {
-        throw new ServiceException('File type not allowed');
-    }
-
-    // Check file size (example: 10MB limit)
-    if ($file->getSize() > 10 * 1024 * 1024) {
-        throw new ServiceException('File size exceeds limit (10MB)');
-    }
-
-    // Validate MIME type (additional security)
-    $allowedMimeTypes = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
-        'application/pdf',
-        'text/css', 'application/javascript',
-        'application/zip', 'application/x-rar-compressed'
-    ];
-    
-    if (!in_array($file->getMimeType(), $allowedMimeTypes)) {
-        throw new ServiceException('Invalid file type');
-    }
-}
-```
-
-### Access Control
-- **Upload Permissions**: Only authenticated admin users can upload files
-- **File Access**: Public files served directly, private files through controller
-- **Path Traversal Protection**: Validate folder names and file paths
-- **Virus Scanning**: Consider integrating virus scanning for uploaded files
-
-## JSON Schema Validation
-
-### Create Asset Request Schema
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Create Asset Request",
-  "type": "object",
-  "properties": {
-    "folder": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "maxLength": 100,
-      "description": "Folder name for organizing assets"
-    },
-    "file_name": {
-      "type": "string",
-      "maxLength": 100,
-      "description": "Custom filename (optional)"
-    },
-    "file_names": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "maxLength": 100
-      },
-      "description": "Custom filenames for multiple uploads"
-    },
-    "overwrite": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether to overwrite existing files"
-    }
-  },
-  "additionalProperties": false
-}
-```
-
-### Asset Response Schema
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Asset Response",
-  "type": "object",
-  "required": ["id", "fileName", "filePath", "assetType", "url"],
-  "properties": {
-    "id": {
-      "type": "integer",
-      "description": "Asset ID"
-    },
-    "fileName": {
-      "type": "string",
-      "description": "Original filename"
-    },
-    "folder": {
-      "type": ["string", "null"],
-      "description": "Folder name"
-    },
-    "filePath": {
-      "type": "string",
-      "description": "Relative file path"
-    },
-    "assetType": {
-      "type": "object",
-      "required": ["id", "code", "description"],
-      "properties": {
-        "id": {"type": "integer"},
-        "code": {"type": "string"},
-        "description": {"type": "string"}
-      }
-    },
-    "url": {
-      "type": "string",
-      "description": "Relative URL to access file"
-    },
-    "fullUrl": {
-      "type": "string",
-      "description": "Full URL to access file"
-    }
-  },
-  "additionalProperties": false
-}
-```
-
-## Multiple File Upload
-
-### Batch Upload Implementation
-```php
-public function createMultipleAssets(array $files, array $data, bool $overwrite = false): array
-{
-    $this->entityManager->beginTransaction();
-    
-    try {
-        $assets = [];
-        $fileNames = $data['file_names'] ?? [];
-        
-        foreach ($files as $index => $file) {
-            $fileData = $data;
-            
-            // Use custom filename if provided
-            if (isset($fileNames[$index])) {
-                $fileData['file_name'] = $fileNames[$index];
-            }
-            
-            $asset = $this->createSingleAsset($file, $fileData, $overwrite);
-            $assets[] = $asset;
-        }
-        
-        $this->entityManager->commit();
-        return $assets;
-        
-    } catch (\Exception $e) {
-        $this->entityManager->rollback();
-        throw $e;
-    }
-}
-```
-
-## Asset Management Features
-
-### Asset Listing with Filters
-- **Search**: Search by filename or folder
-- **Folder Filter**: Filter by specific folder
-- **Type Filter**: Filter by asset type (image, document, etc.)
-- **Pagination**: Efficient pagination for large asset collections
-- **Sorting**: Sort by upload date, filename, size
-
-### Asset Operations
-- **Upload**: Single and multiple file upload
-- **Update**: Replace existing files with overwrite option
-- **Delete**: Remove assets and associated files
-- **Download**: Direct file access via URLs
-- **Preview**: Generate thumbnails for images (future enhancement)
-
-### Integration with CMS
-- **Field Integration**: Assets can be referenced in CMS fields
-- **Image Fields**: Special handling for image uploads in forms
-- **File References**: Link assets to specific pages or sections
-- **Media Library**: Browse and select assets in CMS interface
-
-## Performance Optimization
-
-### File Serving
-- **Direct Access**: Static files served directly by web server
-- **CDN Integration**: Easy integration with CDN for better performance
-- **Caching Headers**: Proper cache headers for static assets
-- **Compression**: Enable gzip compression for text-based assets
-
-### Storage Optimization
-- **Folder Organization**: Organize files in folders to avoid filesystem limits
-- **File Cleanup**: Remove orphaned files not referenced in database
-- **Size Limits**: Enforce reasonable file size limits
-- **Format Optimization**: Convert images to optimized formats
-
-## Testing Asset Management
-
-### Unit Tests
-```php
-<?php
-namespace App\Tests\Service\CMS\Admin;
-
-class AdminAssetServiceTest extends KernelTestCase
-{
-    public function testCreateAsset(): void
-    {
-        $uploadedFile = $this->createTestUploadedFile('test.jpg', 'image/jpeg');
-        $data = ['folder' => 'test', 'file_name' => 'test-image.jpg'];
-        
-        $asset = $this->adminAssetService->createAsset($uploadedFile, $data);
-        
-        $this->assertInstanceOf(Asset::class, $asset);
-        $this->assertEquals('test-image.jpg', $asset['fileName']);
-        $this->assertEquals('test', $asset['folder']);
-    }
-
-    public function testInvalidFileType(): void
-    {
-        $uploadedFile = $this->createTestUploadedFile('test.exe', 'application/octet-stream');
-        
-        $this->expectException(ServiceException::class);
-        $this->expectExceptionMessage('File type not allowed');
-        
-        $this->adminAssetService->createAsset($uploadedFile, []);
-    }
-}
-```
-
-### Integration Tests
-```php
-public function testAssetUploadEndpoint(): void
-{
-    $file = $this->createTestFile('test.jpg');
-    
-    $this->client->request('POST', '/cms-api/v1/admin/assets', [
-        'files' => ['file' => $file],
-        'extra' => ['folder' => 'test']
-    ], [
-        'Authorization' => 'Bearer ' . $this->getAuthToken()
-    ]);
-    
-    $this->assertResponseStatusCodeSame(201);
-    $data = json_decode($this->client->getResponse()->getContent(), true);
-    $this->assertArrayHasKey('data', $data);
-    $this->assertEquals('test.jpg', $data['data']['fileName']);
-}
-```
-
----
-
-**Next**: [Translation Handling](./cms-translation.md)
+- **uuid is the identity and the file name.** The file is stored as
+  `var/assets/<uuid>`, with no extension, so names never collide; there is no
+  `file_name` column. `name` is an editable label without extension (the
+  uploaded file name by default, searchable). The type comes from the stored
+  MIME type; downloads and email attachments are named
+  `<uuid>.<extension of the MIME type>` and pickers show `name.<extension>`.
+- **No overwrite.** Uploading a name that already exists creates a second
+  asset. Changing bytes is an explicit edit (`updateAsset` with a file), which
+  writes to the same uuid path, so every reference keeps working.
+- **Folders only organise.** `assets_folders` is a tree (`id_parent`); an
+  asset sits in at most one folder. Folders never decide access. Deleting a
+  folder deletes its subfolders (FK cascade) and moves their assets to the top
+  level (`ON DELETE SET NULL`).
+
+## Access (`AssetAccessService`)
+
+Two separate questions, two mechanisms:
+
+| Question | Mechanism | Rule |
+| --- | --- | --- |
+| Who can **view** the file (website, app, delivery URL) | the asset's groups, `rel_assets_groups` | no groups = **public** (anonymous callers included); otherwise members of ANY of its groups; the admin role views everything |
+| Who can **manage** it in the CMS (list, pickers, edit, delete, export) | `role_data_access`, resource type `asset`, CRUD bits | per asset, like data tables ([19-data-access-management.md](19-data-access-management.md)); the admin role manages everything |
+
+- New uploads are public and managed by the uploader's roles (full CRUD),
+  unless `group_ids` / `role_ids` say otherwise. The upload form says so in
+  large letters.
+- `canView()` reads the caller's groups with `UserRepository::getUserGroupIds()`
+  by user id: the authenticated `User` from the token does not reliably carry
+  its group collection.
+- `assertCanManage()` goes through
+  `DataAccessSecurityService::hasPermission()`, so every check is audited and
+  the admin role short-circuits. Lists use `manageableAssetIdsOrNull()`
+  (`RoleDataAccessRepository::getUserPermissionsForResources()`), and their
+  cache key includes that scope, as do the section image/video pickers.
+- `setManagingRoles()` replaces an asset's grants and invalidates the touched
+  roles' permission caches. `role_data_access` has no FK to the asset, so
+  deleting an asset removes its grants first.
+- Route permissions still gate the actions (`admin.asset.read|create|update|delete`);
+  `role_data_access` decides which assets they apply to.
+
+## Storage and delivery (`AssetStorageService`, `AssetController`)
+
+Files live outside the document root (`var/assets/`) so the web server can never
+serve them directly. `GET /assets/{uuid}` is the only way out: it checks
+`canView()`, resolves the file with `resolveForDelivery()` (which refuses
+anything that escapes the storage root, including symlinks), and sets
+`Content-Type` from the stored MIME type. Markup types get a sandboxing CSP.
+
+`uuidFromReference()` turns any stored reference — absolute or relative
+delivery URL, the frontend BFF URL `/api/assets/<uuid>`, or a logical
+`file_path` — into the asset uuid. Everything that reads an asset reference
+from content goes through it.
+
+## Default alt in page payloads
+
+`PageService::withAssetDefaultAlts()` runs on the section tree of both draft
+(cached) and published (hydrated per request) pages. It collects every section
+whose `img_src` is an asset and whose `alt` is empty, resolves them in **one**
+query (`AssetRepository::findByUuids()`), and fills `alt` from the asset. A
+section's own alt always wins. Editing an asset's alt invalidates the sections
+cache so draft pages update too. The image style's Alt help text explains this.
+
+## Email attachments
+
+Action configs store an attachment as the asset's delivery URL.
+`JobSchedulerService` resolves it with `uuidFromReference()` to the stored file
+and attaches it as `<uuid>.<extension>`.
+
+## Export / import (`AssetExportImportService`)
+
+Bundle `selfhelp/asset-bundle` 2.0: `manifest.json` plus `files/<uuid>`. Entries
+carry uuid, name, alt, MIME type and group **names** (ids differ between
+instances). Export covers only assets the caller may manage. Import never
+overwrites — an existing uuid is skipped — and otherwise recreates the asset
+under the same uuid, managed by the importer's roles. Version 1.0 (folder)
+bundles still import, as public assets.
+
+## Migration from the folder model
+
+`Version20261103112133`, in order:
+
+1. Renames the `therapist` group to `researcher` (creates it when missing).
+2. Adds `uuid`, `name` (the old file name without extension), `mime_type`,
+   `size`, `alt`, timestamps and `id_assets_folders`.
+3. Adds the `asset` resource type and grants every existing asset to the roles
+   that hold `admin.asset.read`.
+4. Viewing: assets in open-access folders stay public (no groups); assets in
+   closed folders get the folder's groups, or `researcher` when it had none.
+5. Keeps `assets_folders` as the organisation tree (drops its grants, the
+   open-access flag and the access-level lookups) and links each asset to its
+   folder; drops `file_name` and `folder`.
+6. Swaps the folder/ACL routes for edit, bulk groups, bulk delete, folder CRUD
+   and uuid delivery, and adds `admin.asset.update`.
+7. Titles the image style's fields (Image Source, Alt, Title, Fluid) and
+   explains the alt fallback.
+8. Drops the `admin` group — admin rights come from the admin role, which
+   bypasses page ACLs — after moving assets it alone guarded to `researcher`.
+   Its memberships, page ACL rows and validation codes go with it (cascade).
+
+This is a new system, so the migration deliberately does **not** rewrite
+folder-era URLs in content (`/cms-api/v1/assets/<folder>/<file>`) or move
+files: those URLs stop working, and such content must re-pick its asset.
+Existing rows keep their `file_path`, so a file still on disk at
+`var/assets/<folder>/<name>` is served under the new uuid URL, without a
+recorded MIME type.
+
+`down()` is best effort: folders come back flat with grants rebuilt from the
+asset groups, `file_name` from `file_path`, the `admin` group without its
+memberships or ACL rows, and `researcher` becomes `therapist` again.
+
+## Tests
+
+| Test | Covers |
+| --- | --- |
+| `tests/Controller/Api/V1/AdminAssetControllerTest.php` | upload under uuid (public, managed by the uploader), explicit groups, no overwrite, edit, replace keeps uuid, bulk groups, bulk delete, folders (nest, filter, no self-nesting, delete, top level `folder_id=0`, `asset_count`), export/import round trip |
+| `tests/Controller/Api/V1/Admin/AssetManagementAccessTest.php` | two researchers: an upload is managed only by the uploader's role until shared; the admin role manages all |
+| `tests/Controller/Api/V1/AssetDeliveryAclTest.php` | view matrix (no groups = public, group members, admin role), unknown uuid, SVG sandbox |
+| `tests/Controller/Api/V1/Admin/AdminAssetPermissionTest.php` | route permission matrix incl. bulk delete and folder routes |
+| `tests/Controller/Api/V1/Frontend/PageImageAltFallbackTest.php` | default alt fallback in the page payload |
+| `tests/Service/Core/JobSchedulerServiceTest.php` | asset URL attachments are attached |
+| `tests/Integration/Migrations/Version20261103112133RoundTripTest.php` | migration up/down/up (migration tier) |
