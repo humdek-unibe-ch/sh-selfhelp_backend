@@ -119,6 +119,16 @@ the alt invalidates cached page sections so pages show the new alt at once.
 `mode` is `add` or `remove`. Response `data`: `{ "updated": 2 }`. `404` if any
 asset id does not exist, `403` if the caller may not update one of them.
 
+`POST /cms-api/v1/admin/assets/bulk-folder` - permission `admin.asset.update`
+
+```json
+{ "asset_ids": [12, 13], "folder_id": 4 }
+```
+
+`folder_id` `null` moves them to the top level. Response `data`:
+`{ "moved": 2 }`. `400` for an unknown folder, `404` if any asset id does not
+exist, `403` if the caller may not update one of them.
+
 `POST /cms-api/v1/admin/assets/bulk-delete` - permission `admin.asset.delete`
 
 ```json

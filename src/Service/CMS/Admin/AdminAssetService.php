@@ -353,6 +353,39 @@ class AdminAssetService extends BaseService
     }
 
     /**
+     * Move several assets into one folder (`$folderId` null/0 = the top level).
+     *
+     * @param list<int> $assetIds
+     * @return array{moved: int}
+     */
+    public function bulkMoveToFolder(array $assetIds, ?int $folderId): array
+    {
+        $folder = $this->folderOrNull($folderId);
+        $assets = $this->assetRepository->findByIds($assetIds);
+        if (count($assets) !== count(array_unique($assetIds))) {
+            $this->throwNotFound('Asset not found');
+        }
+
+        foreach ($assets as $asset) {
+            $this->accessService->assertCanManage($asset, DataAccessSecurityService::PERMISSION_UPDATE);
+            $asset->setFolder($folder);
+            $asset->touch();
+        }
+        $this->entityManager->flush();
+        $this->transactionService->logTransaction(
+            LookupService::TRANSACTION_TYPES_UPDATE,
+            LookupService::TRANSACTION_BY_BY_USER,
+            'assets',
+            null,
+            false,
+            sprintf('Moved assets [%s] to folder %s', implode(',', $assetIds), $folder?->getId() ?? 'top level')
+        );
+        $this->invalidateAssetLists();
+
+        return ['moved' => count($assets)];
+    }
+
+    /**
      * @param list<int> $assetIds
      * @return array{deleted: int}
      */

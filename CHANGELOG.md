@@ -33,7 +33,8 @@ folders. The `therapist` group becomes `researcher` and the `admin` group goes.*
   by it (`folder_id=0` = assets in no folder) and each folder reports its
   `asset_count`. Folder ACLs, open access and
   `GET|PUT /admin/groups/{id}/asset-acls` are removed.
-- **Bulk actions.** `POST /admin/assets/bulk-groups` and
+- **Bulk actions.** `POST /admin/assets/bulk-groups`,
+  `POST /admin/assets/bulk-folder` (move to a folder) and
   `POST /admin/assets/bulk-delete`.
 - **Default alt.** An image section with an empty `alt` gets the asset's alt in
   the page payload; a section's own alt wins. The image style's fields get

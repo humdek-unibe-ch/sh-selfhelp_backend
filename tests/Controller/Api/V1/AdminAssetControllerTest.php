@@ -347,6 +347,31 @@ class AdminAssetControllerTest extends BaseControllerTest
         $this->assertSame(1, $counts[$child]);
     }
 
+    /**
+     * Bulk move puts the selected assets into one folder, and back at the top
+     * level with `folder_id: null`; an unknown folder is rejected.
+     */
+    public function testBulkMoveMovesTheSelectedAssetsIntoAFolderAndBack(): void
+    {
+        $folder = $this->saveFolder(['name' => 'qa-move-target']);
+        $first = $this->upload('qa-move-1.png');
+        $second = $this->upload('qa-move-2.png');
+        $ids = [$this->asInt($first['id']), $this->asInt($second['id'])];
+
+        $this->bulkMove(['asset_ids' => $ids, 'folder_id' => $folder]);
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+        $this->assertSame(2, $this->asArray($this->decodeArray()['data'])['moved']);
+        $this->assertEqualsCanonicalizing($ids, $this->listedIds(['folder_id' => (string) $folder]));
+
+        $this->bulkMove(['asset_ids' => $ids, 'folder_id' => null]);
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $this->assertNull($this->fetch($ids[0])['folder_id'], 'null moves them back to the top level');
+        $this->assertSame([], $this->listedIds(['folder_id' => (string) $folder]));
+
+        $this->bulkMove(['asset_ids' => $ids, 'folder_id' => 2147483600]);
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode(), 'Unknown folder');
+    }
+
     public function testUnauthorizedAccess(): void
     {
         $this->client->request('GET', '/cms-api/v1/admin/assets', [], [], ['CONTENT_TYPE' => 'application/json']);
@@ -470,6 +495,21 @@ class AdminAssetControllerTest extends BaseControllerTest
         sort($names);
 
         return $names;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function bulkMove(array $body): void
+    {
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/assets/bulk-folder',
+            [],
+            [],
+            $this->adminHeaders() + ['CONTENT_TYPE' => 'application/json'],
+            (string) json_encode($body)
+        );
     }
 
     /**

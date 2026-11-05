@@ -122,7 +122,7 @@ bundles still import, as public assets.
 5. Keeps `assets_folders` as the organisation tree (drops its grants, the
    open-access flag and the access-level lookups) and links each asset to its
    folder; drops `file_name` and `folder`.
-6. Swaps the folder/ACL routes for edit, bulk groups, bulk delete, folder CRUD
+6. Swaps the folder/ACL routes for edit, bulk groups, bulk move, bulk delete, folder CRUD
    and uuid delivery, and adds `admin.asset.update`.
 7. Titles the image style's fields (Image Source, Alt, Title, Fluid) and
    explains the alt fallback.
@@ -145,10 +145,10 @@ memberships or ACL rows, and `researcher` becomes `therapist` again.
 
 | Test | Covers |
 | --- | --- |
-| `tests/Controller/Api/V1/AdminAssetControllerTest.php` | upload under uuid (public, managed by the uploader), explicit groups, no overwrite, edit, replace keeps uuid, bulk groups, bulk delete, folders (nest, filter, no self-nesting, delete, top level `folder_id=0`, `asset_count`), export/import round trip |
+| `tests/Controller/Api/V1/AdminAssetControllerTest.php` | upload under uuid (public, managed by the uploader), explicit groups, no overwrite, edit, replace keeps uuid, bulk groups, bulk move, bulk delete, folders (nest, filter, no self-nesting, delete, top level `folder_id=0`, `asset_count`), export/import round trip |
 | `tests/Controller/Api/V1/Admin/AssetManagementAccessTest.php` | two researchers: an upload is managed only by the uploader's role until shared; the admin role manages all |
 | `tests/Controller/Api/V1/AssetDeliveryAclTest.php` | view matrix (no groups = public, group members, admin role), unknown uuid, SVG sandbox |
-| `tests/Controller/Api/V1/Admin/AdminAssetPermissionTest.php` | route permission matrix incl. bulk delete and folder routes |
+| `tests/Controller/Api/V1/Admin/AdminAssetPermissionTest.php` | route permission matrix incl. bulk move, bulk delete and folder routes |
 | `tests/Controller/Api/V1/Frontend/PageImageAltFallbackTest.php` | default alt fallback in the page payload |
 | `tests/Service/Core/JobSchedulerServiceTest.php` | asset URL attachments are attached |
 | `tests/Integration/Migrations/Version20261103112133RoundTripTest.php` | migration up/down/up (migration tier) |

@@ -45,6 +45,11 @@ final class AdminAssetPermissionTest extends QaWebTestCase
         $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-groups');
     }
 
+    public function testAssetBulkMoveIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-folder');
+    }
+
     public function testAssetBulkDeleteIsForbiddenForNonAdmins(): void
     {
         $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-delete');

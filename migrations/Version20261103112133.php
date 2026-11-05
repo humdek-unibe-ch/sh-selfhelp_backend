@@ -38,6 +38,7 @@ final class Version20261103112133 extends AbstractMigration
     private const NEW_ROUTES = [
         ['admin_assets_update', '/admin/assets/{assetId}', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::updateAsset', 'POST', '{"assetId":"[0-9]+"}', self::UPDATE_PERMISSION],
         ['admin_assets_bulk_groups', '/admin/assets/bulk-groups', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::bulkUpdateAssetGroups', 'POST', null, self::UPDATE_PERMISSION],
+        ['admin_assets_bulk_folder', '/admin/assets/bulk-folder', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::bulkMoveAssetsToFolder', 'POST', null, self::UPDATE_PERMISSION],
         ['admin_assets_bulk_delete', '/admin/assets/bulk-delete', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::bulkDeleteAssets', 'POST', null, 'admin.asset.delete'],
         ['admin_asset_folders_list', '/admin/asset-folders', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::getAssetFolders', 'GET', null, 'admin.asset.read'],
         ['admin_asset_folders_create', '/admin/asset-folders', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::saveAssetFolder', 'POST', null, 'admin.asset.create'],

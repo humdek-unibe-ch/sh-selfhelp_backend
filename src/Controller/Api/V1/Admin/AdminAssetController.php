@@ -192,6 +192,25 @@ class AdminAssetController extends AbstractController
     }
 
     /**
+     * Move several assets into one folder (`folder_id` null = the top level).
+     *
+     * @route /admin/assets/bulk-folder
+     * @method POST
+     */
+    public function bulkMoveAssetsToFolder(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/bulk_move_assets', $this->jsonSchemaValidationService);
+            $folderId = $data['folder_id'] ?? null;
+            $result = $this->adminAssetService->bulkMoveToFolder($this->toIntList($data['asset_ids'] ?? []), is_int($folderId) ? $folderId : null);
+
+            return $this->responseFormatter->formatSuccess($result);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
      * Delete several assets at once.
      *
      * @route /admin/assets/bulk-delete
