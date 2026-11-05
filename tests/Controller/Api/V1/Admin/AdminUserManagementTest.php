@@ -12,6 +12,7 @@ namespace App\Tests\Controller\Api\V1\Admin;
 use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\Group;
 use App\Entity\Lookup;
+use App\Entity\Role;
 use App\Entity\User;
 use App\Entity\UsersGroup;
 use App\Service\Cache\Core\CacheService;
@@ -223,6 +224,24 @@ final class AdminUserManagementTest extends QaWebTestCase
             QaBaselineFixture::QA_USER_EMAIL,
             $emails,
             'qa.user is in the subject group, so it must not appear under the researcher group filter'
+        );
+    }
+
+    public function testRoleFilterReturnsOnlyUsersHoldingThatRole(): void
+    {
+        $role = $this->entityManager()->getRepository(Role::class)->findOneBy(['name' => 'admin']);
+        self::assertInstanceOf(Role::class, $role);
+
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::USERS_URI . '?id_roles=' . $role->getId() . '&pageSize=100', null, $this->loginAsQaAdmin())
+        );
+
+        $emails = $this->emailsOf($data);
+        self::assertContains(QaBaselineFixture::QA_ADMIN_EMAIL, $emails);
+        self::assertNotContains(
+            QaBaselineFixture::QA_EDITOR_EMAIL,
+            $emails,
+            'qa.editor has no role, so it must not appear under the admin role filter'
         );
     }
 
@@ -625,6 +644,20 @@ final class AdminUserManagementTest extends QaWebTestCase
      * matrix helper (which decodes an envelope) does not apply. Assert the
      * same admin/non-admin/anonymous contract directly.
      */
+    public function testExportHonoursTheRoleFilter(): void
+    {
+        $token = $this->loginAsQaAdmin();
+        $role = $this->entityManager()->getRepository(Role::class)->findOneBy(['name' => 'admin']);
+        self::assertInstanceOf(Role::class, $role);
+
+        $this->client->request('GET', self::EXPORT_URI . '?id_roles=' . $role->getId(), [], [], $this->authHeaders($token));
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+
+        $csv = $this->streamedContent();
+        self::assertStringContainsString(QaBaselineFixture::QA_ADMIN_EMAIL, $csv);
+        self::assertStringNotContainsString(QaBaselineFixture::QA_EDITOR_EMAIL, $csv, 'qa.editor has no role');
+    }
+
     public function testExportIsAdminOnly(): void
     {
         $this->client->request('GET', self::EXPORT_URI, [], [], $this->authHeaders($this->loginAsQaAdmin()));

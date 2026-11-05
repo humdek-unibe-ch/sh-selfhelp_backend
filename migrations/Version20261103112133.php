@@ -15,8 +15,9 @@ use Doctrine\Migrations\AbstractMigration;
 /**
  * Asset rework: uuid identity, per-asset view groups (none = public), CMS
  * management via role_data_access, folders for organisation only, the
- * `researcher` group and no `admin` group. Folder-era URLs in content are not
- * rewritten and files are not moved. Each step is commented in up().
+ * `researcher` group and no `admin` group. Also drops the group/role member
+ * routes (the users list filters by group/role). Folder-era URLs in content
+ * are not rewritten and files are not moved. Each step is commented in up().
  */
 final class Version20261103112133 extends AbstractMigration
 {
@@ -26,12 +27,15 @@ final class Version20261103112133 extends AbstractMigration
     private const ACCESS_LEVEL_TYPE = 'assetFolderAccessLevels';
 
     /** Routes removed in up() and restored in down(). */
-    private const FOLDER_ROUTES = [
+    private const REMOVED_ROUTES = [
         ['assets_serve', '/assets/{folder}/{filename}', 'App\\Controller\\Api\\V1\\AssetController::serve', 'GET', '{"folder":"[a-zA-Z0-9_-]+","filename":"[a-zA-Z0-9_.-]+"}', null],
         ['admin_groups_asset_acls_get', '/admin/groups/{groupId}/asset-acls', 'App\\Controller\\Api\\V1\\Admin\\AdminGroupController::getGroupAssetAcls', 'GET', null, 'admin.group.acl'],
         ['admin_groups_asset_acls_update', '/admin/groups/{groupId}/asset-acls', 'App\\Controller\\Api\\V1\\Admin\\AdminGroupController::updateGroupAssetAcls', 'PUT', null, 'admin.group.acl'],
         ['admin_assets_folders_list', '/admin/assets/folders', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::getAssetFolders', 'GET', null, 'admin.asset.read'],
         ['admin_assets_folder_open_access_update', '/admin/assets/folders/{folder}/open-access', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::updateAssetFolderOpenAccess', 'PUT', '{"folder":"[a-zA-Z0-9_-]+"}', 'admin.group.acl'],
+        // Members are listed through GET /admin/users?id_groups= / ?id_roles=.
+        ['admin_groups_users', '/admin/groups/{groupId}/users', 'App\\Controller\\Api\\V1\\Admin\\AdminGroupController::getGroupMembers', 'GET', '{"groupId":"[0-9]+"}', 'admin.group.read'],
+        ['admin_roles_users', '/admin/roles/{roleId}/users', 'App\\Controller\\Api\\V1\\Admin\\AdminRoleController::getRoleUsers', 'GET', '{"roleId":"[0-9]+"}', 'admin.role.read'],
     ];
 
     /** Routes added in up() and removed in down(). Permission null = public. */
@@ -145,7 +149,7 @@ final class Version20261103112133 extends AbstractMigration
         $this->addSql('DELETE FROM lookups WHERE type_code = ?', [self::ACCESS_LEVEL_TYPE]);
 
         // 6. Routes + permission.
-        foreach (self::FOLDER_ROUTES as [$name]) {
+        foreach (self::REMOVED_ROUTES as [$name]) {
             $this->deleteRoute($name);
         }
 
@@ -217,7 +221,7 @@ final class Version20261103112133 extends AbstractMigration
             [self::UPDATE_PERMISSION]
         );
         $this->addSql('DELETE FROM permissions WHERE name = ?', [self::UPDATE_PERMISSION]);
-        foreach (self::FOLDER_ROUTES as [$name, $path, $controller, $method, $requirements, $permission]) {
+        foreach (self::REMOVED_ROUTES as [$name, $path, $controller, $method, $requirements, $permission]) {
             $this->insertRoute($name, $path, $controller, $method, $requirements, $permission);
         }
 

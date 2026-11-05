@@ -51,6 +51,11 @@ Retrieve a paginated list of users with filtering and sorting options.
 - `search`: Search term for name/email filtering
 - `sort`: Sort field ('id', 'email', 'name', 'created_at', etc.)
 - `sortDirection`: Sort direction ('asc' or 'desc')
+- `status`: `active`, `invited`, `imported` or `blocked` (anything else is a 400)
+- `id_groups`: Only members of this group
+- `id_roles`: Only users holding this role (Users page role filter and the Groups/Roles "View members" dialogs)
+
+The CSV export (`GET /admin/users/export`) takes the same `search`, `status`, `id_groups` and `id_roles` filters.
 
 **Response:**
 ```json

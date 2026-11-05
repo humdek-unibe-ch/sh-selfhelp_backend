@@ -57,6 +57,7 @@ class AdminUserController extends AbstractController
             $sortDirection = $request->query->get('sortDirection', 'asc');
             $status = $request->query->getString('status') ?: null;
             $groupId = $request->query->getInt('id_groups') ?: null;
+            $roleId = $request->query->getInt('id_roles') ?: null;
             $userId = $this->userContextService->getCurrentUser()?->getId();
 
             if ($userId === null) {
@@ -75,10 +76,9 @@ class AdminUserController extends AbstractController
                 $sort,
                 $sortDirection,
                 $status,
-                $groupId
+                $groupId,
+                $roleId
             );
-
-
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/users_envelope');
         } catch (\Exception $e) {
@@ -266,7 +266,8 @@ class AdminUserController extends AbstractController
                 $currentUserId,
                 $request->query->getString('search') ?: null,
                 $request->query->getString('status') ?: null,
-                $request->query->getInt('id_groups') ?: null
+                $request->query->getInt('id_groups') ?: null,
+                $request->query->getInt('id_roles') ?: null
             );
         } catch (\Exception $e) {
             // An invalid filter must surface as a normal API error, not as a

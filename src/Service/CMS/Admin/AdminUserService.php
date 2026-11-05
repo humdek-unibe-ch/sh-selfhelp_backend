@@ -102,20 +102,20 @@ class AdminUserService extends BaseService
      *
      * @return array<string, mixed>
      */
-    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = self::DEFAULT_PAGE_SIZE, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $status = null, ?int $groupId = null): array
+    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = self::DEFAULT_PAGE_SIZE, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $status = null, ?int $groupId = null, ?int $roleId = null): array
     {
         [$page, $pageSize, $sortDirection] = $this->validatePaginationParams($page, $pageSize, $sortDirection);
         $status = $this->validateStatusBucket($status);
 
         // Create cache key based on user and parameters
-        $cacheKey = $this->buildCacheKey('filtered_users', $userId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId);
+        $cacheKey = $this->buildCacheKey('filtered_users', $userId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId, $roleId);
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList(
                 $cacheKey,
-                fn() => $this->fetchFilteredUsersFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId)
+                fn() => $this->fetchFilteredUsersFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId, $roleId)
             );
     }
 
@@ -281,7 +281,7 @@ class AdminUserService extends BaseService
      *
      * @return list<array<string, string>>
      */
-    public function exportUsers(int $currentUserId, ?string $search = null, ?string $status = null, ?int $groupId = null): array
+    public function exportUsers(int $currentUserId, ?string $search = null, ?string $status = null, ?int $groupId = null, ?int $roleId = null): array
     {
         $status = $this->validateStatusBucket($status);
 
@@ -289,7 +289,8 @@ class AdminUserService extends BaseService
             $this->resolveAccessibleGroupIds($currentUserId),
             $search,
             $status,
-            $groupId
+            $groupId,
+            $roleId
         );
 
         return array_map(fn(User $user): array => $this->formatUserForExport($user), $users);
@@ -396,7 +397,7 @@ class AdminUserService extends BaseService
      *
      * @return array<string, mixed>
      */
-    private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection, ?string $status = null, ?int $groupId = null): array
+    private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection, ?string $status = null, ?int $groupId = null, ?int $roleId = null): array
     {
         // Get resource type ID for groups (users are filtered via group access)
         $resourceTypeId = $this->lookupService->getLookupIdByCode(
@@ -420,10 +421,10 @@ class AdminUserService extends BaseService
 
         // Check if user is admin - use repository method for all users
         if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
-            return $this->roleDataAccessRepository->getAllUsersForAdmin($page, $pageSize, $search, $sort, $sortDirection, $status, $groupId);
+            return $this->roleDataAccessRepository->getAllUsersForAdmin($page, $pageSize, $search, $sort, $sortDirection, $status, $groupId, $roleId);
         } else {
             // Use repository method for accessible users (via group permissions)
-            return $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId);
+            return $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId, $roleId);
         }
     }
 

@@ -51,6 +51,16 @@ folders. The `therapist` group becomes `researcher` and the `admin` group goes.*
   existing uuids instead of overwriting.
 - `supports.frontend` rises to `>=0.1.69`.
 
+## Change: members are listed through the users list (breaking)
+
+- `GET /admin/users` and `GET /admin/users/export` take `id_roles` (users
+  holding that role), next to `id_groups`. The Users page has a Role filter,
+  and the Groups/Roles "View members" dialogs use this list, so they get
+  search, status filter and paging.
+- `GET /admin/groups/{groupId}/users` and `GET /admin/roles/{roleId}/users`
+  are removed (routes dropped in `Version20261103112133`), together with the
+  `responses/admin/common/group_members` schema.
+
 ## Fix: asset email attachments were never attached
 
 - Action emails store attachments as the asset URL, and the mailer only

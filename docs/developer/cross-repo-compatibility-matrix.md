@@ -577,11 +577,10 @@ the same change wave:
 >   `GET /admin/users/stats` (`total`/`active`/`invited`/`blocked`, scoped to the
 >   caller's visible users), `GET /admin/users/{id}` + CRUD, bulk
 >   delete/add-to-group/remove-from-group/send-activation, CSV export/import.
-> - **Groups**: `GET /admin/groups/{groupId}/members` (View-members modal), and
->   `GET /admin/groups/{groupId}/users` (member list; migration
->   `Version20260720132523`).
-> - **Roles**: `GET /admin/roles/{roleId}/users` (member list, same migration);
->   reusable member JSON moved to `responses/admin/common/`.
+> - **Groups / Roles members**: listed through `GET /admin/users?id_groups=` /
+>   `?id_roles=` (core 0.1.43). The earlier `GET /admin/groups/{groupId}/users`
+>   and `GET /admin/roles/{roleId}/users` (migration `Version20260720132523`)
+>   are removed in `Version20261103112133`.
 > - **Registration codes**: `GET /admin/registration-codes/stats` (permission
 >   `admin.registration_code.read`, migration `Version20260721085447`) returning
 >   `{total, available, used}` with `available + used === total`. Unfiltered and
