@@ -74,6 +74,14 @@ folders. The `therapist` group becomes `researcher` and the `admin` group goes.*
   are removed (routes dropped in `Version20261103112133`), together with the
   `responses/admin/common/group_members` schema.
 
+## Fix: logging in no longer replaces the username with the email
+
+Login, 2FA login, token refresh and impersonation wrote the user's email into
+`user_name` (`JWTService` set it before minting the token, and the refresh
+token's flush saved it). The token already identifies users by email
+(`User::getUserIdentifier()`), so those writes are removed. Usernames that were
+already overwritten are not restored; admins can correct them.
+
 ## Fix: asset email attachments were never attached
 
 - Action emails store attachments as the asset URL, and the mailer only
