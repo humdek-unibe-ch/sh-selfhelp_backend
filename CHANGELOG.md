@@ -6,6 +6,19 @@ reworked: stable uuid, no overwrite, edit/replace, default alt, public unless
 restricted by group, managed per asset by role, and organised in nested
 folders. The `therapist` group becomes `researcher` and the `admin` group goes.**
 
+## Change: page title and description wait for Publish
+
+- A page's `title`, `description`, `open_in_modal`, `modal_width` and
+  `modal_height` are saved in its version (`page_json.page.fields`). A
+  published page serves them from the version, and the public page list (menu
+  labels) uses the published title and description, so an edit goes live
+  only on Publish. The unpublished-changes check and the draft diff include
+  them, and restoring a version restores them. Publish and unpublish refresh
+  the page list and navigation caches.
+- Versions published before this have no settings stored: those pages keep
+  serving the live values and do not show a change until they are published
+  again. No migration.
+
 ## Change: assets get a stable id, access by group and role (breaking)
 
 - **Uuid identity.** Every asset has a `uuid`, and it replaces the file name:

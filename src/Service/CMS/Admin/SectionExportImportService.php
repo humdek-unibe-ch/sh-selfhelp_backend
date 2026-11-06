@@ -10,7 +10,9 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Language;
 use App\Entity\Page;
 use App\Entity\Section;
+use App\Entity\PagesFieldsTranslation;
 use App\Entity\PagesSection;
+use App\Entity\PageVersion;
 use App\Entity\SectionsHierarchy;
 use App\Entity\SectionsFieldsTranslation;
 use App\Entity\Field;
@@ -673,6 +675,9 @@ class SectionExportImportService extends BaseService
         try {
             // Step 1: Perform smart restoration that preserves section IDs
             $restorationResult = $this->performSmartSectionRestoration($page, $publishedSections);
+            if (is_array($pageData['fields'] ?? null)) {
+                $this->restoreVersionedPageFields($page, $pageData['fields']);
+            }
 
             // Step 2: Force flush to ensure all operations are committed to database
             $this->entityManager->flush();
@@ -725,6 +730,44 @@ class SectionExportImportService extends BaseService
                 Response::HTTP_INTERNAL_SERVER_ERROR,
                 ['previous_exception' => $e->getMessage()]
             );
+        }
+    }
+
+    /**
+     * Put the page settings back as the version stored them: the versioned
+     * fields are replaced, so one the version did not have is cleared.
+     *
+     * @param array<array-key, mixed> $fields field name => [language id => content]
+     */
+    private function restoreVersionedPageFields(Page $page, array $fields): void
+    {
+        $this->entityManager->createQueryBuilder()
+            ->delete(PagesFieldsTranslation::class, 'pft')
+            ->where('pft.page = :page')
+            ->andWhere('pft.field IN (SELECT f.id FROM ' . Field::class . ' f WHERE f.name IN (:names))')
+            ->setParameter('page', $page)
+            ->setParameter('names', PageVersion::VERSIONED_PAGE_FIELDS)
+            ->getQuery()
+            ->execute();
+
+        foreach (PageVersion::VERSIONED_PAGE_FIELDS as $name) {
+            $byLanguage = $fields[$name] ?? null;
+            $field = is_array($byLanguage) ? $this->entityManager->getRepository(Field::class)->findOneBy(['name' => $name]) : null;
+            if ($field === null) {
+                continue;
+            }
+            foreach ($byLanguage as $languageId => $content) {
+                $language = $this->entityManager->getRepository(Language::class)->find((int) $languageId);
+                if ($language === null || !is_scalar($content)) {
+                    continue;
+                }
+                $translation = new PagesFieldsTranslation();
+                $translation->setPage($page);
+                $translation->setField($field);
+                $translation->setLanguage($language);
+                $translation->setContent((string) $content);
+                $this->entityManager->persist($translation);
+            }
         }
     }
 

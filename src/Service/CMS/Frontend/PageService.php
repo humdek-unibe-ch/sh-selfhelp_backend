@@ -192,6 +192,17 @@ class PageService extends BaseService
                     );
                 }
 
+                // Published pages show their published title and description
+                // in menus, not unpublished edits.
+                $publishedFields = $admin ? [] : $this->pageVersionRepository->fetchPublishedPageFields($pageIds);
+                foreach ($publishedFields as $publishedPageId => $fields) {
+                    $settings = $this->publishedPageSettings($fields, $languageId);
+                    $pageTitleTranslations[$publishedPageId] = array_filter(
+                        ['title' => $settings['title'], 'description' => $settings['description']],
+                        static fn (?string $value): bool => $value !== null
+                    );
+                }
+
                 // Create a map of pages by their ID for quick lookup
                 $pagesMap = [];
                 foreach ($filteredPages as &$page) {
@@ -523,20 +534,26 @@ class PageService extends BaseService
         // Hydrate the published page with fresh dynamic elements
         $hydrated = $this->hydratePublishedPage($storedPageData, $languageId, $routeParams, $routeRequirements);
 
-        // Inject translated SEO fields (title/description) — these live in
-        // pages_fields_translation, not in the versioned JSON, so they must
-        // be resolved fresh per request/language.
+        // Page settings (title, description, modal) come from the published
+        // version, so editing them waits for Publish. Versions published
+        // before settings were versioned have none: read the live values.
         if (isset($hydrated['page']) && is_array($hydrated['page'])) {
-            $seo = $this->resolvePageSeoFields($page_id, $languageId);
-            $hydrated['page']['title'] = $seo['title'];
-            $hydrated['page']['description'] = $seo['description'];
-            // open_in_modal lives in pages_fields_translation (a behaviour
-            // property), not in the versioned JSON, so resolve it fresh. The
-            // modal-size properties travel with it.
-            $hydrated['page']['open_in_modal'] = $this->resolveOpenInModal($page_id);
-            $modalSize = $this->resolveModalSize($page_id);
-            $hydrated['page']['modal_width'] = $modalSize['modal_width'];
-            $hydrated['page']['modal_height'] = $modalSize['modal_height'];
+            $storedFields = is_array($storedPageData['page'] ?? null) ? ($storedPageData['page']['fields'] ?? null) : null;
+            if (is_array($storedFields)) {
+                $settings = $this->publishedPageSettings($storedFields, $languageId);
+            } else {
+                $seo = $this->resolvePageSeoFields($page_id, $languageId);
+                $modalSize = $this->resolveModalSize($page_id);
+                $settings = [
+                    'title' => $seo['title'],
+                    'description' => $seo['description'],
+                    'open_in_modal' => $this->resolveOpenInModal($page_id),
+                    'modal_width' => $modalSize['modal_width'],
+                    'modal_height' => $modalSize['modal_height'],
+                ];
+            }
+            unset($hydrated['page']['fields']);
+            $hydrated['page'] = array_merge($hydrated['page'], $settings);
             $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
             $keyword = $page->getKeyword();
             if ($keyword !== null) {
@@ -808,6 +825,57 @@ class PageService extends BaseService
         return [
             'title'       => isset($entry['title']) ? $this->asStringOrNull($entry['title']) : null,
             'description' => isset($entry['description']) ? $this->asStringOrNull($entry['description']) : null,
+        ];
+    }
+
+    /**
+     * Page settings as published: read from the version's `page.fields`
+     * (name => [language id => content]) with the same rules as the live
+     * readers. Title and description take the requested language, else the
+     * CMS default language, ignoring empty rich-text wrappers; properties take
+     * the first non-empty value by language id.
+     *
+     * @param array<array-key, mixed> $fields
+     * @return array{title: ?string, description: ?string, open_in_modal: bool, modal_width: ?string, modal_height: ?string}
+     */
+    private function publishedPageSettings(array $fields, int $languageId): array
+    {
+        $defaultLanguageId = null;
+        try {
+            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+        } catch (\Exception $e) {
+            // Without a default language only the requested one is used.
+        }
+
+        $translated = function (string $name) use ($fields, $languageId, $defaultLanguageId): ?string {
+            $byLanguage = is_array($fields[$name] ?? null) ? $fields[$name] : [];
+            foreach ([$languageId, $defaultLanguageId] as $candidate) {
+                $content = $candidate !== null ? ($byLanguage[$candidate] ?? null) : null;
+                if (is_string($content) && !\App\Util\TranslationContentHelper::isEffectivelyEmpty($content)) {
+                    return $content;
+                }
+            }
+            return null;
+        };
+        $property = function (string $name) use ($fields): ?string {
+            $byLanguage = is_array($fields[$name] ?? null) ? $fields[$name] : [];
+            ksort($byLanguage);
+            foreach ($byLanguage as $content) {
+                if (is_string($content) && $content !== '') {
+                    return $content;
+                }
+            }
+            return null;
+        };
+
+        $openInModal = $property(self::OPEN_IN_MODAL_FIELD);
+
+        return [
+            'title' => $translated('title'),
+            'description' => $translated('description'),
+            'open_in_modal' => $openInModal === '1' || $openInModal === 'true',
+            'modal_width' => $property('modal_width'),
+            'modal_height' => $property('modal_height'),
         ];
     }
 
