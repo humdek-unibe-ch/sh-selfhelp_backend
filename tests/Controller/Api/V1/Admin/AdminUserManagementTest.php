@@ -74,7 +74,7 @@ final class AdminUserManagementTest extends QaWebTestCase
             $this->jsonRequest('GET', self::STATS_URI, null, $this->loginAsQaAdmin())
         );
 
-        foreach (['total', 'active', 'invited', 'blocked'] as $bucket) {
+        foreach (['total', 'active', 'invited', 'imported', 'blocked'] as $bucket) {
             self::assertArrayHasKey($bucket, $data, sprintf('Tile "%s" must be present', $bucket));
             self::assertIsInt($data[$bucket]);
             self::assertGreaterThanOrEqual(0, $data[$bucket]);
@@ -171,6 +171,24 @@ final class AdminUserManagementTest extends QaWebTestCase
             QaBaselineFixture::QA_ADMIN_EMAIL,
             $emails,
             'qa.admin is active, so it must not appear under status=invited'
+        );
+    }
+
+    public function testImportedStatusFilterReturnsOnlyImportedUsers(): void
+    {
+        $token = $this->loginAsQaAdmin();
+        $this->createQaUser('qa.filter.imported@selfhelp.test', LookupService::USER_STATUS_IMPORTED);
+
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::USERS_URI . '?status=imported&pageSize=100', null, $token)
+        );
+
+        $emails = $this->emailsOf($data);
+        self::assertContains('qa.filter.imported@selfhelp.test', $emails, 'The imported filter must return the imported user');
+        self::assertNotContains(
+            QaBaselineFixture::QA_ADMIN_EMAIL,
+            $emails,
+            'qa.admin is active, so it must not appear under status=imported'
         );
     }
 
@@ -478,11 +496,49 @@ final class AdminUserManagementTest extends QaWebTestCase
             ->findOneBy(['email' => 'qa.import.one@selfhelp.test']);
         self::assertInstanceOf(User::class, $user);
 
+        // ...lands in the dedicated `imported` status...
+        self::assertSame(
+            LookupService::USER_STATUS_IMPORTED,
+            $user->getStatus()?->getLookupCode(),
+            'A newly imported user must be marked with the `imported` status'
+        );
+
         // ...and was issued no validation code, i.e. no activation mail.
         self::assertCount(
             0,
             $user->getValidationCodes(),
             'An imported user must not be issued a validation code / activation email'
+        );
+    }
+
+    /**
+     * A duplicate email is skipped, not re-created — and re-importing must never
+     * rewrite that existing user's status back to `imported`. Here the existing
+     * user is `active`, and re-importing them must leave them `active`.
+     */
+    public function testImportDoesNotRewriteTheStatusOfSkippedDuplicateRows(): void
+    {
+        $token = $this->loginAsQaAdmin();
+        $this->createQaUser('qa.import.dupe@selfhelp.test', LookupService::USER_STATUS_ACTIVE);
+
+        $data = $this->assertEnvelopeSuccess(
+            $this->uploadCsv(
+                self::IMPORT_HEADER
+                ."qa.import.dupe@selfhelp.test,QA Dupe,qa_import_dupe,\n",
+                $token
+            )
+        );
+
+        self::assertSame(0, $this->intValue($data, 'imported'));
+        self::assertSame(1, $this->intValue($data, 'skipped'), 'An existing email must be skipped');
+
+        $user = $this->entityManager()->getRepository(User::class)
+            ->findOneBy(['email' => 'qa.import.dupe@selfhelp.test']);
+        self::assertInstanceOf(User::class, $user);
+        self::assertSame(
+            LookupService::USER_STATUS_ACTIVE,
+            $user->getStatus()?->getLookupCode(),
+            'A skipped duplicate must keep its existing status, not be reset to `imported`'
         );
     }
 

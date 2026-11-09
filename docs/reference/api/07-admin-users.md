@@ -497,7 +497,9 @@ Resend account activation email to a user.
 
 ### Clean User Data
 
-Remove all user-generated content and data.
+Erase the content a user produced while **keeping the account itself**. This is
+the GDPR "erase what I produced, keep the (inactive) account" path — it is
+deliberately not [Delete User](#delete-user).
 
 **Endpoint:** `POST /cms-api/v1/admin/users/{userId}/clean-data`
 
@@ -505,6 +507,36 @@ Remove all user-generated content and data.
 
 **Path Parameters:**
 - `userId`: User ID
+
+**What is erased**
+
+| Entity | Erased | Note |
+| --- | --- | --- |
+| `Transaction` | Yes | The user's activity record; the admin Users list "Activity" column drops to 0. |
+| `DataRow` + `DataCell` | Yes | All form/entry input the user submitted. |
+| `ScheduledJob` | Yes | Jobs owned by the user; their recipients and reminder metadata cascade. |
+| `ScheduledJobRecipient` | Yes | Also rows on *other users'* jobs that name this user as a recipient — a record of what this user was sent. |
+| `DataAccessAudit` | **No** | A security audit surface (who accessed what), not content this user produced. |
+| Session/auth state | **No** | `RefreshToken`, `Users2faCode`, `ValidationCode`, `UserNavigationState` are not user-produced content. |
+| `PageView` / `PageViewReferrer` | n/a | Pseudonymous daily aggregates with no `id_users`; nothing per-user to erase. |
+
+The operation runs in a single transaction — a failure at any point rolls the
+whole erasure back. It writes its own audit entry **after** the wipe, so the
+erasure itself stays recorded even though the user's transactions are removed.
+
+**Two implementation notes** (both have previously caused false worries):
+
+- `transactions.id_users` is the **acting** user, not the subject —
+  `TransactionService::logTransaction()` fills it from `getCurrentUser()`. So
+  the wipe erases what the user *did*; an admin action performed *on* them
+  (block, role change, impersonation) is attributed to that admin and survives.
+  The Users list "Activity" column reads the same relation
+  (`User::$transactions`), so it does drop to 0.
+- **There is no soft-delete to worry about here.** `data_rows` / `data_cells`
+  carry no `id_users_deleted` column and no soft-delete flag — that column does
+  not exist anywhere in the backend. All deletes on this path are hard deletes.
+  `DataRow.id_users` is a plain nullable integer column (not a Doctrine
+  association), which is why row ownership is queried as `dr.idUsers`.
 
 **Response:**
 ```json
@@ -518,13 +550,24 @@ Remove all user-generated content and data.
     "timestamp": "2025-01-23T10:30:00Z"
   },
   "data": {
-    "message": "User data cleaned successfully",
-    "removed_records": 45
+    "cleaned": true,
+    "removed": {
+      "scheduled_job_recipients": 2,
+      "scheduled_jobs": 3,
+      "data_cells": 18,
+      "data_rows": 7,
+      "transactions": 42
+    }
   }
 }
 ```
 
-**Permissions:** `admin.user.update`
+`removed` reports per-entity row counts. Entities that are deliberately kept
+(e.g. `DataAccessAudit`) have **no key** rather than a `0`.
+
+**Permissions:** `admin.user.update` (route). The service additionally requires
+`PERMISSION_DELETE` on the target user, and refuses system users (`admin`,
+`tpf`) with `403`. The route is blocked under an impersonation token.
 
 ### Impersonate User
 

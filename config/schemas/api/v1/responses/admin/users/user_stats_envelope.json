@@ -9,7 +9,7 @@
     "properties": {
         "data": {
             "type": "object",
-            "description": "User counts. PRECEDENCE: `blocked` wins over status, so a blocked+invited user is counted under `blocked` only and the buckets are mutually exclusive. NOT EXHAUSTIVE: the userStatus lookup group also contains the legacy `interested` and `auto_created` codes, whose users are counted in `total` but in no bucket — therefore active + invited + blocked <= total. Do not render the tiles as a breakdown that must sum.",
+            "description": "User counts. PRECEDENCE: `blocked` wins over status, so a blocked+invited user is counted under `blocked` only and the buckets are mutually exclusive. NOT EXHAUSTIVE: the userStatus lookup group also contains the legacy `interested` and `auto_created` codes, whose users are counted in `total` but in no bucket — therefore active + invited + imported + blocked <= total. Do not render the tiles as a breakdown that must sum.",
             "properties": {
                 "total": {
                     "type": "integer",
@@ -26,13 +26,18 @@
                     "description": "Not blocked, status = invited (activation not yet completed)",
                     "minimum": 0
                 },
+                "imported": {
+                    "type": "integer",
+                    "description": "Not blocked, status = imported (created by CSV import, not yet invited)",
+                    "minimum": 0
+                },
                 "blocked": {
                     "type": "integer",
                     "description": "blocked = true, regardless of status",
                     "minimum": 0
                 }
             },
-            "required": ["total", "active", "invited", "blocked"]
+            "required": ["total", "active", "invited", "imported", "blocked"]
         }
     },
     "required": ["data"]

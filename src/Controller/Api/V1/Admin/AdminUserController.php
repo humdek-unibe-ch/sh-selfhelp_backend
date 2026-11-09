@@ -817,8 +817,17 @@ class AdminUserController extends AbstractController
     public function cleanUserData(int $userId): JsonResponse
     {
         try {
-            $result = $this->adminUserService->cleanUserData($userId);
-            return $this->responseFormatter->formatSuccess(['cleaned' => $result]);
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $result = $this->adminUserService->cleanUserData($currentUserId, $userId);
+            return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }

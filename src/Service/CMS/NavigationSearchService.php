@@ -220,6 +220,7 @@ class NavigationSearchService extends BaseService
             $query,
             $limit,
             $accessibleIds,
+            $searchConfig['field_policy'],
         );
 
         $results = $metadataHits;
@@ -319,7 +320,7 @@ class NavigationSearchService extends BaseService
     /**
      * @param array<string, mixed> $navigation
      *
-     * @return array{min_chars: int, result_limit: int, mode: string, default_visibility: string}
+     * @return array{min_chars: int, result_limit: int, mode: string, default_visibility: string, field_policy: string}
      */
     private function searchConfigFromNavigation(array $navigation): array
     {
@@ -330,6 +331,7 @@ class NavigationSearchService extends BaseService
                 'result_limit' => 8,
                 'mode' => LookupService::NAVIGATION_SEARCH_MODE_CONTENT_INDEX,
                 'default_visibility' => 'all_accessible_pages',
+                'field_policy' => 'all_display_text',
             ];
         }
 
@@ -337,12 +339,14 @@ class NavigationSearchService extends BaseService
         $resultLimit = $searchConfig['result_limit'] ?? 8;
         $mode = $searchConfig['mode'] ?? LookupService::NAVIGATION_SEARCH_MODE_CONTENT_INDEX;
         $defaultVisibility = $searchConfig['default_visibility'] ?? 'all_accessible_pages';
+        $fieldPolicy = $searchConfig['field_policy'] ?? 'all_display_text';
 
         return [
             'min_chars' => is_int($minChars) ? $minChars : (is_numeric($minChars) ? (int) $minChars : 2),
             'result_limit' => is_int($resultLimit) ? $resultLimit : (is_numeric($resultLimit) ? (int) $resultLimit : 8),
             'mode' => is_string($mode) ? $mode : LookupService::NAVIGATION_SEARCH_MODE_CONTENT_INDEX,
             'default_visibility' => is_string($defaultVisibility) ? $defaultVisibility : 'all_accessible_pages',
+            'field_policy' => is_string($fieldPolicy) ? $fieldPolicy : 'all_display_text',
         ];
     }
 

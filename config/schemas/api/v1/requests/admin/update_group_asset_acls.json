@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Update Group Asset Folder ACLs Request",
+  "description": "Replace the full set of asset-folder access grants for one group. An empty acls array removes every folder grant for the group.",
+  "properties": {
+    "acls": {
+      "type": "array",
+      "description": "Per-folder access entries for this group. An empty array clears the group's asset-folder grants.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "maxLength": 100,
+            "description": "Folder this group is granted access to"
+          },
+          "access_level": {
+            "type": "string",
+            "enum": ["read", "manage"],
+            "description": "read = view/download; manage = also create/import/delete"
+          }
+        },
+        "required": ["folder", "access_level"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["acls"],
+  "additionalProperties": false
+}
