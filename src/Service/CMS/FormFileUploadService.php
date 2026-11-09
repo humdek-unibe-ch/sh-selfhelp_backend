@@ -10,6 +10,8 @@ namespace App\Service\CMS;
 
 use App\Exception\ServiceException;
 use App\Service\Core\BaseService;
+use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
@@ -17,10 +19,16 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Service for handling form file uploads with proper validation and storage
  * ENTITY RULE - Uses association objects instead of primitive foreign keys
+ *
+ * Files are stored OUTSIDE the document root (`var/form-files/`) so the web
+ * server never serves them; FormFileController delivers them with an access
+ * check. Stored cell values keep the `uploads/form-files/...` shape as a
+ * logical key (like `assets.file_path`), mapped to disk here.
  */
 class FormFileUploadService extends BaseService
 {
     private const UPLOAD_DIR = 'uploads/form-files/';
+    private const STORAGE_ROOT = '/var/form-files/';
     private const ALLOWED_EXTENSIONS = [
         // Images
         'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'ico',
@@ -34,11 +42,227 @@ class FormFileUploadService extends BaseService
 
     private const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
     private const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total per form submission
+    private const MAX_ZIP_SIZE = 500 * 1024 * 1024; // 500MB per "download all" archive
 
     public function __construct(
         private readonly string $projectDir,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly FormFieldKeyResolver $formFieldKeyResolver,
+        private readonly EntityManagerInterface $entityManager
     ) {
+    }
+
+    /**
+     * Locate one stored file of a form record for delivery; `$index` picks one
+     * file of a multi-file field. See {@see findRecordFiles()}.
+     *
+     * @return array{absolutePath: string, dataTableId: int, ownerId: int|null, public: bool}|null
+     */
+    public function findRecordFile(int $recordId, string $field, int $index = 0): ?array
+    {
+        $files = $this->findRecordFiles($recordId, $field);
+        $absolutePath = $files['absolutePaths'][$index] ?? null;
+        if ($files === null || $absolutePath === null) {
+            return null;
+        }
+
+        return [
+            'absolutePath' => $absolutePath,
+            'dataTableId' => $files['dataTableId'],
+            'ownerId' => $files['ownerId'],
+            'public' => $files['public'],
+        ];
+    }
+
+    /**
+     * Locate every stored file of a form record's field.
+     *
+     * `$field` is the input name or its `section_<id>` key; it must be a
+     * `file-input` of the record's form. Returns null when the record, field or
+     * all its files are missing. `public` is the field's `files_public`
+     * switch, read live on every call.
+     *
+     * @return array{absolutePaths: non-empty-list<string>, dataTableId: int, ownerId: int|null, public: bool}|null
+     */
+    public function findRecordFiles(int $recordId, string $field): ?array
+    {
+        $connection = $this->entityManager->getConnection();
+        $row = $connection->fetchAssociative(
+            'SELECT r.id_users, t.id AS table_id, t.name AS table_name FROM data_rows r'
+            . ' JOIN data_tables t ON t.id = r.id_data_tables WHERE r.id = :id',
+            ['id' => $recordId]
+        );
+        if ($row === false) {
+            return null;
+        }
+
+        $tableName = is_scalar($row['table_name']) ? (string) $row['table_name'] : '';
+        if (!$this->isFileInputField($field, $tableName)) {
+            return null;
+        }
+        $fieldKey = $this->formFieldKeyResolver->getNameToFieldKey($tableName)[$field] ?? $field;
+
+        $value = $connection->fetchOne(
+            'SELECT c.value FROM data_cells c JOIN data_cols dc ON dc.id = c.id_data_cols'
+            . " WHERE c.id_data_rows = :id AND dc.field_key = :key AND c.value <> '' LIMIT 1",
+            ['id' => $recordId, 'key' => $fieldKey]
+        );
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $absolutePaths = $this->resolveCellValue($value);
+        if ($absolutePaths === []) {
+            return null;
+        }
+
+        $isPublic = $connection->fetchOne(
+            'SELECT sft.content FROM sections_fields_translation sft JOIN fields f ON f.id = sft.id_fields'
+            . " WHERE sft.id_sections = :section AND f.name = 'files_public' LIMIT 1",
+            ['section' => (int) substr($fieldKey, strlen(FormFieldKeyResolver::FIELD_KEY_PREFIX))]
+        );
+
+        return [
+            'absolutePaths' => $absolutePaths,
+            'dataTableId' => is_numeric($row['table_id']) ? (int) $row['table_id'] : 0,
+            'ownerId' => is_numeric($row['id_users']) ? (int) $row['id_users'] : null,
+            'public' => $isPublic === '1',
+        ];
+    }
+
+    /**
+     * Every stored file of the given records of a form data table, for the
+     * admin "download all" zip. Records of other tables are ignored.
+     *
+     * @param list<int> $recordIds
+     * @return list<array{recordId: int, field: string, absolutePath: string}>
+     */
+    public function findTableFiles(string $tableName, array $recordIds): array
+    {
+        if ($recordIds === []) {
+            return [];
+        }
+
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT r.id AS record_id, dc.field_key, c.value FROM data_rows r'
+            . ' JOIN data_tables t ON t.id = r.id_data_tables'
+            . ' JOIN data_cells c ON c.id_data_rows = r.id'
+            . ' JOIN data_cols dc ON dc.id = c.id_data_cols'
+            . " WHERE t.name = :table AND r.id IN (:ids) AND c.value <> ''"
+            . ' ORDER BY r.id, dc.field_key',
+            ['table' => $tableName, 'ids' => $recordIds],
+            ['ids' => ArrayParameterType::INTEGER]
+        );
+
+        $keyToName = $this->formFieldKeyResolver->getFieldKeyToName($tableName);
+        $files = [];
+        foreach ($rows as $row) {
+            $fieldKey = is_scalar($row['field_key']) ? (string) $row['field_key'] : '';
+            if (!$this->isFileInputField($fieldKey, $tableName) || !is_string($row['value'])) {
+                continue;
+            }
+            foreach ($this->resolveCellValue($row['value']) as $absolutePath) {
+                $files[] = [
+                    'recordId' => is_numeric($row['record_id']) ? (int) $row['record_id'] : 0,
+                    'field' => $keyToName[$fieldKey] ?? $fieldKey,
+                    'absolutePath' => $absolutePath,
+                ];
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * Zip the given files into a temporary archive and return its path; the
+     * caller deletes it after sending. Entry names are made unique.
+     *
+     * @param list<array{entry: string, absolutePath: string}> $files
+     * @throws ServiceException 413 when the files exceed the archive limit
+     */
+    public function buildZip(array $files): string
+    {
+        $total = 0;
+        foreach ($files as $file) {
+            $total += (int) filesize($file['absolutePath']);
+        }
+        if ($total > self::MAX_ZIP_SIZE) {
+            throw new ServiceException(
+                'Too many files to download at once (limit ' . (self::MAX_ZIP_SIZE / 1024 / 1024) . 'MB). Narrow the selection.',
+                Response::HTTP_REQUEST_ENTITY_TOO_LARGE
+            );
+        }
+
+        $zipPath = (string) tempnam(sys_get_temp_dir(), 'form-files-');
+        $zip = new \ZipArchive();
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            throw new ServiceException('Unable to create the zip archive', Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+        $used = [];
+        foreach ($files as $file) {
+            $entry = $file['entry'];
+            for ($n = 2; isset($used[$entry]); $n++) {
+                $entry = preg_replace('/(\.[^.\/]*)?$/', '_' . $n . '$1', $file['entry'], 1) ?? $file['entry'] . '_' . $n;
+            }
+            $used[$entry] = true;
+            $zip->addFile($file['absolutePath'], $entry);
+        }
+        $zip->close();
+
+        return $zipPath;
+    }
+
+    /** File name as uploaded: strips the `<timestamp>_<random>_` storage prefix. */
+    public function originalName(string $path): string
+    {
+        return preg_replace('/^\d+_[0-9a-f]{8}_/', '', basename($path)) ?? basename($path);
+    }
+
+    /**
+     * Resolve a stored cell value (one key or a JSON list of keys) to the
+     * files that exist on disk.
+     *
+     * @return list<string>
+     */
+    private function resolveCellValue(string $value): array
+    {
+        $decoded = json_decode($value, true);
+        $paths = is_array($decoded) ? array_values($decoded) : [$value];
+        $resolved = [];
+        foreach ($paths as $path) {
+            $absolutePath = is_string($path) ? $this->resolveForDelivery($path) : null;
+            if ($absolutePath !== null) {
+                $resolved[] = $absolutePath;
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Map a stored `uploads/form-files/...` key to its file on disk, refusing
+     * anything that escapes the storage root. Null when unsafe or missing.
+     */
+    private function resolveForDelivery(string $logicalPath): ?string
+    {
+        if (!str_starts_with($logicalPath, self::UPLOAD_DIR) || str_contains($logicalPath, '..')) {
+            return null;
+        }
+
+        $real = realpath($this->absolutePath($logicalPath));
+        $root = realpath($this->projectDir . self::STORAGE_ROOT);
+        if ($real === false || $root === false || !is_file($real)
+            || !str_starts_with($real, $root . DIRECTORY_SEPARATOR)
+        ) {
+            return null;
+        }
+
+        return $real;
+    }
+
+    private function absolutePath(string $logicalPath): string
+    {
+        return $this->projectDir . self::STORAGE_ROOT . substr($logicalPath, strlen(self::UPLOAD_DIR));
     }
 
     /**
@@ -110,9 +334,9 @@ class FormFileUploadService extends BaseService
 
         // Create directory structure: uploads/form-files/user_{userId}/section_{sectionId}/field_{fieldName}/
         $directory = sprintf(
-            '%s/public/%suser_%d/section_%d/field_%s/',
+            '%s%suser_%d/section_%d/field_%s/',
             $this->projectDir,
-            self::UPLOAD_DIR,
+            self::STORAGE_ROOT,
             $userId,
             $sectionId,
             $this->sanitizeFieldName($fieldName)
@@ -129,7 +353,6 @@ class FormFileUploadService extends BaseService
         }
 
         // Move file to final location
-        $fullPath = $directory . $safeName;
         try {
             $file->move($directory, $safeName);
         } catch (\Exception $e) {
@@ -139,7 +362,7 @@ class FormFileUploadService extends BaseService
             );
         }
 
-        // Return relative path from public directory
+        // Return the logical key stored in the record
         return sprintf(
             '%suser_%d/section_%d/field_%s/%s',
             self::UPLOAD_DIR,
@@ -251,7 +474,7 @@ class FormFileUploadService extends BaseService
     {
         // Remove path components and dangerous characters
         $safeName = basename($originalName);
-        $safeName = preg_replace('/[^a-zA-Z0-9\-_\.]/', '_', $safeName);
+        $safeName = preg_replace('/[^a-zA-Z0-9\-_\.]/', '_', pathinfo($safeName, PATHINFO_FILENAME));
 
         // Generate unique filename to prevent conflicts
         $timestamp = time();
@@ -290,8 +513,8 @@ class FormFileUploadService extends BaseService
             }
 
             foreach ($filePaths as $filePath) {
-                if (is_string($filePath) && !empty($filePath)) {
-                    $fullPath = $this->projectDir . '/public/' . $filePath;
+                if (is_string($filePath) && str_starts_with($filePath, self::UPLOAD_DIR) && !str_contains($filePath, '..')) {
+                    $fullPath = $this->absolutePath($filePath);
                     if (file_exists($fullPath)) {
                         if (!unlink($fullPath)) {
                             // Log warning but don't throw exception for cleanup failures
@@ -336,16 +559,11 @@ class FormFileUploadService extends BaseService
     }
 
     /**
-     * Check if a field name corresponds to a file input field
-     *
-     * @param string $fieldName The field name to check
-     * @param int $sectionId The section ID
-     * @return bool True if the field is a file input
+     * Whether a submitted name (or stored `section_<id>` key) belongs to a
+     * `file-input` section of the form whose data table is `$formTableName`.
      */
-    public function isFileInputField(string $fieldName, int $sectionId): bool
+    public function isFileInputField(string $fieldName, string $formTableName): bool
     {
-        // For now, we'll use a simple heuristic: if the field name contains 'file'
-        // In a more sophisticated implementation, we would check the actual field style
-        return str_contains(strtolower($fieldName), 'file');
+        return $this->formFieldKeyResolver->isFileInput($formTableName, $fieldName);
     }
 }

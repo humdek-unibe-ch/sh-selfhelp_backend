@@ -81,6 +81,8 @@ class PageService extends BaseService
         private readonly OptionLabelHydrator $optionLabelHydrator,
         private readonly DataTableFilterService $dataTableFilterService,
         private readonly \App\Repository\PageTypeRepository $pageTypeRepository,
+        private readonly \App\Repository\AssetRepository $assetRepository,
+        private readonly \App\Service\CMS\Admin\AssetStorageService $assetStorage,
     ) {
     }
 
@@ -187,6 +189,17 @@ class PageService extends BaseService
                         $pageIds,
                         $languageId,
                         $defaultLanguageId
+                    );
+                }
+
+                // Published pages show their published title and description
+                // in menus, not unpublished edits.
+                $publishedFields = $admin ? [] : $this->pageVersionRepository->fetchPublishedPageFields($pageIds);
+                foreach ($publishedFields as $publishedPageId => $fields) {
+                    $settings = $this->publishedPageSettings($fields, $languageId);
+                    $pageTitleTranslations[$publishedPageId] = array_filter(
+                        ['title' => $settings['title'], 'description' => $settings['description']],
+                        static fn (?string $value): bool => $value !== null
                     );
                 }
 
@@ -521,20 +534,26 @@ class PageService extends BaseService
         // Hydrate the published page with fresh dynamic elements
         $hydrated = $this->hydratePublishedPage($storedPageData, $languageId, $routeParams, $routeRequirements);
 
-        // Inject translated SEO fields (title/description) — these live in
-        // pages_fields_translation, not in the versioned JSON, so they must
-        // be resolved fresh per request/language.
+        // Page settings (title, description, modal) come from the published
+        // version, so editing them waits for Publish. Versions published
+        // before settings were versioned have none: read the live values.
         if (isset($hydrated['page']) && is_array($hydrated['page'])) {
-            $seo = $this->resolvePageSeoFields($page_id, $languageId);
-            $hydrated['page']['title'] = $seo['title'];
-            $hydrated['page']['description'] = $seo['description'];
-            // open_in_modal lives in pages_fields_translation (a behaviour
-            // property), not in the versioned JSON, so resolve it fresh. The
-            // modal-size properties travel with it.
-            $hydrated['page']['open_in_modal'] = $this->resolveOpenInModal($page_id);
-            $modalSize = $this->resolveModalSize($page_id);
-            $hydrated['page']['modal_width'] = $modalSize['modal_width'];
-            $hydrated['page']['modal_height'] = $modalSize['modal_height'];
+            $storedFields = is_array($storedPageData['page'] ?? null) ? ($storedPageData['page']['fields'] ?? null) : null;
+            if (is_array($storedFields)) {
+                $settings = $this->publishedPageSettings($storedFields, $languageId);
+            } else {
+                $seo = $this->resolvePageSeoFields($page_id, $languageId);
+                $modalSize = $this->resolveModalSize($page_id);
+                $settings = [
+                    'title' => $seo['title'],
+                    'description' => $seo['description'],
+                    'open_in_modal' => $this->resolveOpenInModal($page_id),
+                    'modal_width' => $modalSize['modal_width'],
+                    'modal_height' => $modalSize['modal_height'],
+                ];
+            }
+            unset($hydrated['page']['fields']);
+            $hydrated['page'] = array_merge($hydrated['page'], $settings);
             $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
             $keyword = $page->getKeyword();
             if ($keyword !== null) {
@@ -590,6 +609,10 @@ class PageService extends BaseService
             $userId,
             $languageId
         );
+
+        // Resolved at serve time (not frozen into the version JSON) so an
+        // asset's alt edit reaches published pages without a republish.
+        $hydratedSections = $this->withAssetDefaultAlts($hydratedSections);
 
         // Update the page data with hydrated sections
         $storedPageData['page']['sections'] = $hydratedSections;
@@ -802,6 +825,57 @@ class PageService extends BaseService
         return [
             'title'       => isset($entry['title']) ? $this->asStringOrNull($entry['title']) : null,
             'description' => isset($entry['description']) ? $this->asStringOrNull($entry['description']) : null,
+        ];
+    }
+
+    /**
+     * Page settings as published: read from the version's `page.fields`
+     * (name => [language id => content]) with the same rules as the live
+     * readers. Title and description take the requested language, else the
+     * CMS default language, ignoring empty rich-text wrappers; properties take
+     * the first non-empty value by language id.
+     *
+     * @param array<array-key, mixed> $fields
+     * @return array{title: ?string, description: ?string, open_in_modal: bool, modal_width: ?string, modal_height: ?string}
+     */
+    private function publishedPageSettings(array $fields, int $languageId): array
+    {
+        $defaultLanguageId = null;
+        try {
+            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+        } catch (\Exception $e) {
+            // Without a default language only the requested one is used.
+        }
+
+        $translated = function (string $name) use ($fields, $languageId, $defaultLanguageId): ?string {
+            $byLanguage = is_array($fields[$name] ?? null) ? $fields[$name] : [];
+            foreach ([$languageId, $defaultLanguageId] as $candidate) {
+                $content = $candidate !== null ? ($byLanguage[$candidate] ?? null) : null;
+                if (is_string($content) && !\App\Util\TranslationContentHelper::isEffectivelyEmpty($content)) {
+                    return $content;
+                }
+            }
+            return null;
+        };
+        $property = function (string $name) use ($fields): ?string {
+            $byLanguage = is_array($fields[$name] ?? null) ? $fields[$name] : [];
+            ksort($byLanguage);
+            foreach ($byLanguage as $content) {
+                if (is_string($content) && $content !== '') {
+                    return $content;
+                }
+            }
+            return null;
+        };
+
+        $openInModal = $property(self::OPEN_IN_MODAL_FIELD);
+
+        return [
+            'title' => $translated('title'),
+            'description' => $translated('description'),
+            'open_in_modal' => $openInModal === '1' || $openInModal === 'true',
+            'modal_width' => $property('modal_width'),
+            'modal_height' => $property('modal_height'),
         ];
     }
 
@@ -1049,8 +1123,103 @@ class PageService extends BaseService
                 $languageId
             );
 
-            return $sections;
+            return $this->withAssetDefaultAlts($sections);
         });
+    }
+
+    /**
+     * Fill an empty section `alt` from the default alt of the asset in its
+     * `img_src`. A section's own alt always wins; the asset alt is only the
+     * fallback, so an image is described once at upload and reused everywhere.
+     * One batched lookup for the whole page.
+     *
+     * @param list<array<string, mixed>> $sections
+     * @return list<array<string, mixed>>
+     */
+    private function withAssetDefaultAlts(array $sections): array
+    {
+        $keys = [];
+        $this->collectAltlessImageKeys($sections, $keys);
+        if ($keys === []) {
+            return $sections;
+        }
+
+        $alts = [];
+        foreach ($this->assetRepository->findByUuids(array_values($keys)) as $key => $asset) {
+            $alt = $asset->getAlt();
+            if ($alt !== null && $alt !== '') {
+                $alts[$key] = $alt;
+            }
+        }
+
+        return $alts === [] ? $sections : $this->fillAltlessImages($sections, $alts);
+    }
+
+    /**
+     * @param array<array-key, mixed> $sections
+     * @param array<string, string> $keys collected asset lookup keys
+     */
+    private function collectAltlessImageKeys(array $sections, array &$keys): void
+    {
+        foreach ($sections as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $key = $this->altlessImageKey($section);
+            if ($key !== null) {
+                $keys[$key] = $key;
+            }
+            if (is_array($section['children'] ?? null)) {
+                $this->collectAltlessImageKeys($section['children'], $keys);
+            }
+        }
+    }
+
+    /**
+     * @param list<array<string, mixed>> $sections
+     * @param array<string, string> $alts asset lookup key => default alt
+     * @return list<array<string, mixed>>
+     */
+    private function fillAltlessImages(array $sections, array $alts): array
+    {
+        $filled = [];
+        foreach ($sections as $section) {
+            $key = $this->altlessImageKey($section);
+            if ($key !== null && isset($alts[$key])) {
+                $meta = is_array($section['alt'] ?? null) ? ($section['alt']['meta'] ?? null) : null;
+                $section['alt'] = ['content' => $alts[$key], 'meta' => $meta];
+            }
+            if (is_array($section['children'] ?? null)) {
+                $section['children'] = $this->fillAltlessImages(
+                    array_values(array_map(fn (mixed $child): array => $this->asAssocArray($child), $section['children'])),
+                    $alts
+                );
+            }
+            $filled[] = $section;
+        }
+
+        return $filled;
+    }
+
+    /**
+     * The asset lookup key of a section's `img_src` when its alt is empty, or
+     * null when there is nothing to fill.
+     *
+     * @param array<array-key, mixed> $section
+     */
+    private function altlessImageKey(array $section): ?string
+    {
+        $src = is_array($section['img_src'] ?? null) ? ($section['img_src']['content'] ?? null) : null;
+        if (!is_string($src) || $src === '') {
+            return null;
+        }
+
+        $alt = is_array($section['alt'] ?? null) ? ($section['alt']['content'] ?? null) : null;
+        if (is_string($alt) && trim($alt) !== '') {
+            return null;
+        }
+
+        return $this->assetStorage->uuidFromReference($src);
     }
 
     /**

@@ -1,7 +1,98 @@
 # v0.1.43
 
 **Public-navigable page types are resolved by name, and the admin navigation
-payload now states whether an item actually renders publicly.**
+payload now states whether an item actually renders publicly. Assets are
+reworked: stable uuid, no overwrite, edit/replace, default alt, public unless
+restricted by group, managed per asset by role, and organised in nested
+folders. The `therapist` group becomes `researcher` and the `admin` group goes.**
+
+## Change: page title and description wait for Publish
+
+- A page's `title`, `description`, `open_in_modal`, `modal_width` and
+  `modal_height` are saved in its version (`page_json.page.fields`). A
+  published page serves them from the version, and the public page list (menu
+  labels) uses the published title and description, so an edit goes live
+  only on Publish. The unpublished-changes check and the draft diff include
+  them, and restoring a version restores them. Publish and unpublish refresh
+  the page list and navigation caches.
+- Versions published before this have no settings stored: those pages keep
+  serving the live values and do not show a change until they are published
+  again. No migration.
+
+## Change: assets get a stable id, access by group and role (breaking)
+
+- **Uuid identity.** Every asset has a `uuid`, and it replaces the file name:
+  the file is stored on disk under it with no extension, and `file_name` is
+  removed. The old file name, without extension, becomes the editable `name`.
+  Uploads never collide or overwrite; the `overwrite`, `file_name` and
+  `file_names` upload fields are gone. Downloads and email attachments are
+  named `<uuid>.<extension>`.
+- **Edit and replace.** `POST /admin/assets/{id}` changes the name, alt,
+  groups, managing roles and folder, and can replace the file under the same
+  uuid. New permission `admin.asset.update`, granted to every role that could
+  upload.
+- **Viewing: public unless restricted.** An asset with no groups is public;
+  with groups, only their members (and the admin role) can view it. New uploads
+  are public, and the upload form says so in large letters.
+- **Managing: per asset, by role.** A new `asset` resource type in
+  `role_data_access` decides which roles may list, edit, delete and export each
+  asset, like data tables; uploads are granted to the uploader's roles and the
+  admin role manages all. Existing assets go to the roles that can read assets.
+  Fixed `RoleDataAccessRepository::getUserPermissionsForResources()`, which used
+  an unsupported DQL `BIT_OR` and could not run.
+- **Folders organise, nested.** `assets_folders` becomes an organisation-only
+  tree with `GET|POST /admin/asset-folders` and `PUT|DELETE
+  /admin/asset-folders/{id}`; assets have a `folder_id`, the asset list filters
+  by it (`folder_id=0` = assets in no folder) and each folder reports its
+  `asset_count`. Folder ACLs, open access and
+  `GET|PUT /admin/groups/{id}/asset-acls` are removed.
+- **Bulk actions.** `POST /admin/assets/bulk-groups`,
+  `POST /admin/assets/bulk-folder` (move to a folder) and
+  `POST /admin/assets/bulk-delete`.
+- **Default alt.** An image section with an empty `alt` gets the asset's alt in
+  the page payload; a section's own alt wins. The image style's fields get
+  titles (Image Source, Alt, Title, Fluid) and the Alt help explains this.
+- **Groups.** `therapist` is renamed `researcher`; new public pages are readable
+  by subject + researcher. The `admin` group is removed (admin rights come from
+  the admin role, which bypasses page ACLs), together with its memberships,
+  page ACL rows and validation codes. `app:create-admin-user` no longer adds a
+  group.
+- **Migration** `Version20261103112133` does all of the above. It does not
+  rewrite folder-era asset URLs in content or move existing files: old
+  `/assets/<folder>/<file>` URLs stop working; re-pick those assets.
+- **Export/import** bundles are keyed by uuid (bundle 2.0); import skips
+  existing uuids instead of overwriting.
+- `supports.frontend` rises to `>=0.1.69`.
+
+## Change: members are listed through the users list (breaking)
+
+- `GET /admin/users` and `GET /admin/users/export` take `id_roles` (users
+  holding that role), next to `id_groups`. The Users page has a Role filter,
+  and the Groups/Roles "View members" dialogs use this list, so they get
+  search, status filter and paging.
+- `GET /admin/groups/{groupId}/users` and `GET /admin/roles/{roleId}/users`
+  are removed (routes dropped in `Version20261103112133`), together with the
+  `responses/admin/common/group_members` schema.
+
+## Fix: logging in no longer replaces the username with the email
+
+Login, 2FA login, token refresh and impersonation wrote the user's email into
+`user_name` (`JWTService` set it before minting the token, and the refresh
+token's flush saved it). The token already identifies users by email
+(`User::getUserIdentifier()`), so those writes are removed. Usernames that were
+already overwritten are not restored; admins can correct them.
+
+## Fix: asset email attachments were never attached
+
+- Action emails store attachments as the asset URL, and the mailer only
+  attached real file paths, so asset attachments were silently dropped. The URL
+  is now resolved to the stored file.
+
+## Fix: last login is recorded for password logins
+
+- `users.last_login` was only set after a 2FA code, so every user without 2FA
+  showed `last_login: "never"` in Admin → Users. A successful password login
+  now records it too.
 
 ## Fix: the `[2, 3]` page-type filter was positional
 
@@ -76,6 +167,44 @@ interchangeable, and conflating them is the way this goes wrong:
 A headless `core` page therefore returns `menu_eligible: true`, asserted directly
 by `testMenuEligibilityCoversPageTypeOnlyNotHeadless`. Per-item reasons stay on
 `public_visibility`.
+
+## Fix: secrets no longer stored in the API request log
+
+- `api_request_logs` stored issued access/refresh tokens (login and refresh
+  responses) and request fields such as `refresh_token`, `new_password` and
+  `current_password` in plain text; only exact `password`/`token` keys were
+  masked. Any key containing `password`, `token` or `secret` is now masked, in
+  the request and in the logged JSON response.
+- Outside prod, validation errors echoed the request body
+  (`validation.request_data`) including passwords; secrets are now masked there too.
+
+**Upgrade note:** rows logged before this change may still hold tokens. Clear
+old `api_request_logs` rows if the database or its backups may be shared.
+
+## Fix: form uploads are private and no longer dropped
+
+- Files uploaded through forms were written to `public/uploads/form-files/`, so
+  anyone with the path could read them and an uploaded SVG ran its script on the
+  backend origin. They now live in `var/form-files/` and are served only by
+  `GET /cms-api/v1/forms/files/{record_id}/{field}` (migration
+  `Version20261028095413`) to the submitting user or users with READ on the
+  form's data table, sandboxed and with `nosniff`. A new `files_public`
+  checkbox on `file-input` (migration `Version20261028100251`, off by default)
+  makes a field's files readable by anyone, live for old and new files.
+- A field counted as a file upload only when its name contained "file"; any
+  other `file-input` lost its file while the form reported success. Detection
+  now uses the section style, and a file sent for a non-file field returns `400`.
+- Stored file names no longer get a doubled extension (`.svg.svg`).
+- Admins can download uploads as zips: all files of a multi-file field
+  (`GET /forms/files/{record_id}/{field}/zip`) or the files of the shown rows of
+  a data table (`GET /admin/data/tables/{tableName}/files`, `admin.data.read`).
+  Migration `Version20261028125153`.
+
+**Upgrade step:** move `public/uploads/form-files/` to `var/form-files/`,
+preserving the folder structure. Stored record values do not change. On an
+sh-manager instance (which mounts a `form_files` volume on `var/form-files`), run
+once after the update:
+`docker compose exec backend sh -c 'cp -a /app/public/uploads/form-files/. /app/var/form-files/ && rm -rf /app/public/uploads/form-files'`.
 
 ## Compatibility
 

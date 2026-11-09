@@ -10,6 +10,7 @@ namespace App\Repository;
 
 use App\Entity\Asset;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -23,67 +24,39 @@ class AssetRepository extends ServiceEntityRepository
     }
 
     /**
-     * Find all assets
-     * 
-     * @return Asset[]
-     */
-    public function findAllAssets(): array
-    {
-        /** @var list<Asset> $result */
-        $result = $this->createQueryBuilder('a')
-            ->orderBy('a.id', 'DESC')
-            ->getQuery()
-            ->getResult();
-
-        return $result;
-    }
-
-    /**
      * Find assets with pagination and search
-     * 
-     * @param int $page
-     * @param int $pageSize
-     * @param string|null $search
-     * @param string|null $folder
-     * @param list<string>|null $visibleFolders Closed-by-default allow-list: null = no restriction (admin);
-     *        a list = restrict to those folders; an empty list = no folders visible
+     *
+     * @param list<int>|null $assetIds Assets the caller may manage: null = all (admin)
      * @return array{assets: list<Asset>, total: int}
      */
-    public function findAssetsWithPagination(int $page, int $pageSize, ?string $search = null, ?string $folder = null, ?array $visibleFolders = null): array
+    public function findAssetsWithPagination(int $page, int $pageSize, ?string $search = null, ?int $groupId = null, ?array $assetIds = null, ?int $folderId = null): array
     {
         $qb = $this->createQueryBuilder('a')
             ->leftJoin('a.assetType', 'at');
 
-        // Add search conditions
         if ($search) {
-            $qb->andWhere('a.fileName LIKE :search OR a.folder LIKE :search OR at.lookupValue LIKE :search')
+            $qb->andWhere('a.name LIKE :search OR a.uuid LIKE :search OR a.alt LIKE :search OR a.mimeType LIKE :search OR at.lookupValue LIKE :search')
                ->setParameter('search', '%' . $search . '%');
         }
 
-        // Add folder filter
-        if ($folder) {
-            $qb->andWhere('a.folder = :folder')
-               ->setParameter('folder', $folder);
+        if ($groupId !== null) {
+            $this->restrictToGroups($qb, [$groupId], 'filterGroups');
         }
 
-        // Closed-by-default ACL scoping (null = admin, no restriction).
-        if ($visibleFolders !== null) {
-            if ($visibleFolders === []) {
-                // Non-admin with no granted folders sees nothing.
-                $qb->andWhere('1 = 0');
-            } else {
-                $qb->andWhere('a.folder IN (:visibleFolders)')
-                   ->setParameter('visibleFolders', $visibleFolders);
-            }
+        // 0 = only assets in no folder (the top level).
+        if ($folderId === 0) {
+            $qb->andWhere('a.folder IS NULL');
+        } elseif ($folderId !== null) {
+            $qb->andWhere('IDENTITY(a.folder) = :folderId')->setParameter('folderId', $folderId);
         }
 
-        // Get total count
+        $this->restrictToIds($qb, $assetIds);
+
         $totalQb = clone $qb;
         $total = $totalQb->select('COUNT(a.id)')
             ->getQuery()
             ->getSingleScalarResult();
 
-        // Apply pagination
         /** @var list<Asset> $assets */
         $assets = $qb->orderBy('a.id', 'DESC')
             ->setFirstResult(($page - 1) * $pageSize)
@@ -98,56 +71,67 @@ class AssetRepository extends ServiceEntityRepository
     }
 
     /**
-     * Find asset by filename
-     * 
-     * @param string $fileName
-     * @return Asset|null
+     * How many assets sit directly in each folder.
+     *
+     * @param list<int>|null $assetIds Assets the caller may manage: null = all (admin)
+     * @return array<int, int> folder id => count
      */
-    public function findByFileName(string $fileName): ?Asset
+    public function countByFolder(?array $assetIds = null): array
     {
-        /** @var Asset|null $result */
-        $result = $this->createQueryBuilder('a')
-            ->where('a.fileName = :fileName')
-            ->setParameter('fileName', $fileName)
-            ->getQuery()
-            ->getOneOrNullResult();
+        $qb = $this->createQueryBuilder('a')
+            ->select('IDENTITY(a.folder) AS folderId', 'COUNT(a.id) AS total')
+            ->andWhere('a.folder IS NOT NULL')
+            ->groupBy('a.folder');
+        $this->restrictToIds($qb, $assetIds);
 
-        return $result;
+        /** @var list<array{folderId: int|string, total: int|string}> $rows */
+        $rows = $qb->getQuery()->getArrayResult();
+        $counts = [];
+        foreach ($rows as $row) {
+            $counts[(int) $row['folderId']] = (int) $row['total'];
+        }
+
+        return $counts;
+    }
+
+    public function findOneByUuid(string $uuid): ?Asset
+    {
+        return $this->findOneBy(['uuid' => $uuid]);
     }
 
     /**
-     * Find assets by folder
-     * 
-     * @param string $folder
-     * @return Asset[]
+     * @param list<string> $uuids
+     * @return array<string, Asset> keyed by uuid
      */
-    public function findByFolder(string $folder): array
+    public function findByUuids(array $uuids): array
     {
-        /** @var list<Asset> $result */
-        $result = $this->createQueryBuilder('a')
-            ->where('a.folder = :folder')
-            ->setParameter('folder', $folder)
-            ->orderBy('a.id', 'DESC')
-            ->getQuery()
-            ->getResult();
+        if ($uuids === []) {
+            return [];
+        }
 
-        return $result;
+        /** @var list<Asset> $assets */
+        $assets = $this->findBy(['uuid' => array_values(array_unique($uuids))]);
+
+        $byUuid = [];
+        foreach ($assets as $asset) {
+            $byUuid[$asset->getUuid()] = $asset;
+        }
+
+        return $byUuid;
     }
 
     /**
-     * Check if multiple filenames exist
-     * 
-     * @param list<string> $fileNames
-     * @return Asset[]
+     * @param list<int> $ids
+     * @return list<Asset>
      */
-    public function findByFileNames(array $fileNames): array
+    public function findByIds(array $ids): array
     {
+        if ($ids === []) {
+            return [];
+        }
+
         /** @var list<Asset> $result */
-        $result = $this->createQueryBuilder('a')
-            ->where('a.fileName IN (:fileNames)')
-            ->setParameter('fileNames', $fileNames)
-            ->getQuery()
-            ->getResult();
+        $result = $this->findBy(['id' => array_values(array_unique($ids))]);
 
         return $result;
     }
@@ -155,38 +139,70 @@ class AssetRepository extends ServiceEntityRepository
     /**
      * Assets to include in an export bundle.
      *
-     * @param list<string> $folders        Restrict to these folders; empty = all folders
-     * @param list<string>|null $visibleFolders Closed-by-default allow-list: null = no restriction (admin);
-     *        a list = restrict to those folders; an empty list = no folders visible
+     * @param list<int> $ids Restrict to these assets; empty = all
+     * @param list<int>|null $assetIds Assets the caller may manage: null = all (admin)
      * @return list<Asset>
      */
-    public function findForExport(array $folders, ?array $visibleFolders = null): array
+    public function findForExport(array $ids, ?array $assetIds = null): array
     {
         $qb = $this->createQueryBuilder('a')
             ->leftJoin('a.assetType', 'at')
             ->addSelect('at');
 
-        if ($folders !== []) {
-            $qb->andWhere('a.folder IN (:folders)')
-               ->setParameter('folders', $folders);
+        if ($ids !== []) {
+            $qb->andWhere('a.id IN (:ids)')
+               ->setParameter('ids', $ids);
         }
 
-        // Closed-by-default ACL scoping (null = admin, no restriction).
-        if ($visibleFolders !== null) {
-            if ($visibleFolders === []) {
-                $qb->andWhere('1 = 0');
-            } else {
-                $qb->andWhere('a.folder IN (:visibleFolders)')
-                   ->setParameter('visibleFolders', $visibleFolders);
-            }
-        }
+        $this->restrictToIds($qb, $assetIds);
 
         /** @var list<Asset> $result */
-        $result = $qb->orderBy('a.folder', 'ASC')
-            ->addOrderBy('a.fileName', 'ASC')
+        $result = $qb->orderBy('a.id', 'ASC')
             ->getQuery()
             ->getResult();
 
         return $result;
+    }
+
+    /**
+     * @param list<int>|null $assetIds null = no restriction; [] matches nothing
+     */
+    private function restrictToIds(QueryBuilder $qb, ?array $assetIds): void
+    {
+        if ($assetIds === null) {
+            return;
+        }
+        if ($assetIds === []) {
+            $qb->andWhere('1 = 0');
+
+            return;
+        }
+        $qb->andWhere('a.id IN (:manageableIds)')->setParameter('manageableIds', $assetIds);
+    }
+
+    /**
+     * Keep only assets tagged with at least one of the given groups (an empty
+     * list matches nothing). A subquery keeps the main query one row per asset.
+     *
+     * @param list<int> $groupIds
+     */
+    private function restrictToGroups(QueryBuilder $qb, array $groupIds, string $parameter): void
+    {
+        if ($groupIds === []) {
+            $qb->andWhere('1 = 0');
+
+            return;
+        }
+
+        $alias = $parameter . 'Asset';
+        $groupAlias = $parameter . 'Group';
+        $sub = $this->getEntityManager()->createQueryBuilder()
+            ->select("{$alias}.id")
+            ->from(Asset::class, $alias)
+            ->innerJoin("{$alias}.groups", $groupAlias)
+            ->where("{$groupAlias}.id IN (:{$parameter})");
+
+        $qb->andWhere($qb->expr()->in('a.id', $sub->getDQL()))
+           ->setParameter($parameter, $groupIds);
     }
 }

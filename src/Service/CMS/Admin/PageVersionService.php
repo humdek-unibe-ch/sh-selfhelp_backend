@@ -11,10 +11,13 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Page;
 use App\Entity\PageVersion;
 use App\Entity\User;
+use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\PageVersionRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
+use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
+use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
@@ -53,6 +56,9 @@ class PageVersionService extends BaseService
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly LoggerInterface $logger,
         private readonly PagePublishedVersionRepairService $pagePublishedVersionRepairService,
+        private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
+        private readonly CacheService $cache,
+        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
     ) {
     }
 
@@ -185,6 +191,7 @@ class PageVersionService extends BaseService
             );
 
             $this->entityManager->commit();
+            $this->invalidatePublishedSettingsCaches($pageId);
 
             return $version;
         } catch (\Exception $e) {
@@ -253,6 +260,7 @@ class PageVersionService extends BaseService
             );
 
             $this->entityManager->commit();
+            $this->invalidatePublishedSettingsCaches($pageId);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw new \App\Exception\ServiceException(
@@ -388,6 +396,7 @@ class PageVersionService extends BaseService
             
             // Get published version structure
             $publishedJson = $publishedVersion->getPageJson();
+            $draftJson = $this->withoutFieldsIfLegacy($draftJson, $publishedJson);
             
             // Generate normalized hashes for comparison
             $draftHash = $this->generateStructureHash($draftJson);
@@ -399,6 +408,36 @@ class PageVersionService extends BaseService
             // If any error occurs, assume there are changes (fail-safe)
             return true;
         }
+    }
+
+    /**
+     * A version published before page settings were versioned has no
+     * `page.fields`, and its page still serves the live settings. Drop them
+     * from the draft too, so such pages don't all report a change.
+     *
+     * @param array<string, mixed> $draftJson
+     * @param array<string, mixed> $versionJson
+     * @return array<string, mixed>
+     */
+    private function withoutFieldsIfLegacy(array $draftJson, array $versionJson): array
+    {
+        $versionPage = $versionJson['page'] ?? null;
+        if (is_array($versionPage) && !array_key_exists('fields', $versionPage) && is_array($draftJson['page'] ?? null)) {
+            unset($draftJson['page']['fields']);
+        }
+
+        return $draftJson;
+    }
+
+    /**
+     * Published page settings feed the public page list and menus, so a
+     * publish or unpublish must refresh those caches.
+     */
+    private function invalidatePublishedSettingsCaches(int $pageId): void
+    {
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+        $this->cache->withCategory(CacheService::CATEGORY_PAGES)->invalidateAllListsInCategory();
+        $this->navigationCacheInvalidator->invalidateForPage($pageId);
     }
 
     /**
@@ -532,7 +571,7 @@ class PageVersionService extends BaseService
         $versionJson = $version->getPageJson();
 
         // Normalize the JSON structures for comparison (sort keys to handle property order differences)
-        $normalizedDraft = JsonNormalizer::normalize($draftJson, JSON_PRETTY_PRINT);
+        $normalizedDraft = JsonNormalizer::normalize($this->withoutFieldsIfLegacy($draftJson, $versionJson), JSON_PRETTY_PRINT);
         $normalizedVersion = JsonNormalizer::normalize($versionJson, JSON_PRETTY_PRINT);
 
         $result = [
@@ -793,6 +832,7 @@ class PageVersionService extends BaseService
                 'url' => $page->getUrl(),
                 'parent_page_id' => $page->getParentPage()?->getId(),
                 'is_headless' => $page->isHeadless(),
+                'fields' => $this->pagesFieldsTranslationRepository->fetchFieldsByLanguageForPage($pageId, PageVersion::VERSIONED_PAGE_FIELDS),
                 'sections' => $sections
             ]
         ];

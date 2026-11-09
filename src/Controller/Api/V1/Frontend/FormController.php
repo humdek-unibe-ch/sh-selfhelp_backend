@@ -90,7 +90,7 @@ class FormController extends AbstractController
             // Validate form submission
             if ($isAuthenticated) {
                 // Authenticated user - full validation
-                $validationResult = $this->formValidationService->validateFormSubmission($pageId, $sectionId, $formData);
+                $validationResult = $this->formValidationService->validateFormSubmission($pageId, $sectionId, $formData, $request->files->count() > 0);
             } else {
                 // Anonymous user - public validation
                 $validationResult = $this->formValidationService->validatePublicPageAccess($pageId, $sectionId);
@@ -162,35 +162,35 @@ class FormController extends AbstractController
         if ($isMultipart) {
             // Handle direct file uploads from multipart form data
             foreach ($uploadedFiles as $fieldName => $uploadedFile) {
-                if ($this->formFileUploadService->isFileInputField($fieldName, $sectionId)) {
-                    try {
-                        // Ensure we have an array of files
-                        $files = is_array($uploadedFile) ? $uploadedFile : [$uploadedFile];
-                        
-                        // Process the uploaded files
-                        $processedFiles = $this->formFileUploadService->processUploadedFiles(
-                            [$fieldName => $files],
-                            $userId,
-                            $sectionId
-                        );
+                if (!$this->formFileUploadService->isFileInputField((string) $fieldName, (string) $sectionId)) {
+                    throw new \App\Exception\ServiceException(
+                        sprintf('Field "%s" is not a file upload field of this form', $fieldName),
+                        Response::HTTP_BAD_REQUEST
+                    );
+                }
 
-                        // Update the form data with file paths
-                        if (isset($processedFiles[$fieldName])) {
-                            $processedFormData[$fieldName] = is_array($processedFiles[$fieldName]) 
-                                ? json_encode($processedFiles[$fieldName])
-                                : $processedFiles[$fieldName];
-                        }
-                    } catch (\Exception $e) {
-                        // If file processing fails, log error but continue
-                        throw $e;
-                    }
+                // Ensure we have an array of files
+                $files = is_array($uploadedFile) ? $uploadedFile : [$uploadedFile];
+
+                // Process the uploaded files
+                $processedFiles = $this->formFileUploadService->processUploadedFiles(
+                    [$fieldName => $files],
+                    $userId,
+                    $sectionId
+                );
+
+                // Update the form data with file paths
+                if (isset($processedFiles[$fieldName])) {
+                    $processedFormData[$fieldName] = is_array($processedFiles[$fieldName])
+                        ? json_encode($processedFiles[$fieldName])
+                        : $processedFiles[$fieldName];
                 }
             }
         } else {
             // Handle JSON-based file uploads (matching by filename)
             foreach ($formData as $fieldName => $fieldValue) {
                 // Check if this field contains file information (JSON array of filenames)
-                if ($this->isFileField($fieldName, $fieldValue)) {
+                if ($this->isFileField($fieldName, $fieldValue, $sectionId)) {
                     try {
                         // Parse the JSON array of filenames
                         $fileNames = $this->parseFileNames($fieldValue);
@@ -233,12 +233,12 @@ class FormController extends AbstractController
      *
      * @param string $fieldName The field name
      * @param mixed $fieldValue The field value
+     * @param int $sectionId The form section ID
      * @return bool True if this is a file field
      */
-    private function isFileField(string $fieldName, mixed $fieldValue): bool
+    private function isFileField(string $fieldName, mixed $fieldValue, int $sectionId): bool
     {
-        // Check if field name suggests it's a file field
-        if (!$this->formFileUploadService->isFileInputField($fieldName, 0)) {
+        if (!$this->formFileUploadService->isFileInputField($fieldName, (string) $sectionId)) {
             return false;
         }
 
@@ -427,7 +427,7 @@ class FormController extends AbstractController
             }
 
             // Validate form update (submission checks + own_entries_only flag)
-            $validationResult = $this->formValidationService->validateFormUpdate($pageId, $sectionId, $formData);
+            $validationResult = $this->formValidationService->validateFormUpdate($pageId, $sectionId, $formData, $request->files->count() > 0);
             $sectionOwnEntriesOnly = (bool) ($validationResult['own_entries_only'] ?? true);
 
             // Record edit mode rule (issue #30): when the update explicitly

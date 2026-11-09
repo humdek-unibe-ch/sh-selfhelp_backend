@@ -10,12 +10,10 @@ namespace App\Controller\Api\V1\Admin;
 
 use App\Service\CMS\Admin\AdminAssetService;
 use App\Service\CMS\Admin\AssetExportImportService;
-use App\Service\CMS\Admin\AssetFolderAclService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
-use App\Exception\ServiceException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -24,7 +22,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Admin Asset Controller
- * 
+ *
  * Handles asset management operations for admin interface
  */
 class AdminAssetController extends AbstractController
@@ -34,54 +32,14 @@ class AdminAssetController extends AbstractController
     public function __construct(
         private readonly AdminAssetService $adminAssetService,
         private readonly AssetExportImportService $assetExportImportService,
-        private readonly AssetFolderAclService $assetFolderAclService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService
     ) {
     }
 
     /**
-     * List every asset folder with its open-access flag.
+     * Get all assets with pagination, search and an optional group filter
      *
-     * @route /admin/assets/folders
-     * @method GET
-     */
-    public function getAssetFolders(): JsonResponse
-    {
-        try {
-            $result = ['folders' => $this->assetFolderAclService->listFolders()];
-            return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/asset_folders_envelope');
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatThrowable($e);
-        }
-    }
-
-    /**
-     * Toggle open access on a folder. Open access makes every asset in the
-     * folder readable by everyone, including anonymous callers.
-     *
-     * @route /admin/assets/folders/{folder}/open-access
-     * @method PUT
-     */
-    public function updateAssetFolderOpenAccess(string $folder, Request $request): JsonResponse
-    {
-        try {
-            $data = $this->validateRequest($request, 'requests/admin/update_asset_folder_open_access', $this->jsonSchemaValidationService);
-
-            $result = $this->assetFolderAclService->setFolderOpenAccess(
-                $folder,
-                (bool) ($data['is_open_access'] ?? false)
-            );
-
-            return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/asset_folder_envelope');
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatThrowable($e);
-        }
-    }
-
-    /**
-     * Get all assets with pagination and search
-     * 
      * @route /admin/assets
      * @method GET
      */
@@ -91,9 +49,16 @@ class AdminAssetController extends AbstractController
             $page = max(1, (int) $request->query->get('page', 1));
             $pageSize = max(1, min(1000, (int) $request->query->get('pageSize', 100)));
             $search = $request->query->get('search');
-            $folder = $request->query->get('folder');
+            $groupId = $request->query->get('group_id');
+            $folderId = $request->query->get('folder_id');
 
-            $result = $this->adminAssetService->getAllAssets($page, $pageSize, $search, $folder);
+            $result = $this->adminAssetService->getAllAssets(
+                $page,
+                $pageSize,
+                is_string($search) && $search !== '' ? $search : null,
+                is_string($groupId) && ctype_digit($groupId) ? (int) $groupId : null,
+                is_string($folderId) && ctype_digit($folderId) ? (int) $folderId : null
+            );
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/assets_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
@@ -102,7 +67,7 @@ class AdminAssetController extends AbstractController
 
     /**
      * Get asset by ID
-     * 
+     *
      * @route /admin/assets/{assetId}
      * @method GET
      */
@@ -118,19 +83,18 @@ class AdminAssetController extends AbstractController
 
     /**
      * Upload/Create new asset(s) - supports single or multiple files
-     * 
+     *
      * @route /admin/assets
      * @method POST
      */
     public function createAsset(Request $request): JsonResponse
     {
         try {
-            // Validate the form data structure
-            $formData = $this->validateAssetFormData($request);
-            
+            $formData = $this->validateAssetFormData($request, 'requests/admin/create_assets');
+
             $files = $request->files->get('files', []);
             $singleFile = $request->files->get('file');
-            
+
             // Handle both single file and multiple files
             if ($singleFile) {
                 $files = [$singleFile];
@@ -148,43 +112,162 @@ class AdminAssetController extends AbstractController
                 return $this->responseFormatter->formatError('At least one file is required', Response::HTTP_BAD_REQUEST);
             }
 
-            $data = [
-                'folder' => $formData['folder'] ?? null,
-                'file_name' => $formData['file_name'] ?? null,
-                'file_names' => $formData['file_names'] ?? []
-            ];
-
-            $overwrite = (bool) ($formData['overwrite'] ?? false);
+            $data = $this->assetData($formData);
 
             if (count($uploadedFiles) === 1) {
-                // Single file upload
-                $asset = $this->adminAssetService->createAsset($uploadedFiles[0], $data, $overwrite);
+                $asset = $this->adminAssetService->createAsset($uploadedFiles[0], $data);
                 return $this->responseFormatter->formatSuccess(
                     $asset,
                     'responses/admin/assets/asset_envelope',
                     Response::HTTP_CREATED
                 );
-            } else {
-                // Multiple file upload
-                $result = $this->adminAssetService->createMultipleAssets($uploadedFiles, $data, $overwrite);
-                
-                $statusCode = $result['failed_uploads'] > 0 ? 
-                    Response::HTTP_PARTIAL_CONTENT : 
-                    Response::HTTP_CREATED;
-                
-                return $this->responseFormatter->formatSuccess(
-                    $result,
-                    'responses/admin/assets/assets_upload_envelope',
-                    $statusCode
-                );
             }
-        } catch (RequestValidationException $e) {
-            return $this->responseFormatter->formatError(
-                'Validation failed',
-                Response::HTTP_BAD_REQUEST,
-                null,
-                $e->getValidationErrors()
+
+            $result = $this->adminAssetService->createMultipleAssets($uploadedFiles, $data);
+
+            $statusCode = $result['failed_uploads'] > 0 ?
+                Response::HTTP_PARTIAL_CONTENT :
+                Response::HTTP_CREATED;
+
+            return $this->responseFormatter->formatSuccess(
+                $result,
+                'responses/admin/assets/assets_upload_envelope',
+                $statusCode
             );
+        } catch (RequestValidationException $e) {
+            return $this->validationError($e);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Edit an asset (name, alt, groups) and optionally replace its file under
+     * the same uuid. Multipart, so it is a POST rather than a PUT.
+     *
+     * @route /admin/assets/{assetId}
+     * @method POST
+     */
+    public function updateAsset(int $assetId, Request $request): JsonResponse
+    {
+        try {
+            $formData = $this->validateAssetFormData($request, 'requests/admin/update_asset');
+            $file = $request->files->get('file');
+
+            $asset = $this->adminAssetService->updateAsset(
+                $assetId,
+                $this->assetData($formData),
+                $file instanceof UploadedFile ? $file : null
+            );
+
+            return $this->responseFormatter->formatSuccess($asset, 'responses/admin/assets/asset_envelope');
+        } catch (RequestValidationException $e) {
+            return $this->validationError($e);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Add or remove groups on several assets at once.
+     *
+     * @route /admin/assets/bulk-groups
+     * @method POST
+     */
+    public function bulkUpdateAssetGroups(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/bulk_update_asset_groups', $this->jsonSchemaValidationService);
+
+            $result = $this->adminAssetService->bulkUpdateGroups(
+                $this->toIntList($data['asset_ids'] ?? []),
+                $this->toIntList($data['group_ids'] ?? []),
+                is_string($data['mode'] ?? null) ? $data['mode'] : ''
+            );
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/assets_bulk_groups_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Move several assets into one folder (`folder_id` null = the top level).
+     *
+     * @route /admin/assets/bulk-folder
+     * @method POST
+     */
+    public function bulkMoveAssetsToFolder(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/bulk_move_assets', $this->jsonSchemaValidationService);
+            $folderId = $data['folder_id'] ?? null;
+            $result = $this->adminAssetService->bulkMoveToFolder($this->toIntList($data['asset_ids'] ?? []), is_int($folderId) ? $folderId : null);
+
+            return $this->responseFormatter->formatSuccess($result);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Delete several assets at once.
+     *
+     * @route /admin/assets/bulk-delete
+     * @method POST
+     */
+    public function bulkDeleteAssets(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/bulk_delete_assets', $this->jsonSchemaValidationService);
+            $result = $this->adminAssetService->bulkDeleteAssets($this->toIntList($data['asset_ids'] ?? []));
+
+            return $this->responseFormatter->formatSuccess($result);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * @route /admin/asset-folders
+     * @method GET
+     */
+    public function getAssetFolders(): JsonResponse
+    {
+        try {
+            return $this->responseFormatter->formatSuccess($this->adminAssetService->getFolders(), 'responses/admin/assets/asset_folders_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * @route /admin/asset-folders (POST) and /admin/asset-folders/{folderId} (PUT)
+     */
+    public function saveAssetFolder(Request $request, ?int $folderId = null): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/save_asset_folder', $this->jsonSchemaValidationService);
+            $folders = $this->adminAssetService->saveFolder(
+                $folderId,
+                is_string($data['name'] ?? null) ? $data['name'] : '',
+                is_int($data['parent_id'] ?? null) ? $data['parent_id'] : null
+            );
+
+            return $this->responseFormatter->formatSuccess($folders, 'responses/admin/assets/asset_folders_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * @route /admin/asset-folders/{folderId}
+     * @method DELETE
+     */
+    public function deleteAssetFolder(int $folderId): JsonResponse
+    {
+        try {
+            return $this->responseFormatter->formatSuccess($this->adminAssetService->deleteFolder($folderId), 'responses/admin/assets/asset_folders_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -192,7 +275,7 @@ class AdminAssetController extends AbstractController
 
     /**
      * Delete asset
-     * 
+     *
      * @route /admin/assets/{assetId}
      * @method DELETE
      */
@@ -200,7 +283,7 @@ class AdminAssetController extends AbstractController
     {
         try {
             $this->adminAssetService->deleteAsset($assetId);
-            
+
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
@@ -217,9 +300,8 @@ class AdminAssetController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/export_assets', $this->jsonSchemaValidationService);
-            $folders = $this->toStringList($data['folders'] ?? []);
 
-            $zipPath = $this->assetExportImportService->exportToZipFile($folders);
+            $zipPath = $this->assetExportImportService->exportToZipFile($this->toIntList($data['asset_ids'] ?? []));
 
             $zipContent = (string) file_get_contents($zipPath);
             @unlink($zipPath);
@@ -232,15 +314,14 @@ class AdminAssetController extends AbstractController
                     'Content-Disposition' => 'attachment; filename="asset_export.zip"',
                 ]
             );
-        } catch (ServiceException $e) {
-            return $this->responseFormatter->formatThrowable($e);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
     }
 
     /**
-     * Import assets from an uploaded ZIP bundle
+     * Import assets from an uploaded ZIP bundle. Never overwrites: an asset
+     * whose uuid already exists is skipped.
      *
      * @route /admin/assets/import
      * @method POST
@@ -253,9 +334,7 @@ class AdminAssetController extends AbstractController
                 return $this->responseFormatter->formatError('A bundle file is required', Response::HTTP_BAD_REQUEST);
             }
 
-            $overwrite = $request->request->getBoolean('overwrite', false);
-
-            $result = $this->assetExportImportService->importFromZip($file, $overwrite);
+            $result = $this->assetExportImportService->importFromZip($file);
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/assets_import_envelope');
         } catch (\Exception $e) {
@@ -264,72 +343,105 @@ class AdminAssetController extends AbstractController
     }
 
     /**
-     * Validate asset form data against JSON schema
+     * Map validated form fields to the service's data keys. `group_ids` and
+     * `role_ids` are comma-separated strings because multipart cannot send an
+     * empty list: an empty string means "none" (no groups = public), an absent
+     * field means "unchanged" (update) or the default (create: public, managed
+     * by the uploader's roles). `folder_id` '' = top level.
      *
-     * @param Request $request
+     * @param array<string, mixed> $formData
+     * @return array<string, mixed>
+     */
+    private function assetData(array $formData): array
+    {
+        $data = [];
+        foreach (['name', 'alt', 'folder_id'] as $key) {
+            if (array_key_exists($key, $formData)) {
+                $data[$key] = $formData[$key];
+            }
+        }
+
+        foreach (['group_ids', 'role_ids'] as $key) {
+            if (array_key_exists($key, $formData)) {
+                $raw = is_string($formData[$key]) ? $formData[$key] : '';
+                $data[$key] = $raw === '' ? [] : array_map('intval', explode(',', $raw));
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Validate the multipart (non-file) fields against a JSON schema.
+     *
      * @return array<string, mixed>
      * @throws RequestValidationException
      */
-    private function validateAssetFormData(Request $request): array
+    private function validateAssetFormData(Request $request, string $schema): array
     {
-        // Extract form data (non-file fields) for validation
         $formData = [];
-        
-        // Add optional string fields only if they have values
-        if ($request->request->has('folder') && $request->request->get('folder') !== '') {
-            $formData['folder'] = $request->request->get('folder');
-        }
-        
-        if ($request->request->has('file_name') && $request->request->get('file_name') !== '') {
-            $formData['file_name'] = $request->request->get('file_name');
-        }
-        
-        // Handle file_names array (InputBag::all() returns the array under the key)
-        $fileNames = $request->request->all('file_names');
-        if (!empty($fileNames)) {
-            $formData['file_names'] = array_filter($fileNames, function ($name) {
-                return !empty($name);
-            });
-        }
-        
-        // Always include overwrite as boolean
-        $formData['overwrite'] = $request->request->getBoolean('overwrite', false);
 
-        // Add file presence information for validation
+        // The uuid is the file name, so a sent `file_name` is not read.
+        foreach (['name', 'alt', 'group_ids', 'role_ids', 'folder_id'] as $key) {
+            if ($request->request->has($key)) {
+                $formData[$key] = (string) $request->request->get($key);
+            }
+        }
+
+        // File presence placeholders for schema validation
         $files = $request->files->get('files', []);
         $singleFile = $request->files->get('file');
-        
         if ($singleFile) {
-            $formData['file'] = 'binary_file_data'; // Placeholder for schema validation
+            $formData['file'] = 'binary_file_data';
         } elseif (!empty($files) && is_array($files)) {
-            $formData['files'] = array_fill(0, count($files), 'binary_file_data'); // Placeholder array
+            $formData['files'] = array_fill(0, count($files), 'binary_file_data');
         }
 
-        // Validate against schema
         try {
             $validationErrors = $this->jsonSchemaValidationService->validate(
-                $this->convertToObject($formData), 
-                'requests/admin/create_assets'
+                $this->convertToObject($formData),
+                $schema
             );
-
-            if (!empty($validationErrors)) {
-                throw new RequestValidationException(
-                    $validationErrors,
-                    'requests/admin/create_assets',
-                    $formData,
-                    'Asset form validation failed'
-                );
-            }
         } catch (\TypeError $e) {
-            // Handle schema validation errors more gracefully
             throw new RequestValidationException(
                 ['Schema validation error: ' . $e->getMessage()],
-                'requests/admin/create_assets',
+                $schema,
                 $formData,
                 'Schema validation failed'
             );
         }
 
+        if (!empty($validationErrors)) {
+            throw new RequestValidationException(
+                $validationErrors,
+                $schema,
+                $formData,
+                'Asset form validation failed'
+            );
+        }
+
         return $formData;
     }
-} 
+
+    private function validationError(RequestValidationException $e): JsonResponse
+    {
+        return $this->responseFormatter->formatError(
+            'Validation failed',
+            Response::HTTP_BAD_REQUEST,
+            null,
+            $e->getValidationErrors()
+        );
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function toIntList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_map('intval', array_filter($value, 'is_int')));
+    }
+}

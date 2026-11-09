@@ -191,12 +191,14 @@ A single migration touches up to four tables:
 
    | group | select | insert | update | delete |
    |---|---|---|---|---|
-   | `admin`     | 1 | 0 | 1 | 0 |
-   | `therapist` | 1 | 0 | 0 | 0 |
-   | `subject`   | 1 | 0 | 0 | 0 |
+   | `researcher` | 1 | 0 | 0 | 0 |
+   | `subject`    | 1 | 0 | 0 | 0 |
 
-   Anonymous visitors are handled by the `is_open_access` flag, not by
-   ACL rows.
+   Admins need no row: the admin role bypasses page ACLs (there is no
+   `admin` group since core 0.1.43; older seed migrations still write rows
+   for it and `therapist`, which `Version20261103112133` renames to
+   `researcher` or removes). Anonymous visitors are handled by the
+   `is_open_access` flag, not by ACL rows.
 
 4. **`sections` + `rel_pages_sections` + `rel_sections_hierarchy` + `sections_fields_translation`**:
    - one row per section

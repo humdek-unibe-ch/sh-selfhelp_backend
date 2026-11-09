@@ -8,6 +8,7 @@
 namespace App\Service\CMS;
 
 use App\Entity\SectionsFieldsTranslation;
+use App\Service\CMS\Common\StyleNames;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -44,7 +45,7 @@ class FormFieldKeyResolver
      * Per-request memo. The key is the table name; a numeric form section id
      * ("123") is coerced to an int array key by PHP, hence the int|string key.
      *
-     * @var array<int|string, array{nameToKey: array<string,string>, keyToName: array<string,string>}>
+     * @var array<int|string, array{nameToKey: array<string,string>, keyToName: array<string,string>, fileKeys: array<string,true>}>
      */
     private array $cache = [];
 
@@ -74,7 +75,19 @@ class FormFieldKeyResolver
     }
 
     /**
-     * @return array{nameToKey: array<string,string>, keyToName: array<string,string>}
+     * True when `$nameOrKey` (human input name or `section_<id>` key) belongs to
+     * a `file-input` section of the form table.
+     */
+    public function isFileInput(string $tableName, string $nameOrKey): bool
+    {
+        $map = $this->buildMap($tableName);
+        $key = $map['nameToKey'][$nameOrKey] ?? $nameOrKey;
+
+        return isset($map['fileKeys'][$key]);
+    }
+
+    /**
+     * @return array{nameToKey: array<string,string>, keyToName: array<string,string>, fileKeys: array<string,true>}
      */
     private function buildMap(string $tableName): array
     {
@@ -82,7 +95,7 @@ class FormFieldKeyResolver
             return $this->cache[$tableName];
         }
 
-        $empty = ['nameToKey' => [], 'keyToName' => []];
+        $empty = ['nameToKey' => [], 'keyToName' => [], 'fileKeys' => []];
 
         // Only numeric form *section ids* carry the section-id key contract.
         if ($tableName === '' || !ctype_digit($tableName)) {
@@ -94,11 +107,13 @@ class FormFieldKeyResolver
             return $this->cache[$tableName] = $empty;
         }
 
-        /** @var list<array{sectionId: mixed, content: mixed}> $rows */
+        /** @var list<array{sectionId: mixed, content: mixed, styleName: mixed}> $rows */
         $rows = $this->entityManager->createQueryBuilder()
-            ->select('IDENTITY(t.section) AS sectionId', 't.content AS content')
+            ->select('IDENTITY(t.section) AS sectionId', 't.content AS content', 'st.name AS styleName')
             ->from(SectionsFieldsTranslation::class, 't')
             ->join('t.field', 'f')
+            ->join('t.section', 's')
+            ->leftJoin('s.style', 'st')
             ->where('t.section IN (:ids)')
             ->andWhere('f.name = :nameField')
             ->setParameter('ids', $descendantIds)
@@ -108,6 +123,7 @@ class FormFieldKeyResolver
 
         $nameToKey = [];
         $keyToName = [];
+        $fileKeys = [];
         foreach ($rows as $row) {
             $sectionId = is_numeric($row['sectionId']) ? (int) $row['sectionId'] : 0;
             $content = is_scalar($row['content']) ? (string) $row['content'] : '';
@@ -115,6 +131,9 @@ class FormFieldKeyResolver
                 continue;
             }
             $fieldKey = self::FIELD_KEY_PREFIX . $sectionId;
+            if ($row['styleName'] === StyleNames::STYLE_FILE_INPUT) {
+                $fileKeys[$fieldKey] = true;
+            }
             // First name wins per section; first section wins per name (CMS
             // convention keeps input names unique within a form).
             if (!isset($keyToName[$fieldKey])) {
@@ -125,7 +144,7 @@ class FormFieldKeyResolver
             }
         }
 
-        return $this->cache[$tableName] = ['nameToKey' => $nameToKey, 'keyToName' => $keyToName];
+        return $this->cache[$tableName] = ['nameToKey' => $nameToKey, 'keyToName' => $keyToName, 'fileKeys' => $fileKeys];
     }
 
     /**

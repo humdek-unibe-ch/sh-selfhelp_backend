@@ -341,7 +341,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @param list<int>|null $accessibleGroupIds
      */
-    private function createVisibleUsersQueryBuilder(?array $accessibleGroupIds, ?string $search, ?int $groupId = null): QueryBuilder
+    private function createVisibleUsersQueryBuilder(?array $accessibleGroupIds, ?string $search, ?int $groupId = null, ?int $roleId = null): QueryBuilder
     {
         $qb = $this->getEntityManager()->createQueryBuilder()
             ->from(User::class, 'u')
@@ -367,6 +367,13 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 ->innerJoin('fug.group', 'fg')
                 ->andWhere('fg.id = :filterGroupId')
                 ->setParameter('filterGroupId', $groupId);
+        }
+
+        // Explicit role filter (?id_roles=), same idea as the group filter.
+        if ($roleId !== null) {
+            $qb->innerJoin('u.roles', 'fr')
+                ->andWhere('fr.id = :filterRoleId')
+                ->setParameter('filterRoleId', $roleId);
         }
 
         if ($search) {
@@ -469,9 +476,9 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      * @param list<int>|null $accessibleGroupIds
      * @return list<User>
      */
-    public function findVisibleUsersForExport(?array $accessibleGroupIds, ?string $search, ?string $statusBucket, ?int $groupId): array
+    public function findVisibleUsersForExport(?array $accessibleGroupIds, ?string $search, ?string $statusBucket, ?int $groupId, ?int $roleId = null): array
     {
-        $idQb = $this->createVisibleUsersQueryBuilder($accessibleGroupIds, $search, $groupId)
+        $idQb = $this->createVisibleUsersQueryBuilder($accessibleGroupIds, $search, $groupId, $roleId)
             ->select('DISTINCT u.id');
 
         if ($statusBucket !== null) {
@@ -511,7 +518,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      * @param int $resourceTypeId Resource type ID for groups
      * @return array{users: list<array<string, mixed>>, pagination: array<string, mixed>} Users with their group membership info
      */
-    public function getAccessibleUsersForUser(int $userId, int $resourceTypeId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $statusBucket = null, ?int $groupId = null): array
+    public function getAccessibleUsersForUser(int $userId, int $resourceTypeId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $statusBucket = null, ?int $groupId = null, ?int $roleId = null): array
     {
         // First, get all groups that the user can access
         $accessibleGroupIds = $this->getAccessibleGroupIdsForUser($userId, $resourceTypeId);
@@ -525,7 +532,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
 
         // Step 1: Build a paginated query for DISTINCT user IDs.
         // No fetch-join of collections + setMaxResults — that would truncate the result.
-        $idQb = $this->createVisibleUsersQueryBuilder($accessibleGroupIds, $search, $groupId)
+        $idQb = $this->createVisibleUsersQueryBuilder($accessibleGroupIds, $search, $groupId, $roleId)
             ->select('DISTINCT u.id');
 
         if ($statusBucket !== null) {
@@ -590,12 +597,12 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @return array{users: list<array<string, mixed>>, pagination: array<string, mixed>} Formatted users
      */
-    public function getAllUsersForAdmin(int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $statusBucket = null, ?int $groupId = null): array
+    public function getAllUsersForAdmin(int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $statusBucket = null, ?int $groupId = null, ?int $roleId = null): array
     {
         // Step 1: Build a paginated query for DISTINCT user IDs.
         // We must NOT fetch-join collections here, otherwise setMaxResults() limits
         // the cartesian-product rows instead of the user rows.
-        $idQb = $this->createVisibleUsersQueryBuilder(null, $search, $groupId)
+        $idQb = $this->createVisibleUsersQueryBuilder(null, $search, $groupId, $roleId)
             ->select('DISTINCT u.id');
 
         if ($statusBucket !== null) {
@@ -800,16 +807,17 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      */
     public function getUserPermissionsForResources(int $userId, int $resourceTypeId, ?array $resourceIds = null): array
     {
+        // DQL has no BIT_OR aggregate: OR the role rows together in PHP, as
+        // getUserPermissionsForResource() does.
         $qb = $this->createQueryBuilder('rda')
-            ->select('rda.resourceId, BIT_OR(rda.crudPermissions) as permissions')
+            ->select('rda.resourceId, rda.crudPermissions as permissions')
             ->innerJoin('rda.role', 'r')
             ->innerJoin('r.users', 'u')
             ->where('u.id = :userId')
             ->andWhere('rda.idResourceTypes = :resourceTypeId')
             ->andWhere('rda.crudPermissions > 0')
             ->setParameter('userId', $userId)
-            ->setParameter('resourceTypeId', $resourceTypeId)
-            ->groupBy('rda.resourceId');
+            ->setParameter('resourceTypeId', $resourceTypeId);
 
         if ($resourceIds !== null) {
             $qb->andWhere('rda.resourceId IN (:resourceIds)')
@@ -822,7 +830,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         // Convert to associative array
         $permissions = [];
         foreach ($results as $result) {
-            $permissions[(int) $result['resourceId']] = (int) $result['permissions'];
+            $resourceId = (int) $result['resourceId'];
+            $permissions[$resourceId] = ($permissions[$resourceId] ?? 0) | (int) $result['permissions'];
         }
 
         return $permissions;

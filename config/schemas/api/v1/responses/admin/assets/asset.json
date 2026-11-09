@@ -4,15 +4,125 @@
   "title": "Asset Response",
   "description": "Response schema for single asset",
   "properties": {
-    "id": { "type": "integer", "description": "Asset ID" },
-    "asset_type": { "type": "string", "description": "Asset type" },
-    "folder": { "type": ["string", "null"], "description": "Asset folder" },
-    "file_name": { "type": ["string", "null"], "description": "File name" },
-    "file_path": { "type": "string", "description": "Logical storage key (uploads/assets/<folder>/<name>). NOT a fetchable path - assets live outside the document root. Use `url` to fetch bytes." },
-    "url": { "type": "string", "description": "ACL-enforced delivery URL (/cms-api/v1/assets/<folder>/<name>). The only way to fetch asset bytes; returns 403 when the caller may not read the folder." }
+    "id": {
+      "type": "integer",
+      "description": "Asset ID"
+    },
+    "uuid": {
+      "type": "string",
+      "description": "Stable public identifier; survives file replacement"
+    },
+    "asset_type": {
+      "type": "string",
+      "description": "Asset type"
+    },
+    "name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Editable label; the uploaded file name by default"
+    },
+    "file_path": {
+      "type": "string",
+      "description": "Logical storage key (uploads/assets/<uuid>). NOT a fetchable path - use `url`."
+    },
+    "url": {
+      "type": "string",
+      "description": "Delivery URL (/cms-api/v1/assets/<uuid>). The only way to fetch asset bytes; 403 when the asset has groups and the caller is in none of them."
+    },
+    "mime_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "MIME type recorded at upload"
+    },
+    "size": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "File size in bytes"
+    },
+    "alt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Default alt text; a section's own alt field overrides it"
+    },
+    "folder_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Folder (organisation only); null = top level"
+    },
+    "roles": {
+      "type": "array",
+      "description": "Roles that may manage the asset in the CMS (role_data_access, resource type asset)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "groups": {
+      "type": "array",
+      "description": "Groups that may view the asset; empty = public",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
   },
-  "required": ["id", "asset_type", "folder", "file_name", "file_path", "url"],
+  "required": [
+    "id",
+    "uuid",
+    "asset_type",
+    "name",
+    "file_path",
+    "url",
+    "mime_type",
+    "size",
+    "alt",
+    "folder_id",
+    "roles",
+    "groups",
+    "created_at",
+    "updated_at"
+  ],
   "additionalProperties": false
 }
-
-

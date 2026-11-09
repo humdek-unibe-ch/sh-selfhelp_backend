@@ -215,6 +215,26 @@ class UserRepository extends ServiceEntityRepository
 
 
     /**
+     * Get all user's group ids
+     *
+     * @return list<int>
+     */
+    public function getUserGroupIds(int $userId): array
+    {
+        /** @var list<array{id: int|string}> $results */
+        $results = $this->createQueryBuilder('u')
+            ->select('g.id')
+            ->innerJoin('u.usersGroups', 'ug')
+            ->innerJoin('ug.group', 'g')
+            ->where('u.id = :userId')
+            ->setParameter('userId', $userId)
+            ->getQuery()
+            ->getScalarResult();
+
+        return array_map('intval', array_column($results, 'id'));
+    }
+
+    /**
      * Get all user's group names
      *
      * @param int $userId

@@ -34,4 +34,36 @@ final class AdminAssetPermissionTest extends QaWebTestCase
     {
         $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/assets/2147483600');
     }
+
+    public function testAssetEditIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/2147483600');
+    }
+
+    public function testAssetBulkGroupsIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-groups');
+    }
+
+    public function testAssetBulkMoveIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-folder');
+    }
+
+    public function testAssetBulkDeleteIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-delete');
+    }
+
+    public function testAssetFoldersListEnforcesAdminOnlyMatrix(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', '/cms-api/v1/admin/asset-folders');
+    }
+
+    public function testAssetFolderWritesAreForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/asset-folders');
+        $this->assertForbiddenForNonAdmins('PUT', '/cms-api/v1/admin/asset-folders/2147483600');
+        $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/asset-folders/2147483600');
+    }
 }

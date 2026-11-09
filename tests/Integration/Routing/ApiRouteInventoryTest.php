@@ -73,6 +73,9 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'form_submit_v1',
         'form_update_v1',
         'form_delete_v1',
+        // Form file delivery: owner or READ on the form's data table, checked per record.
+        'form_files_serve_v1',
+        'form_files_zip_v1',
         // Public frontend reads (page ACL handled per-page; lookups/languages
         // and CSS classes are public catalogue data).
         'frontend_css_classes_get_all_v1',
@@ -106,11 +109,11 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         // migrations/Version20260608174905.php.
         'manager_system_update_pending_v1',
         'manager_system_update_status_v1',
-        // ACL-enforced asset delivery: access is resource-side (per folder, in
-        // AssetFolderAclService::assertCanRead) so anonymous callers can read
-        // open-access folders. Denial paths are covered by AssetDeliveryAclTest;
-        // seeded by migrations/Version20260728091825.php.
-        'assets_serve_v1',
+        // ACL-enforced asset delivery: access is resource-side (per asset, in
+        // AssetAccessService::assertCanRead) so anonymous callers can read
+        // guest-group assets. Denial paths are covered by AssetDeliveryAclTest;
+        // seeded by migrations/Version20261103112133.php.
+        'assets_serve_by_uuid_v1',
     ];
 
     public function testEveryDatabaseRouteResolvesToARealControllerMethod(): void

@@ -1,34 +1,46 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Asset Folders Response Envelope",
-  "description": "Standard API response envelope for the list of asset folders and their open-access flags",
+  "description": "All asset folders as a flat list; build the tree from parent_id",
   "allOf": [
-    { "$ref": "../../common/_response_envelope.json" }
+    {
+      "$ref": "../../common/_response_envelope.json"
+    }
   ],
   "properties": {
     "data": {
-      "type": "object",
-      "properties": {
-        "folders": {
-          "type": "array",
-          "description": "Every known asset folder, ordered by name",
-          "items": {
-            "type": "object",
-            "properties": {
-              "folder": { "type": "string", "description": "Folder name" },
-              "is_open_access": {
-                "type": "boolean",
-                "description": "true = readable by everyone including anonymous callers; false = closed-by-default"
-              }
-            },
-            "required": ["folder", "is_open_access"],
-            "additionalProperties": false
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "asset_count": {
+            "type": "integer",
+            "description": "Assets directly in this folder that the caller may manage"
           }
-        }
-      },
-      "required": ["folders"],
-      "additionalProperties": false
+        },
+        "required": [
+          "id",
+          "name",
+          "parent_id",
+          "asset_count"
+        ],
+        "additionalProperties": false
+      }
     }
   },
-  "required": ["data"]
+  "required": [
+    "data"
+  ]
 }

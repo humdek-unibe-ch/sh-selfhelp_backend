@@ -12,6 +12,7 @@ use App\Entity\DataRow;
 use App\Entity\DataTable;
 use App\Entity\Lookup;
 use App\Entity\ScheduledJob;
+use App\Repository\AssetRepository;
 use App\Repository\ScheduledJobRepository;
 use App\Entity\ScheduledJobRecipient;
 use App\Entity\ScheduledJobReminder;
@@ -22,6 +23,7 @@ use App\Plugin\ScheduledJob\PluginScheduledJobRegistry;
 use App\Service\Auth\MailHtmlRenderer;
 use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\Admin\AssetStorageService;
 use App\Service\CMS\CmsPreferenceService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -52,7 +54,28 @@ class JobSchedulerService extends BaseService
         private readonly PluginScheduledJobDeliveryGate $pluginDeliveryGate,
         private readonly ScheduledJobRepository $scheduledJobRepository,
         private readonly MailHtmlRenderer $mailHtmlRenderer,
+        private readonly AssetRepository $assetRepository,
+        private readonly AssetStorageService $assetStorage,
     ) {
+    }
+
+    /**
+     * Resolve an attachment given as an asset URL to the stored file and its
+     * display name. Returns the inputs unchanged when it is not an asset.
+     *
+     * @return array{0: string, 1: string|null}
+     */
+    private function resolveAssetAttachment(string $reference, ?string $filename): array
+    {
+        $uuid = $this->assetStorage->uuidFromReference($reference);
+        $asset = $uuid !== null ? $this->assetRepository->findOneByUuid($uuid) : null;
+        if ($asset === null) {
+            return [$reference, $filename];
+        }
+
+        $path = $this->assetStorage->resolveForDelivery((string) $asset->getFilePath());
+
+        return [$path ?? $reference, $this->assetStorage->downloadName($asset)];
     }
 
     /**
@@ -944,9 +967,16 @@ class JobSchedulerService extends BaseService
                     continue;
                 }
                 $path = $attachment['path'] ?? '';
+                $filename = $attachment['filename'] ?? null;
+                $filename = is_string($filename) ? $filename : null;
+                if (is_string($path) && $path !== '' && !is_file($path)) {
+                    // Action configs store the asset delivery URL; resolve it to
+                    // the stored file (assets live outside the docroot under a
+                    // uuid, so the URL is never a filesystem path).
+                    [$path, $filename] = $this->resolveAssetAttachment($path, $filename);
+                }
                 if (is_string($path) && $path !== '' && is_file($path)) {
-                    $filename = $attachment['filename'] ?? null;
-                    $email->attachFromPath($path, is_string($filename) ? $filename : null);
+                    $email->attachFromPath($path, $filename);
                 }
             }
 

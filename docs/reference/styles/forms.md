@@ -279,11 +279,11 @@ A single boolean checkbox is not an option catalog and does not use `option_labe
 
 **Purpose.** Mantine `FileInput` (web) / media picker (mobile) — upload files.
 
-**Administrators.** Let users attach files. Set accepted types, max size, max count, multiple, and (web) drag-and-drop.
+**Administrators.** Let users attach files. Set accepted types, max size, max count, multiple, and (web) drag-and-drop. Uploaded files are private by default; turn on **Files Public** (`files_public`) only when the files are meant for everyone (e.g. photos on a public page). The switch applies to all files of the field, old and new.
 
-**Developers.** Renders `<FileInput>` on web. On mobile (`components/styles/forms/FileInput.tsx`) it uses `expo-image-picker` and enforces the `web_file_input_accept` / `web_file_input_max_size` constraints client-side before accepting the file (`_fileValidation.ts`). Always enforce server-side size/type/path validation on upload too (see the assets reference); generic non-image documents on mobile are a follow-up once `expo-document-picker` is added.
+**Developers.** Renders `<FileInput>` on web. On mobile (`components/styles/forms/FileInput.tsx`) it uses `expo-image-picker` and enforces the `web_file_input_accept` / `web_file_input_max_size` constraints client-side before accepting the file (`_fileValidation.ts`). Always enforce server-side size/type/path validation on upload too (see the assets reference); generic non-image documents on mobile are a follow-up once `expo-document-picker` is added. On submit the backend treats a field as a file upload only when its section style is `file-input` (any `name` works); a file sent under any other field name is rejected with `400`, never silently dropped. Uploaded files are private: they are stored outside the document root (`var/form-files/`) and readable only through `GET /cms-api/v1/forms/files/{record_id}/{field}` by the submitting user or users with READ on the form's data table, or by anyone when `files_public` is `1` (see the form submissions API reference).
 
-**Distinctive fields.** `label`, `name`, `description`, `placeholder`, `is_required`, `disabled`, `web_file_input_multiple`, `web_file_input_accept`, `web_file_input_clearable`, `web_file_input_max_size`, `web_file_input_max_files`, `web_file_input_drag_drop`, `web_left_icon` / `web_right_icon`.
+**Distinctive fields.** `label`, `name`, `description`, `placeholder`, `is_required`, `disabled`, `files_public`, `web_file_input_multiple`, `web_file_input_accept`, `web_file_input_clearable`, `web_file_input_max_size`, `web_file_input_max_files`, `web_file_input_drag_drop`, `web_left_icon` / `web_right_icon`.
 
 **Children.** No.
 

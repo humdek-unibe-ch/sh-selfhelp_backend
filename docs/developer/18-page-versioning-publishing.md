@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-23.
+Last verified: 2026-11-06.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 ## Overview
@@ -105,6 +105,15 @@ $hasChanges = $pageVersionService->hasUnpublishedChanges($pageId);
 
 **Stored in Published JSON:**
 - Page metadata (id, keyword, url, etc.)
+- Page settings `title`, `description`, `open_in_modal`, `modal_width`,
+  `modal_height` (`PageVersion::VERSIONED_PAGE_FIELDS`) under `page.fields`
+  as `name => {language id => content}`. A published page serves them from
+  the version, so editing them waits for Publish; the public page list (menu
+  labels) uses the published title and description too. Admin views and
+  preview read the live values. Versions published before 2026-11-06 have no
+  `page.fields`: their pages keep serving the live values, and the
+  unpublished-changes check and draft diff ignore the settings for them until
+  the next publish.
 - Section structure and hierarchy
 - Field configurations and properties
 - Translation content for all languages
@@ -242,7 +251,8 @@ private function createSectionWithId(array $sectionData): Section
 ```
 
 #### Limitations
-- **Scope**: Only restores sections, not page-level metadata (title, URL, settings)
+- **Scope**: Restores the sections and the versioned page settings (title,
+  description, modal); not the URL, routes, ACLs or other page properties
 - **Granularity**: Cannot restore individual fields or specific sections
 - **Relationships**: May break section-to-section relationships if parent sections are not restored
 

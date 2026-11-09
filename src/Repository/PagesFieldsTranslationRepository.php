@@ -209,6 +209,42 @@ class PagesFieldsTranslationRepository extends ServiceEntityRepository
     }
 
     /**
+     * The named fields of one page in every language, for the version snapshot.
+     *
+     * @param list<string> $fieldNames
+     * @return array<string, array<int, string>> field name => [language id => content]
+     */
+    public function fetchFieldsByLanguageForPage(int $pageId, array $fieldNames): array
+    {
+        if (empty($fieldNames)) {
+            return [];
+        }
+
+        $qb = $this->createQueryBuilder('pft')
+            ->select('f.name AS field_name, l.id AS language_id, pft.content')
+            ->innerJoin('pft.field', 'f')
+            ->innerJoin('pft.language', 'l')
+            ->where('IDENTITY(pft.page) = :pageId')
+            ->andWhere('f.name IN (:fieldNames)')
+            ->setParameter('pageId', $pageId)
+            ->setParameter('fieldNames', $fieldNames)
+            ->orderBy('f.name', 'ASC')
+            ->addOrderBy('l.id', 'ASC');
+
+        /** @var list<array{field_name: string, language_id: int|string, content: mixed}> $rows */
+        $rows = $qb->getQuery()->getResult();
+
+        $fields = [];
+        foreach ($rows as $row) {
+            if (is_scalar($row['content'])) {
+                $fields[$row['field_name']][(int) $row['language_id']] = (string) $row['content'];
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
      * Fetch page field translations with fallback to default language
      * Only fetches translations for fields with display=1 (title fields)
      *

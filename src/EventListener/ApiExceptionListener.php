@@ -9,6 +9,7 @@ namespace App\EventListener;
 
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
+use App\Service\Core\ApiRequestLoggerService;
 use App\Service\Core\ApiResponseFormatter;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -49,7 +50,7 @@ class ApiExceptionListener
             
             // In non-production environments, include the request data for debugging
             if ($this->kernel->getEnvironment() !== 'prod') {
-                $validationData['request_data'] = $exception->getRequestData();
+                $validationData['request_data'] = ApiRequestLoggerService::maskSecrets($exception->getRequestData());
             }
             
             $response = $this->apiResponseFormatter->formatError(
