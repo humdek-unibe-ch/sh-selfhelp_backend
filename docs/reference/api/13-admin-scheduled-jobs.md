@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-11-09.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -94,6 +94,14 @@ Each job includes:
 - `date_to_be_executed`
 - `date_executed`
 - `config`
+
+## Get Scheduled Job Stats
+
+**Endpoint:** `GET /cms-api/v1/admin/scheduled-jobs/stats` (permission `admin.scheduled_job.read`)
+
+Returns `{ total, queued, done, failed, deleted }` for all jobs, from one grouped
+query. It ignores the list filters. The status counts are independent (deleted
+jobs still count toward `total`), so they do not have to sum to `total`.
 
 ## Get One Scheduled Job
 

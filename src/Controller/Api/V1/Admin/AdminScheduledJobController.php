@@ -147,14 +147,7 @@ class AdminScheduledJobController extends AbstractController
 
             return $this->responseFormatter->formatSuccess($stats, 'responses/admin/scheduled_jobs/stats');
         } catch (\Exception $e) {
-            $statusCode = $e->getCode();
-            if ($statusCode < 100 || $statusCode > 599) {
-                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
-            }
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $statusCode
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
