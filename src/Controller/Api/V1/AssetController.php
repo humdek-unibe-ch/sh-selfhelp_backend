@@ -72,7 +72,7 @@ final class AssetController extends AbstractController
         // Authorize BEFORE touching the filesystem.
         $this->accessService->assertCanView($asset);
 
-        $absolutePath = $this->storage->resolveForDelivery((string) $asset->getFilePath());
+        $absolutePath = $this->storage->resolveForDelivery($asset->getUuid());
         if ($absolutePath === null) {
             return new Response('Asset not found', Response::HTTP_NOT_FOUND);
         }

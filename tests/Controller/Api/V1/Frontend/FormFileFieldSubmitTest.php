@@ -37,7 +37,7 @@ final class FormFileFieldSubmitTest extends QaWebTestCase
 
     private EntityManagerInterface $em;
     private PageSectionFactory $pages;
-    private string $projectDir;
+    private string $formFilesRoot;
 
     /** @var list<string> */
     private array $storedPaths = [];
@@ -54,14 +54,15 @@ final class FormFileFieldSubmitTest extends QaWebTestCase
             $this->service(LookupService::class),
             $this->service(CacheService::class),
         );
-        $projectDir = self::getContainer()->getParameter('kernel.project_dir');
-        $this->projectDir = is_string($projectDir) ? $projectDir : '';
+        $formFiles = self::getContainer()->get(\App\Service\CMS\FormFileUploadService::class);
+        self::assertInstanceOf(\App\Service\CMS\FormFileUploadService::class, $formFiles);
+        $this->formFilesRoot = $formFiles->storageRoot();
     }
 
     protected function tearDown(): void
     {
         foreach ($this->storedPaths as $path) {
-            @unlink($this->projectDir . '/var/form-files/' . substr($path, strlen('uploads/form-files/')));
+            @unlink($this->formFilesRoot . '/' . substr($path, strlen('uploads/form-files/')));
         }
 
         parent::tearDown();
@@ -89,7 +90,7 @@ final class FormFileFieldSubmitTest extends QaWebTestCase
             $path,
         );
         self::assertStringEndsWith('_qa-notes.txt', $path, 'The extension must not be doubled (.txt.txt).');
-        self::assertFileExists($this->projectDir . '/var/form-files/' . substr($path, strlen('uploads/form-files/')));
+        self::assertFileExists($this->formFilesRoot . '/' . substr($path, strlen('uploads/form-files/')));
     }
 
     public function testFileSentForANonFileFieldIsRejected(): void

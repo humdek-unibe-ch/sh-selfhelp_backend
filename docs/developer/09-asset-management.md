@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend, core 0.1.43 and later.
-Last verified: 2026-11-04.
+Last verified: 2026-11-09.
 Source of truth: `src/Entity/{Asset,AssetFolder}.php`, `src/Service/CMS/Admin/{AdminAssetService,AssetAccessService,AssetStorageService,AssetExportImportService}.php`, `src/Controller/Api/V1/{AssetController,Admin/AdminAssetController}.php`, migration `Version20261103112133`, and the tests named below.
 
 The endpoint-by-endpoint contract is in
@@ -23,7 +23,6 @@ erDiagram
         int id
         string uuid "identity and stored file name"
         string name "editable label, no extension"
-        string file_path "uploads/assets/<uuid> (logical key)"
         string mime_type
         int size
         string alt "default alt"
@@ -73,15 +72,18 @@ Two separate questions, two mechanisms:
 
 ## Storage and delivery (`AssetStorageService`, `AssetController`)
 
-Files live outside the document root (`var/assets/`) so the web server can never
-serve them directly. `GET /assets/{uuid}` is the only way out: it checks
+Files live outside the document root (`var/assets/`, parameter
+`selfhelp.asset_storage_dir`; form uploads use `selfhelp.form_file_storage_dir`,
+`var/form-files/`) so the web server can never serve them directly. Both folders
+must persist: sh-manager mounts the `assets` and `form_files` volumes there, and
+a non-Docker install must keep them across deploys. Tests use `var/test/`. `GET /assets/{uuid}` is the only way out: it checks
 `canView()`, resolves the file with `resolveForDelivery()` (which refuses
 anything that escapes the storage root, including symlinks), and sets
 `Content-Type` from the stored MIME type. Markup types get a sandboxing CSP.
 
 `uuidFromReference()` turns any stored reference — absolute or relative
-delivery URL, the frontend BFF URL `/api/assets/<uuid>`, or a logical
-`file_path` — into the asset uuid. Everything that reads an asset reference
+delivery URL or the frontend BFF URL `/api/assets/<uuid>` — into the asset
+uuid. Everything that reads an asset reference
 from content goes through it.
 
 ## Default alt in page payloads
@@ -105,41 +107,24 @@ Bundle `selfhelp/asset-bundle` 2.0: `manifest.json` plus `files/<uuid>`. Entries
 carry uuid, name, alt, MIME type and group **names** (ids differ between
 instances). Export covers only assets the caller may manage. Import never
 overwrites — an existing uuid is skipped — and otherwise recreates the asset
-under the same uuid, managed by the importer's roles. Version 1.0 (folder)
-bundles still import, as public assets.
+under the same uuid, managed by the importer's roles. Other bundle versions
+are rejected.
 
-## Migration from the folder model
+## Migration
 
-`Version20261103112133`, in order:
+`Version20261103112133` goes straight from the baseline `assets` table to this
+model (the platform is unreleased, so there is no data backfill):
 
-1. Renames the `therapist` group to `researcher` (creates it when missing).
-2. Adds `uuid`, `name` (the old file name without extension), `mime_type`,
-   `size`, `alt`, timestamps and `id_assets_folders`.
-3. Adds the `asset` resource type and grants every existing asset to the roles
-   that hold `admin.asset.read`.
-4. Viewing: assets in open-access folders stay public (no groups); assets in
-   closed folders get the folder's groups, or `researcher` when it had none.
-5. Keeps `assets_folders` as the organisation tree (drops its grants, the
-   open-access flag and the access-level lookups) and links each asset to its
-   folder; drops `file_name` and `folder`.
-6. Swaps the folder/ACL routes for edit, bulk groups, bulk move, bulk delete, folder CRUD
-   and uuid delivery, and adds `admin.asset.update`.
-7. Titles the image style's fields (Image Source, Alt, Title, Fluid) and
+1. Renames the `therapist` group to `researcher` (creates it when missing) and
+   drops the `admin` group — admin rights come from the admin role.
+2. Creates the `assets_folders` tree and `rel_assets_groups`.
+3. Replaces `folder`, `file_name` and `file_path` on `assets` with `uuid`,
+   `name`, `mime_type`, `size`, `alt`, timestamps and `id_assets_folders`.
+4. Adds the `asset` resource type, the `admin.asset.update` permission (granted
+   to every role that can upload) and the asset routes (edit, bulk groups, bulk
+   move, bulk delete, export, import, folder CRUD and uuid delivery).
+5. Titles the image style's fields (Image Source, Alt, Title, Fluid) and
    explains the alt fallback.
-8. Drops the `admin` group — admin rights come from the admin role, which
-   bypasses page ACLs — after moving assets it alone guarded to `researcher`.
-   Its memberships, page ACL rows and validation codes go with it (cascade).
-
-This is a new system, so the migration deliberately does **not** rewrite
-folder-era URLs in content (`/cms-api/v1/assets/<folder>/<file>`) or move
-files: those URLs stop working, and such content must re-pick its asset.
-Existing rows keep their `file_path`, so a file still on disk at
-`var/assets/<folder>/<name>` is served under the new uuid URL, without a
-recorded MIME type.
-
-`down()` is best effort: folders come back flat with grants rebuilt from the
-asset groups, `file_name` from `file_path`, the `admin` group without its
-memberships or ACL rows, and `researcher` becomes `therapist` again.
 
 ## Tests
 

@@ -213,14 +213,13 @@ final class JobSchedulerServiceTest extends QaKernelTestCase
         $asset->setAssetType($type);
         $asset->setName('qa-attachment.pdf');
         $asset->setMimeType('application/pdf');
-        $asset->setFilePath($storage->filePathForUuid($uuid));
         $this->em->persist($asset);
         $this->em->flush();
 
         if (!is_dir($storage->storageRoot())) {
             mkdir($storage->storageRoot(), 0755, true);
         }
-        $path = $storage->absolutePath($storage->filePathForUuid($uuid));
+        $path = $storage->absolutePath($uuid);
         file_put_contents($path, 'qa attachment body');
 
         try {

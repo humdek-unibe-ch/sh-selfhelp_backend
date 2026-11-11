@@ -88,7 +88,6 @@ final class PageImageAltFallbackTest extends QaWebTestCase
         $asset->setUuid($uuid);
         $asset->setAssetType($type);
         $asset->setName('qa-alt.png');
-        $asset->setFilePath($storage->filePathForUuid($uuid));
         $asset->setAlt(self::ASSET_ALT);
         $this->em->persist($asset);
         $this->em->flush();

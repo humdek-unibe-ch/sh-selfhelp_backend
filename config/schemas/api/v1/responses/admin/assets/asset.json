@@ -23,10 +23,6 @@
       ],
       "description": "Editable label; the uploaded file name by default"
     },
-    "file_path": {
-      "type": "string",
-      "description": "Logical storage key (uploads/assets/<uuid>). NOT a fetchable path - use `url`."
-    },
     "url": {
       "type": "string",
       "description": "Delivery URL (/cms-api/v1/assets/<uuid>). The only way to fetch asset bytes; 403 when the asset has groups and the caller is in none of them."
@@ -113,7 +109,6 @@
     "uuid",
     "asset_type",
     "name",
-    "file_path",
     "url",
     "mime_type",
     "size",

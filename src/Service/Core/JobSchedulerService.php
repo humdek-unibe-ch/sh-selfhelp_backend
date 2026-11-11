@@ -73,7 +73,7 @@ class JobSchedulerService extends BaseService
             return [$reference, $filename];
         }
 
-        $path = $this->assetStorage->resolveForDelivery((string) $asset->getFilePath());
+        $path = $this->assetStorage->resolveForDelivery($asset->getUuid());
 
         return [$path ?? $reference, $this->assetStorage->downloadName($asset)];
     }

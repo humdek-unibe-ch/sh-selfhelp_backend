@@ -13,7 +13,6 @@ use App\Repository\AssetRepository;
 use App\Service\Core\BaseService;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Mime\MimeTypes;
 
 /**
  * Export/import assets as a ZIP bundle (physical files + manifest.json),
@@ -25,8 +24,7 @@ use Symfony\Component\Mime\MimeTypes;
  *   files/<uuid>    – the physical asset bytes
  *
  * Import never overwrites: an asset whose uuid already exists is skipped, so a
- * bundle can be re-imported safely. v1.0 (folder-era) bundles still import, as
- * public assets. Import re-uses
+ * bundle can be re-imported safely. Only v2.0 bundles are accepted. Import re-uses
  * {@see AdminAssetService::createAsset} so file-type validation, transactions
  * and cache invalidation apply identically to a normal upload.
  */
@@ -68,7 +66,7 @@ class AssetExportImportService extends BaseService
 
         $manifestEntries = [];
         foreach ($assets as $asset) {
-            $sourcePath = $this->storage->resolveForDelivery((string) $asset->getFilePath());
+            $sourcePath = $this->storage->resolveForDelivery($asset->getUuid());
             if ($sourcePath === null) {
                 // Skip DB rows whose physical file is missing rather than failing
                 // the whole export; the manifest only lists files actually bundled.
@@ -162,16 +160,11 @@ class AssetExportImportService extends BaseService
         foreach ($entries as $rawEntry) {
             $entry = $this->asAssocArray($rawEntry);
             $bundlePath = $this->asString($entry['bundle_path'] ?? '');
-            $uuid = $this->asStringOrNull($entry['uuid'] ?? null);
-            // v1 bundles name each file (with its extension); v2 bundles carry
-            // the mime type instead, as stored files have no extension.
-            $fileName = $this->asString($entry['file_name'] ?? '');
-            if ($fileName === '') {
-                $mimeType = $this->asString($entry['mime_type'] ?? '');
-                $extension = $mimeType !== '' ? (MimeTypes::getDefault()->getExtensions($mimeType)[0] ?? '') : '';
-                $fileName = basename($bundlePath) . ($extension !== '' ? '.' . $extension : '');
-            }
-            $label = $uuid ?? $fileName;
+            $uuid = $this->asString($entry['uuid'] ?? '');
+            // Stored files have no extension; the mime type gives the client
+            // name its extension so createAsset can validate the file type.
+            $fileName = AssetStorageService::withExtension(basename($bundlePath), $this->asStringOrNull($entry['mime_type'] ?? null));
+            $label = $uuid !== '' ? $uuid : $bundlePath;
 
             $sourcePath = $extractDir . '/' . $bundlePath;
 
@@ -186,16 +179,12 @@ class AssetExportImportService extends BaseService
                 continue;
             }
 
-            if ($uuid !== null && $this->assetRepository->findOneByUuid($uuid) !== null) {
+            if ($this->assetRepository->findOneByUuid($uuid) !== null) {
                 $skipped++;
                 continue;
             }
 
-            // v1 bundles have no `name`; their file name (no extension) is the label.
-            $data = ['name' => $entry['name'] ?? pathinfo($fileName, PATHINFO_FILENAME), 'alt' => $entry['alt'] ?? null];
-            if ($uuid !== null) {
-                $data['uuid'] = $uuid;
-            }
+            $data = ['uuid' => $uuid, 'name' => $entry['name'] ?? null, 'alt' => $entry['alt'] ?? null];
             if (array_key_exists('groups', $entry)) {
                 $names = array_values(array_filter($this->asArray($entry['groups']), 'is_string'));
                 $data['group_ids'] = array_map(
@@ -243,6 +232,9 @@ class AssetExportImportService extends BaseService
         $manifest = $this->asAssocArray($decoded);
         if (($manifest['bundle_type'] ?? null) !== self::BUNDLE_TYPE) {
             $this->throwBadRequest('Unsupported bundle type');
+        }
+        if (($manifest['bundle_version'] ?? null) !== self::BUNDLE_VERSION) {
+            $this->throwBadRequest('Unsupported bundle version (expected ' . self::BUNDLE_VERSION . ')');
         }
 
         return $manifest;

@@ -49,6 +49,7 @@ final class FormFileDeliveryTest extends QaWebTestCase
     private EntityManagerInterface $em;
     private PageSectionFactory $pages;
     private string $projectDir;
+    private string $formFilesRoot;
 
     /** @var list<string> */
     private array $storedPaths = [];
@@ -71,16 +72,19 @@ final class FormFileDeliveryTest extends QaWebTestCase
         );
         $projectDir = self::getContainer()->getParameter('kernel.project_dir');
         $this->projectDir = is_string($projectDir) ? $projectDir : '';
+        $formFiles = self::getContainer()->get(\App\Service\CMS\FormFileUploadService::class);
+        self::assertInstanceOf(\App\Service\CMS\FormFileUploadService::class, $formFiles);
+        $this->formFilesRoot = $formFiles->storageRoot();
     }
 
     protected function tearDown(): void
     {
         foreach ($this->storedPaths as $path) {
-            @unlink($this->projectDir . '/var/form-files/' . substr($path, strlen('uploads/form-files/')));
+            @unlink($this->formFilesRoot . '/' . substr($path, strlen('uploads/form-files/')));
             @unlink($this->projectDir . '/public/' . $path);
         }
         if ($this->formId > 0) {
-            foreach (glob($this->projectDir . '/var/form-files/user_*/section_' . $this->formId) ?: [] as $dir) {
+            foreach (glob($this->formFilesRoot . '/user_*/section_' . $this->formId) ?: [] as $dir) {
                 $this->removeDir($dir);
             }
         }

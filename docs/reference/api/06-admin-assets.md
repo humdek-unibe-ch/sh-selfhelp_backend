@@ -37,7 +37,6 @@ Returned by every admin endpoint (`responses/admin/assets/asset.json`):
 | `uuid` | string | Stable public id; survives file replacement |
 | `asset_type` | string | `Asset` or `CSS` |
 | `name` | string\|null | Editable label, no extension |
-| `file_path` | string | Logical storage key (`uploads/assets/<uuid>`). Not fetchable - use `url` |
 | `url` | string | `/cms-api/v1/assets/<uuid>`, the only way to fetch the bytes |
 | `mime_type` | string\|null | Recorded at upload |
 | `size` | int\|null | Bytes |
@@ -231,7 +230,7 @@ stripping identity.
 ### Deployment requirement
 
 `var/assets/` must **not** be served by the web server and must be writable by
-PHP. `public/.htaccess` denies `/uploads/assets/` as defence in depth.
+PHP.
 
 ## Where assets are referenced
 

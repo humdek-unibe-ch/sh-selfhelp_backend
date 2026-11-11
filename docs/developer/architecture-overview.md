@@ -1710,9 +1710,10 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 ### Asset
 - `id`: int (PK)
 - `id_asset_types`: int (FK to lookups, `type_code='assetTypes'`)
-- `folder`: string (nullable)
-- `file_name`: string (nullable)
-- `file_path`: string
+- `uuid`: string (unique; the stored file is `var/assets/<uuid>`)
+- `name`, `mime_type`, `size`, `alt`: nullable
+- `id_assets_folders`: int (nullable FK to `assets_folders`)
+- `created_at`, `updated_at`: datetime
 
 ### CallbackLog
 - `id`: int (PK)

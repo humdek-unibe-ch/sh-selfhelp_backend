@@ -21,7 +21,7 @@ use Symfony\Component\HttpFoundation\Response;
  * path-traversal filename) and the cleanup helpers.
  *
  * Files are written under a dedicated `qa` user/section subtree of
- * `var/form-files/` and removed in tearDown, so the test never leaks
+ * the test storage root (`var/test/form-files/`) and removed in tearDown, so the test never leaks
  * real uploaded files (plan "no real file storage").
  */
 final class FormFileUploadServiceTest extends QaKernelTestCase
@@ -31,7 +31,7 @@ final class FormFileUploadServiceTest extends QaKernelTestCase
     private const FIELD = 'qa_file';
 
     private FormFileUploadService $service;
-    private string $projectDir;
+    private string $formFilesRoot;
 
     /** @var list<string> */
     private array $tempFiles = [];
@@ -40,8 +40,9 @@ final class FormFileUploadServiceTest extends QaKernelTestCase
     {
         parent::setUp();
         $this->service = $this->service(FormFileUploadService::class);
-        $projectDir = self::getContainer()->getParameter('kernel.project_dir');
-        $this->projectDir = is_string($projectDir) ? $projectDir : '';
+        $formFiles = self::getContainer()->get(\App\Service\CMS\FormFileUploadService::class);
+        self::assertInstanceOf(\App\Service\CMS\FormFileUploadService::class, $formFiles);
+        $this->formFilesRoot = $formFiles->storageRoot();
     }
 
     protected function tearDown(): void
@@ -51,7 +52,7 @@ final class FormFileUploadServiceTest extends QaKernelTestCase
                 @unlink($path);
             }
         }
-        $this->removeDir(sprintf('%s/var/form-files/user_%d', $this->projectDir, self::QA_USER_ID));
+        $this->removeDir(sprintf('%s/user_%d', $this->formFilesRoot, self::QA_USER_ID));
 
         parent::tearDown();
     }
@@ -157,7 +158,7 @@ final class FormFileUploadServiceTest extends QaKernelTestCase
     /** Files live outside the document root; the stored value is a logical key. */
     private function storedFile(string $relativePath): string
     {
-        return $this->projectDir . '/var/form-files/' . substr($relativePath, strlen('uploads/form-files/'));
+        return $this->formFilesRoot . '/' . substr($relativePath, strlen('uploads/form-files/'));
     }
 
     private function makeUpload(string $originalName, string $contents): UploadedFile

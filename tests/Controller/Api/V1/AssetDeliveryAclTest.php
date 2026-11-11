@@ -178,7 +178,6 @@ final class AssetDeliveryAclTest extends QaWebTestCase
         $asset->setAssetType($type);
         $asset->setName($fileName);
         $asset->setMimeType($mimeType);
-        $asset->setFilePath($this->storage->filePathForUuid($uuid));
         foreach ($groupNames as $name) {
             $group = $this->entityManager->getRepository(Group::class)->findOneBy(['name' => $name]);
             self::assertInstanceOf(Group::class, $group, sprintf('Seeded "%s" group is required', $name));
@@ -191,7 +190,7 @@ final class AssetDeliveryAclTest extends QaWebTestCase
         if (!is_dir($root)) {
             mkdir($root, 0755, true);
         }
-        $path = $this->storage->absolutePath($this->storage->filePathForUuid($uuid));
+        $path = $this->storage->absolutePath($uuid);
         file_put_contents($path, $body);
         $this->writtenFiles[] = $path;
 

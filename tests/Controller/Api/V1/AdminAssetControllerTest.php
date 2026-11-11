@@ -54,7 +54,7 @@ class AdminAssetControllerTest extends BaseControllerTest
         $this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', $uuid);
         $this->assertArrayNotHasKey('file_name', $asset);
         $this->assertSame('qa-upload', $asset['name'], 'The default name drops the extension');
-        $this->assertSame('uploads/assets/' . $uuid, $asset['file_path']);
+        $this->assertArrayNotHasKey('file_path', $asset);
         $this->assertSame([], $this->groupNames($asset), 'A new upload has no groups, so it is public');
         $this->assertContains('admin', array_map(
             fn (mixed $role): mixed => $this->asArray($role)['name'],

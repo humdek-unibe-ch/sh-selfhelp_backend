@@ -28,7 +28,6 @@ use Symfony\Component\HttpFoundation\Response;
 class FormFileUploadService extends BaseService
 {
     private const UPLOAD_DIR = 'uploads/form-files/';
-    private const STORAGE_ROOT = '/var/form-files/';
     private const ALLOWED_EXTENSIONS = [
         // Images
         'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'ico',
@@ -45,7 +44,8 @@ class FormFileUploadService extends BaseService
     private const MAX_ZIP_SIZE = 500 * 1024 * 1024; // 500MB per "download all" archive
 
     public function __construct(
-        private readonly string $projectDir,
+        /** `var/form-files` by default, parameter `selfhelp.form_file_storage_dir`. */
+        private readonly string $storageDir,
         private readonly LoggerInterface $logger,
         private readonly FormFieldKeyResolver $formFieldKeyResolver,
         private readonly EntityManagerInterface $entityManager
@@ -250,7 +250,7 @@ class FormFileUploadService extends BaseService
         }
 
         $real = realpath($this->absolutePath($logicalPath));
-        $root = realpath($this->projectDir . self::STORAGE_ROOT);
+        $root = realpath($this->storageRoot());
         if ($real === false || $root === false || !is_file($real)
             || !str_starts_with($real, $root . DIRECTORY_SEPARATOR)
         ) {
@@ -260,9 +260,17 @@ class FormFileUploadService extends BaseService
         return $real;
     }
 
+    /**
+     * Absolute path of the storage root (no trailing slash).
+     */
+    public function storageRoot(): string
+    {
+        return rtrim($this->storageDir, '/\\');
+    }
+
     private function absolutePath(string $logicalPath): string
     {
-        return $this->projectDir . self::STORAGE_ROOT . substr($logicalPath, strlen(self::UPLOAD_DIR));
+        return $this->storageRoot() . '/' . substr($logicalPath, strlen(self::UPLOAD_DIR));
     }
 
     /**
@@ -334,9 +342,8 @@ class FormFileUploadService extends BaseService
 
         // Create directory structure: uploads/form-files/user_{userId}/section_{sectionId}/field_{fieldName}/
         $directory = sprintf(
-            '%s%suser_%d/section_%d/field_%s/',
-            $this->projectDir,
-            self::STORAGE_ROOT,
+            '%s/user_%d/section_%d/field_%s/',
+            $this->storageRoot(),
             $userId,
             $sectionId,
             $this->sanitizeFieldName($fieldName)
@@ -524,6 +531,38 @@ class FormFileUploadService extends BaseService
                 }
             }
         }
+    }
+
+    /**
+     * Delete every form file a user uploaded (`var/form-files/user_<id>/`).
+     *
+     * @return int number of files removed
+     */
+    public function deleteUserFiles(int $userId): int
+    {
+        $dir = $this->storageRoot() . '/user_' . $userId;
+        if (!is_dir($dir)) {
+            return 0;
+        }
+
+        $removed = 0;
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($items as $item) {
+            if (!$item instanceof \SplFileInfo) {
+                continue;
+            }
+            if ($item->isDir()) {
+                rmdir($item->getPathname());
+            } elseif (unlink($item->getPathname())) {
+                $removed++;
+            }
+        }
+        rmdir($dir);
+
+        return $removed;
     }
 
     /**

@@ -66,4 +66,15 @@ final class AdminAssetPermissionTest extends QaWebTestCase
         $this->assertForbiddenForNonAdmins('PUT', '/cms-api/v1/admin/asset-folders/2147483600');
         $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/asset-folders/2147483600');
     }
+
+    /**
+     * Export returns a ZIP and import takes a multipart upload, so only the
+     * negative half is asserted here; the admin round trip is covered by
+     * AdminAssetControllerTest.
+     */
+    public function testAssetBundleExportAndImportAreForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/export', []);
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/import');
+    }
 }

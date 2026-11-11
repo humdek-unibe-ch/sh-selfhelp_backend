@@ -146,13 +146,12 @@ class AdminAssetService extends BaseService
         $asset->setAssetType($this->assetTypeFor($extension));
         $asset->setName($this->assetName($data['name'] ?? null, pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)));
         $asset->setAlt($this->normalizeAlt($data['alt'] ?? null));
-        $asset->setFilePath($this->storage->filePathForUuid($uuid));
         $asset->setFolder($this->folderOrNull($data['folder_id'] ?? null));
         foreach ($groups as $group) {
             $asset->addGroup($group);
         }
 
-        $storedPath = $this->storage->absolutePath((string) $asset->getFilePath());
+        $storedPath = $this->storage->absolutePath($uuid);
 
         $this->entityManager->beginTransaction();
         try {
@@ -245,21 +244,12 @@ class AdminAssetService extends BaseService
             $asset->setFolder($this->folderOrNull($data['folder_id']));
         }
 
-        // Set when a replace moves a legacy (folder-era) file to uuid storage.
-        $obsoletePath = null;
-
         $this->entityManager->beginTransaction();
         try {
             if ($file !== null) {
                 $extension = $this->validateUpload($file);
                 $asset->setAssetType($this->assetTypeFor($extension));
-                $previousPath = $this->storage->absolutePath((string) $asset->getFilePath());
-                // Folder-era files move to uuid storage on their first replace.
-                $asset->setFilePath($this->storage->filePathForUuid($asset->getUuid()));
                 $this->storeFile($file, $asset);
-                if ($previousPath !== $this->storage->absolutePath((string) $asset->getFilePath())) {
-                    $obsoletePath = $previousPath;
-                }
             }
 
             $asset->touch();
@@ -281,11 +271,6 @@ class AdminAssetService extends BaseService
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw $e;
-        }
-
-        // The replaced bytes live at the uuid path now; drop the legacy file.
-        if ($obsoletePath !== null && is_file($obsoletePath)) {
-            unlink($obsoletePath);
         }
 
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ASSET, $id);
@@ -401,7 +386,7 @@ class AdminAssetService extends BaseService
     public function deleteAsset(int $id): bool
     {
         $asset = $this->findManagedAsset($id, DataAccessSecurityService::PERMISSION_DELETE);
-        $fullPath = $this->storage->absolutePath((string) $asset->getFilePath());
+        $fullPath = $this->storage->absolutePath($asset->getUuid());
 
         $this->entityManager->beginTransaction();
 
@@ -451,7 +436,6 @@ class AdminAssetService extends BaseService
             'uuid' => $asset->getUuid(),
             'asset_type' => $asset->getAssetType()->getLookupValue(),
             'name' => $asset->getName(),
-            'file_path' => $asset->getFilePath(),
             'url' => $this->storage->publicUrl($asset->getUuid()),
             'mime_type' => $asset->getMimeType(),
             'size' => $asset->getSize(),

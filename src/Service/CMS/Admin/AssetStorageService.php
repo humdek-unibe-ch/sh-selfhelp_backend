@@ -15,28 +15,14 @@ use Symfony\Component\Mime\MimeTypes;
  * Single source of truth for where asset bytes live on disk and how they are
  * addressed over HTTP.
  *
- * Assets are stored OUTSIDE the document root (`var/assets/`, not
- * `public/uploads/assets/`) so the web server cannot serve them directly. In
- * `public/` the Apache rule `RewriteCond %{REQUEST_FILENAME} !-f` short-circuits
- * to the file before PHP runs, which makes access checks unenforceable.
- * Delivery therefore goes through {@see \App\Controller\Api\V1\AssetController},
- * which applies {@see AssetAccessService} on every request.
- *
- * `assets.file_path` is a logical key, `uploads/assets/<uuid>`; the on-disk
- * location is derived from it here. Files uploaded before folders were removed
- * keep `uploads/assets/<folder>/<name>`.
+ * Every asset is stored as `<storage dir>/<uuid>` (`var/assets/` by default,
+ * parameter `selfhelp.asset_storage_dir`), OUTSIDE the document root, so
+ * the web server cannot serve it directly. Delivery goes through
+ * {@see \App\Controller\Api\V1\AssetController}, which applies
+ * {@see AssetAccessService} on every request.
  */
 class AssetStorageService
 {
-    /**
-     * Logical prefix persisted in `assets.file_path`. Retained for continuity
-     * with existing rows; it is NOT a document-root path.
-     */
-    public const LOGICAL_PREFIX = 'uploads/assets/';
-
-    /** Storage root relative to the project dir, outside `public/`. */
-    private const STORAGE_ROOT = '/var/assets/';
-
     /** URL prefix served by the ACL-enforcing delivery route. */
     public const URL_PREFIX = '/cms-api/v1/assets/';
 
@@ -47,7 +33,7 @@ class AssetStorageService
     private const UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
 
     public function __construct(
-        private readonly string $projectDir
+        private readonly string $storageDir
     ) {
     }
 
@@ -56,27 +42,15 @@ class AssetStorageService
      */
     public function storageRoot(): string
     {
-        return rtrim($this->projectDir . self::STORAGE_ROOT, '/\\');
+        return rtrim($this->storageDir, '/\\');
     }
 
     /**
-     * Resolve a stored `file_path` to its absolute location on disk.
+     * Absolute location on disk of the asset stored under `$uuid`.
      */
-    public function absolutePath(string $filePath): string
+    public function absolutePath(string $uuid): string
     {
-        $relative = str_starts_with($filePath, self::LOGICAL_PREFIX)
-            ? substr($filePath, strlen(self::LOGICAL_PREFIX))
-            : $filePath;
-
-        return $this->storageRoot() . '/' . $relative;
-    }
-
-    /**
-     * The logical `file_path` for a new upload stored under its uuid.
-     */
-    public function filePathForUuid(string $uuid): string
-    {
-        return self::LOGICAL_PREFIX . $uuid;
+        return $this->storageRoot() . '/' . $uuid;
     }
 
     /**
@@ -88,13 +62,17 @@ class AssetStorageService
     }
 
     /**
-     * Resolve a stored `file_path` to an existing file inside the storage
-     * root, refusing anything that escapes it (`..`, symlinks). Returns null
-     * when the file is missing or unsafe.
+     * Resolve the asset stored under `$uuid` to an existing file inside the
+     * storage root, refusing anything that is not a uuid or escapes the root
+     * (symlinks). Returns null when the file is missing or unsafe.
      */
-    public function resolveForDelivery(string $filePath): ?string
+    public function resolveForDelivery(string $uuid): ?string
     {
-        $real = realpath($this->absolutePath($filePath));
+        if (!$this->isUuid($uuid)) {
+            return null;
+        }
+
+        $real = realpath($this->absolutePath($uuid));
         $root = realpath($this->storageRoot());
         if ($real === false || $root === false || !is_file($real)
             || !str_starts_with($real, $root . DIRECTORY_SEPARATOR)
@@ -107,7 +85,7 @@ class AssetStorageService
 
     /**
      * The uuid of an asset reference stored in content — the delivery URL
-     * (absolute or relative), the frontend BFF URL, or a logical `file_path`.
+     * (absolute or relative) or the frontend BFF URL.
      * Returns null for anything that is not an uploaded asset (external URLs,
      * data URLs, frontend static artwork).
      */
@@ -129,7 +107,7 @@ class AssetStorageService
 
         $reference = '/' . ltrim(strtok($reference, '?#') ?: '', '/');
 
-        foreach ([self::URL_PREFIX, self::BFF_PREFIX, '/' . self::LOGICAL_PREFIX] as $prefix) {
+        foreach ([self::URL_PREFIX, self::BFF_PREFIX] as $prefix) {
             if (str_starts_with($reference, $prefix)) {
                 $key = substr($reference, strlen($prefix));
 

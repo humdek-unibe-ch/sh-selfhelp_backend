@@ -42,9 +42,6 @@ class Asset
     #[ORM\Column(name: 'name', type: 'string', length: 255, nullable: true)]
     private ?string $name = null;
 
-    #[ORM\Column(name: 'file_path', type: 'string', length: 1000)]
-    private string $filePath;
-
     #[ORM\Column(name: 'mime_type', type: 'string', length: 150, nullable: true)]
     private ?string $mimeType = null;
 
@@ -111,18 +108,6 @@ class Asset
     public function setName(?string $name): static
     {
         $this->name = $name;
-
-        return $this;
-    }
-
-    public function getFilePath(): ?string
-    {
-        return $this->filePath;
-    }
-
-    public function setFilePath(string $filePath): static
-    {
-        $this->filePath = $filePath;
 
         return $this;
     }
