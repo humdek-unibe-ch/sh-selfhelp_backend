@@ -3,7 +3,7 @@
 Audience: Developers and technical product owners.
 Status: active.
 Applies to: SelfHelp2 backend `0.1.33+`, frontend/mobile/shared navigation contracts (`@selfhelp/shared` `1.21.5`).
-Last verified: 2026-07-10.
+Last verified: 2026-11-09.
 Source of truth: `NavigationMenuService`, admin navigation APIs, `GET /navigation`, `@selfhelp/shared` navigation types.
 
 ## Overview
@@ -84,6 +84,23 @@ When an admin adds an existing page to a menu (`POST /admin/navigation/menus/{me
 ### Reordering
 
 Menu builder supports **drag-and-drop** and **Up/Down** controls among siblings at the same `parent_item_id`. Reorder persists via `PUT /admin/navigation/menus/{menu_key}/reorder`.
+
+### Public visibility
+
+The public menu renders content page types only, resolved by name
+(`PageType::PUBLIC_NAVIGABLE_PAGE_TYPES = ['core', 'experiment']`). So the
+builder can show why an item will not render:
+
+- every admin navigation item carries `public_visibility { rendered, reason }`,
+  where `reason` is `headless` or `page_type_excluded` (per-visitor ACL denial
+  is not knowable here and only shows on the public side);
+- every `GET /admin/pages` item carries `menu_eligible`, which is `false` only
+  for page types that can never be in a public menu. Headless pages stay
+  eligible, because an admin can untick headless.
+
+Both come from `NavigationMenuService::evaluatePagePublicVisibility()` and
+`PageTypeRepository::findPublicNavigableIds()`, the same rule the public
+payload uses.
 
 ## Removed concepts (pre-release simplification)
 
@@ -171,6 +188,8 @@ There is no production fallback `menu` screen; navigation comes from the CMS pay
 - `web_header_search_mode` — `off`, `menu_pages`, `searchable_pages`, `content_index`
 - `web_header_search_min_chars` — minimum query length before API calls
 - `web_header_search_result_limit`, `search_default_visibility`, `search_field_policy`
+  (`page_metadata_only` matches title and description only; `all_display_text`
+  also matches the indexed body text)
 
 Content search uses `page_search_index`, rebuilt when pages change. The
 `content_index` mode matches the projection in **every** language (not just the

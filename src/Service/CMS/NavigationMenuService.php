@@ -203,13 +203,14 @@ class NavigationMenuService extends BaseService
     public const PUBLIC_VISIBILITY_REASON_PAGE_NOT_ACCESSIBLE = 'page_not_accessible';
 
     /**
-     * Single definition of "will the public menu render this page item?".
+     * "Will the public menu render this page item?" for the admin payload
+     * (AdminNavigationService::formatMenuItemEntity), from the page entity.
      *
-     * Both the public payload (formatMenuItem) and the admin payload
-     * (AdminNavigationService::formatMenuItemEntity) derive their verdict from
-     * this method, so the builder badge can never drift from what actually
-     * renders. Non-page items (group / external_url / separator) are always
-     * rendered as far as page filtering is concerned.
+     * It applies the same page-type and headless rules the public payload
+     * applies through the ACL-filtered page map
+     * (resolvePublicVisibilityFromPageMap); per-visitor ACL denial is only
+     * knowable there. Non-page items (group / external_url / separator) are
+     * always rendered as far as page filtering is concerned.
      *
      * @return array{rendered: bool, reason: string|null}
      */
