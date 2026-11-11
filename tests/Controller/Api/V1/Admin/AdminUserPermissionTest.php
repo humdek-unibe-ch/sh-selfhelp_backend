@@ -52,4 +52,13 @@ final class AdminUserPermissionTest extends QaWebTestCase
     {
         $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/users/2147483600/clean-data');
     }
+
+    /**
+     * The export returns raw CSV, so only the negative half is asserted here;
+     * the admin download is covered by AdminUserManagementTest.
+     */
+    public function testUserCsvExportIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('GET', '/cms-api/v1/admin/users/export');
+    }
 }

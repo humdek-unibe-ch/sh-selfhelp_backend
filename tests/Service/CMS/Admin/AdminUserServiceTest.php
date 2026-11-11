@@ -548,6 +548,73 @@ class AdminUserServiceTest extends QaKernelTestCase
     /**
      * @group user-service
      */
+    public function testCleanUserDataErasesTheUsersUploadedFormFiles(): void
+    {
+        $created = $this->createQaUser('clean-files');
+        $userId = $this->asInt($created['id']);
+        $userDir = $this->service(\App\Service\CMS\FormFileUploadService::class)->storageRoot() . '/user_' . $userId;
+        mkdir($userDir . '/section_1/field_qa_upload', 0755, true);
+        file_put_contents($userDir . '/section_1/field_qa_upload/qa_upload.txt', 'qa');
+
+        try {
+            $result = $this->adminUserService->cleanUserData($this->adminId, $userId);
+
+            $this->assertTrue($result['cleaned']);
+            $this->assertSame(1, $result['removed']['form_files'] ?? null);
+            $this->assertDirectoryDoesNotExist($userDir);
+        } finally {
+            if (is_dir($userDir)) {
+                @unlink($userDir . '/section_1/field_qa_upload/qa_upload.txt');
+                @rmdir($userDir . '/section_1/field_qa_upload');
+                @rmdir($userDir . '/section_1');
+                @rmdir($userDir);
+            }
+            $this->adminUserService->deleteUser($this->adminId, $userId);
+        }
+    }
+
+    /**
+     * @group user-service
+     */
+    public function testCsvImportRefusesGroupsTheCallerCannotCreateUsersIn(): void
+    {
+        $editor = $this->service(UserRepository::class)->findOneBy(['email' => QaBaselineFixture::QA_EDITOR_EMAIL]);
+        self::assertInstanceOf(User::class, $editor, 'QA editor persona must be seeded.');
+        $email = $this->qaEmail('import-denied');
+
+        $result = $this->adminUserService->importUsers((int) $editor->getId(), [
+            ['email' => $email, 'name' => 'qa_svc_import_denied', 'user_name' => '', 'groups' => 'subject'],
+        ]);
+
+        $this->assertSame(0, $result['imported']);
+        $this->assertCount(1, $result['errors']);
+        $this->assertStringContainsString('Access denied', $result['errors'][0]['message']);
+        $this->assertNull($this->service(UserRepository::class)->findOneByEmail($email), 'A denied row must not create the user.');
+    }
+
+    /**
+     * @group user-service
+     */
+    public function testCsvImportByAdminCreatesUserInNamedGroup(): void
+    {
+        $email = $this->qaEmail('import-allowed');
+
+        $result = $this->adminUserService->importUsers($this->adminId, [
+            ['email' => $email, 'name' => 'qa_svc_import_allowed', 'user_name' => '', 'groups' => 'subject'],
+        ]);
+
+        $this->assertSame(1, $result['imported'], json_encode($result['errors']) ?: '');
+        $this->service(\Doctrine\ORM\EntityManagerInterface::class)->clear();
+        $created = $this->service(UserRepository::class)->findOneByEmail($email);
+        self::assertInstanceOf(User::class, $created);
+        $this->assertContains('subject', array_map(static fn ($g) => $g->getName(), $created->getGroups()->toArray()));
+
+        $this->adminUserService->deleteUser($this->adminId, (int) $created->getId());
+    }
+
+    /**
+     * @group user-service
+     */
     public function testImpersonateUserReturnsToken(): void
     {
         $created = $this->createQaUser('impersonate');

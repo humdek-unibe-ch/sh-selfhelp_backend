@@ -24,6 +24,7 @@ use App\Service\Auth\UserValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use App\Service\Auth\JWTService;
+use App\Service\CMS\FormFileUploadService;
 use App\Service\Mercure\MercureTopicResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -91,6 +92,7 @@ class AdminUserService extends BaseService
         private readonly HubInterface $mercureHub,
         private readonly MercureTopicResolver $mercureTopics,
         private readonly LoggerInterface $logger,
+        private readonly FormFileUploadService $formFileUploadService,
     ) {
     }
 
@@ -305,11 +307,14 @@ class AdminUserService extends BaseService
      * import must not fire 200 unrecallable emails; the admin invites them
      * deliberately via the bulk send-activation action.
      *
+     * Same group rule as a single create: every group named on a row needs
+     * CREATE access for the caller, otherwise that row fails.
+     *
      * @param list<array<string, string>> $rows       parsed data rows (header excluded)
      * @param int                         $rowOffset  file line number of the first data row
      * @return array{imported: int, skipped: int, errors: list<array{row: int, message: string}>}
      */
-    public function importUsers(array $rows, int $rowOffset = 2): array
+    public function importUsers(int $currentUserId, array $rows, int $rowOffset = 2): array
     {
         $imported = 0;
         $skipped = 0;
@@ -337,11 +342,23 @@ class AdminUserService extends BaseService
                     continue;
                 }
 
+                $groupIds = $this->resolveGroupNames($row['groups'] ?? null);
+                foreach ($groupIds as $groupId) {
+                    if (!$this->dataAccessSecurityService->hasPermission(
+                        $currentUserId,
+                        LookupService::RESOURCE_TYPES_GROUP,
+                        $groupId,
+                        DataAccessSecurityService::PERMISSION_CREATE
+                    )) {
+                        throw new ServiceException('Access denied: cannot create users in group ' . $groupId, Response::HTTP_FORBIDDEN);
+                    }
+                }
+
                 $this->createUser([
                     'email' => $email,
                     'name' => $this->nullIfBlank($row['name'] ?? null),
                     'user_name' => $this->nullIfBlank($row['user_name'] ?? null),
-                    'group_ids' => $this->resolveGroupNames($row['groups'] ?? null),
+                    'group_ids' => $groupIds,
                     'enable_validation' => false,
                     // Mark CSV-created users as `imported` (duplicates are skipped above).
                     'status_code' => LookupService::USER_STATUS_IMPORTED,
@@ -1087,6 +1104,8 @@ class AdminUserService extends BaseService
      *   and dies with the account or expires on its own.
      * - PageView/PageViewReferrer hold no id_users (pseudonymous daily
      *   aggregates), so there is nothing per-user to erase there.
+     * - Form files the user uploaded (`var/form-files/user_<id>/`) ARE erased,
+     *   after the DB transaction commits (`removed.form_files`).
      *
      * @return array{cleaned: bool, removed: array<string, int>}
      */
@@ -1102,7 +1121,7 @@ class AdminUserService extends BaseService
             throw new ServiceException('Insufficient permissions to clean user data', Response::HTTP_FORBIDDEN);
         }
 
-        return $this->executeInTransaction(function () use ($userId) {
+        $result = $this->executeInTransaction(function () use ($userId) {
             $user = $this->findUserOrThrow($userId);
 
             if (in_array($user->getName(), self::SYSTEM_USERS, true)) {
@@ -1180,6 +1199,12 @@ class AdminUserService extends BaseService
 
             return ['cleaned' => true, 'removed' => $removed];
         });
+
+        // Files cannot roll back, so they go only once the rows are gone. Their
+        // data cells were just deleted, so nothing else points at them.
+        $result['removed']['form_files'] = $this->formFileUploadService->deleteUserFiles($userId);
+
+        return $result;
     }
 
     /**

@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-11-09.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -261,6 +261,20 @@ Toggle a user's blocked status.
 **Response:** Updated user data with new blocked status
 
 **Permissions:** `admin.user.block` or `admin.user.unblock`
+
+### Stats, bulk actions and CSV
+
+| Endpoint | Permission | Notes |
+| --- | --- | --- |
+| `GET /admin/users/stats` | `admin.user.read` | `{ total, active, invited, imported, blocked }` over the caller's visible users. `blocked` wins over status; the counts do not have to sum to `total`. |
+| `POST /admin/users/bulk-delete` | `admin.user.delete` | Body `{ user_ids }` (1-500). Refuses the caller's own account. |
+| `POST /admin/users/bulk-add-to-group` | `admin.user.update` | Body `{ user_ids, group_ids }` (each 1-500). Unknown groups fail the request. |
+| `POST /admin/users/bulk-remove-from-group` | `admin.user.update` | Same body as add. |
+| `POST /admin/users/bulk-send-activation` | `admin.user.update` | Body `{ user_ids }`. Already active users are reported as failures. |
+| `GET /admin/users/export` | `admin.user.read` | CSV of the filtered list. Cells starting with `=`, `+`, `-`, `@`, tab or CR are prefixed with `'` so spreadsheets do not run them. |
+| `POST /admin/users/import` | `admin.user.create` | Multipart `file` (`.csv`, header `email,name,user_name,groups`; groups `;`-separated by name). New users get the `imported` status and no activation mail; existing emails are skipped. Every named group needs CREATE access for the caller, as for a single create, otherwise that row fails. |
+
+Bulk actions return `{ succeeded: [ids], failed: [{ id, reason }] }`; import returns `{ imported, skipped, errors: [{ row, message }] }`.
 
 ## User Group Management
 
@@ -521,12 +535,13 @@ deliberately not [Delete User](#delete-user).
 | `DataRow` + `DataCell` | Yes | All form/entry input the user submitted. |
 | `ScheduledJob` | Yes | Jobs owned by the user; their recipients and reminder metadata cascade. |
 | `ScheduledJobRecipient` | Yes | Also rows on *other users'* jobs that name this user as a recipient — a record of what this user was sent. |
+| Form files | Yes | Every file the user uploaded through forms (`var/form-files/user_<id>/`). Deleted after the database transaction commits, because files cannot roll back. |
 | `DataAccessAudit` | **No** | A security audit surface (who accessed what), not content this user produced. |
 | Session/auth state | **No** | `RefreshToken`, `Users2faCode`, `ValidationCode`, `UserNavigationState` are not user-produced content. |
 | `PageView` / `PageViewReferrer` | n/a | Pseudonymous daily aggregates with no `id_users`; nothing per-user to erase. |
 
-The operation runs in a single transaction — a failure at any point rolls the
-whole erasure back. It writes its own audit entry **after** the wipe, so the
+The database part runs in a single transaction — a failure at any point rolls
+it back, and no file is touched. It writes its own audit entry **after** the wipe, so the
 erasure itself stays recorded even though the user's transactions are removed.
 
 **Two implementation notes** (both have previously caused false worries):
@@ -561,13 +576,14 @@ erasure itself stays recorded even though the user's transactions are removed.
       "scheduled_jobs": 3,
       "data_cells": 18,
       "data_rows": 7,
-      "transactions": 42
+      "transactions": 42,
+      "form_files": 5
     }
   }
 }
 ```
 
-`removed` reports per-entity row counts. Entities that are deliberately kept
+`removed` reports per-entity row counts (`form_files` counts files). Entities that are deliberately kept
 (e.g. `DataAccessAudit`) have **no key** rather than a `0`.
 
 **Permissions:** `admin.user.update` (route). The service additionally requires

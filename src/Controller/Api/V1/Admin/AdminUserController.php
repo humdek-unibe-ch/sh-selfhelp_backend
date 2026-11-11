@@ -289,7 +289,7 @@ class AdminUserController extends AbstractController
             fputcsv($out, $columns, escape: '');
 
             foreach ($rows as $row) {
-                fputcsv($out, array_map(static fn(string $c): string => $row[$c] ?? '', $columns), escape: '');
+                fputcsv($out, array_map(static fn(string $c): string => self::csvSafe($row[$c] ?? ''), $columns), escape: '');
             }
 
             fclose($out);
@@ -299,6 +299,15 @@ class AdminUserController extends AbstractController
         $response->headers->set('Content-Disposition', 'attachment; filename="' . $filename . '"');
 
         return $response;
+    }
+
+    /**
+     * Neutralise a CSV cell a spreadsheet would run as a formula (`=`, `+`,
+     * `-`, `@`, tab, CR) by prefixing it with a quote.
+     */
+    private static function csvSafe(string $value): string
+    {
+        return $value !== '' && str_contains("=+-@\t\r", $value[0]) ? "'" . $value : $value;
     }
 
     /**
@@ -319,7 +328,12 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            $result = $this->adminUserService->importUsers($this->parseCsvUpload($file));
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
+
+            $result = $this->adminUserService->importUsers($currentUserId, $this->parseCsvUpload($file));
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/user_import_result');
         } catch (\Exception $e) {

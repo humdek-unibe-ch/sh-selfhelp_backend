@@ -10,7 +10,8 @@
             "items": {
                 "type": "integer"
             },
-            "minItems": 1
+            "minItems": 1,
+            "maxItems": 500
         },
         "group_ids": {
             "type": "array",
@@ -18,7 +19,8 @@
             "items": {
                 "type": "integer"
             },
-            "minItems": 1
+            "minItems": 1,
+            "maxItems": 500
         }
     },
     "required": ["user_ids", "group_ids"],
