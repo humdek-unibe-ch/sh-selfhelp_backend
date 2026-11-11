@@ -1,558 +1,132 @@
 # v0.1.43
 
-**Public-navigable page types are resolved by name, and the admin navigation
-payload now states whether an item actually renders publicly. Assets are
-reworked: stable uuid, no overwrite, edit/replace, default alt, public unless
-restricted by group, managed per asset by role, and organised in nested
-folders. The `therapist` group becomes `researcher` and the `admin` group goes.**
+**Admin users, groups and roles management; reworked assets (uuid identity,
+per-asset access, private storage); private form uploads; login rate limiting;
+publish-gated page settings; and public-navigation visibility for the menu
+builder.** Pre-release: fresh installs only, no upgrade path from earlier
+development builds.
 
-## Change: page title and description wait for Publish
+## Users management
 
-- A page's `title`, `description`, `open_in_modal`, `modal_width` and
-  `modal_height` are saved in its version (`page_json.page.fields`). A
-  published page serves them from the version, and the public page list (menu
-  labels) uses the published title and description, so an edit goes live
-  only on Publish. The unpublished-changes check and the draft diff include
-  them, and restoring a version restores them. Publish and unpublish refresh
-  the page list and navigation caches.
-- Versions published before this have no settings stored: those pages keep
-  serving the live values and do not show a change until they are published
-  again. No migration.
+- `GET /admin/users` filters by `status` (`active`, `invited`, `imported`,
+  `blocked`; `blocked` wins over status), `id_groups` and `id_roles`, scoped to
+  the caller's visible users. `GET /admin/users/stats` returns
+  `{ total, active, invited, imported, blocked }` for the same scope (independent
+  counts, not a breakdown that sums to `total`).
+- Bulk actions with per-user partial success: `POST /admin/users/bulk-delete`,
+  `bulk-add-to-group`, `bulk-remove-from-group`, `bulk-send-activation`
+  (at most 500 ids per request).
+- CSV `GET /admin/users/export` (same filters as the list; cells that a
+  spreadsheet would run as a formula are prefixed with `'`) and
+  `POST /admin/users/import`. Imported users get the new `imported` status and
+  no activation mail. Every group named on a row needs CREATE access for the
+  caller, exactly like a single create; otherwise that row fails.
+- Group and role members are listed through the users list (`id_groups` /
+  `id_roles`); there are no separate member routes.
+- `POST /admin/users/{userId}/clean-data` erases what the user produced, in one
+  transaction: transactions, data rows and cells, scheduled jobs and recipient
+  rows. After the commit it deletes the user's uploaded form files. It requires
+  delete access to the user, refuses system users, and returns a `removed`
+  count per entity (`form_files` counts files). Audit and session data are kept.
+- Logging in no longer overwrites `user_name` with the email, and password
+  logins record `last_login` (before, only 2FA logins did).
 
-## Change: assets get a stable id, access by group and role (breaking)
+## Stats endpoints
 
-- **Uuid identity.** Every asset has a `uuid`, and it replaces the file name:
-  the file is stored on disk under it with no extension, and `file_name` is
-  removed. The old file name, without extension, becomes the editable `name`.
-  Uploads never collide or overwrite; the `overwrite`, `file_name` and
-  `file_names` upload fields are gone. Downloads and email attachments are
-  named `<uuid>.<extension>`.
-- **Edit and replace.** `POST /admin/assets/{id}` changes the name, alt,
-  groups, managing roles and folder, and can replace the file under the same
-  uuid. New permission `admin.asset.update`, granted to every role that could
-  upload.
-- **Viewing: public unless restricted.** An asset with no groups is public;
-  with groups, only their members (and the admin role) can view it. New uploads
-  are public, and the upload form says so in large letters.
-- **Managing: per asset, by role.** A new `asset` resource type in
-  `role_data_access` decides which roles may list, edit, delete and export each
-  asset, like data tables; uploads are granted to the uploader's roles and the
-  admin role manages all. Existing assets go to the roles that can read assets.
-  Fixed `RoleDataAccessRepository::getUserPermissionsForResources()`, which used
-  an unsupported DQL `BIT_OR` and could not run.
-- **Folders organise, nested.** `assets_folders` becomes an organisation-only
-  tree with `GET|POST /admin/asset-folders` and `PUT|DELETE
-  /admin/asset-folders/{id}`; assets have a `folder_id`, the asset list filters
-  by it (`folder_id=0` = assets in no folder) and each folder reports its
-  `asset_count`. Folder ACLs, open access and
-  `GET|PUT /admin/groups/{id}/asset-acls` are removed.
-- **Bulk actions.** `POST /admin/assets/bulk-groups`,
-  `POST /admin/assets/bulk-folder` (move to a folder) and
-  `POST /admin/assets/bulk-delete`.
+- `GET /admin/registration-codes/stats` returns `{ total, available, used }`
+  (`available + used === total`), unfiltered like the list.
+- `GET /admin/scheduled-jobs/stats` returns
+  `{ total, queued, done, failed, deleted }` from one grouped query.
+
+## Assets
+
+- **Identity.** Every asset has a `uuid`; its bytes are stored as
+  `var/assets/<uuid>`, outside the document root. There is no file name or file
+  path column: `name` is an editable label and `url` is the only way to fetch
+  the bytes.
+- **Delivery.** `GET /cms-api/v1/assets/{uuid}` serves the file after the access
+  check: an asset with no groups is public (anonymous included); with groups,
+  only their members and the admin role can view it. Responses are
+  `Cache-Control: private`, keep `ETag`/`304`, and markup types (SVG, HTML, XML)
+  get a sandboxing CSP so uploaded scripts cannot run.
+- **Management.** A new `asset` resource type in `role_data_access` decides
+  which roles may list, edit, delete and export each asset; uploads go to the
+  uploader's roles and the admin role manages all. New permission
+  `admin.asset.update` (granted to every role that can upload):
+  `POST /admin/assets/{id}` edits name, alt, groups, roles and folder, and can
+  replace the file under the same uuid.
+- **Folders** are an organisation-only tree: `GET|POST /admin/asset-folders`,
+  `PUT|DELETE /admin/asset-folders/{id}`; the list filters by `folder_id`.
+- **Bulk:** `POST /admin/assets/bulk-groups`, `bulk-folder`, `bulk-delete`.
+- **Export/import:** `POST /admin/assets/export` returns a ZIP
+  (`selfhelp/asset-bundle` 2.0: `manifest.json` + `files/<uuid>`);
+  `POST /admin/assets/import` creates each entry through the normal upload path
+  and skips uuids that already exist.
 - **Default alt.** An image section with an empty `alt` gets the asset's alt in
-  the page payload; a section's own alt wins. The image style's fields get
-  titles (Image Source, Alt, Title, Fluid) and the Alt help explains this.
-- **Groups.** `therapist` is renamed `researcher`; new public pages are readable
-  by subject + researcher. The `admin` group is removed (admin rights come from
-  the admin role, which bypasses page ACLs), together with its memberships,
-  page ACL rows and validation codes. `app:create-admin-user` no longer adds a
-  group.
-- **Migration** `Version20261103112133` does all of the above. It does not
-  rewrite folder-era asset URLs in content or move existing files: old
-  `/assets/<folder>/<file>` URLs stop working; re-pick those assets.
-- **Export/import** bundles are keyed by uuid (bundle 2.0); import skips
-  existing uuids instead of overwriting.
-- `supports.frontend` rises to `>=0.1.69`.
+  the page payload. The image style fields are titled (Image Source, Alt,
+  Title, Fluid). Asset email attachments are resolved to the stored file.
 
-## Change: members are listed through the users list (breaking)
+## Groups
 
-- `GET /admin/users` and `GET /admin/users/export` take `id_roles` (users
-  holding that role), next to `id_groups`. The Users page has a Role filter,
-  and the Groups/Roles "View members" dialogs use this list, so they get
-  search, status filter and paging.
-- `GET /admin/groups/{groupId}/users` and `GET /admin/roles/{roleId}/users`
-  are removed (routes dropped in `Version20261103112133`), together with the
-  `responses/admin/common/group_members` schema.
+`therapist` is renamed `researcher`; new public pages are readable by subject +
+researcher. The `admin` group is removed: admin rights come from the admin role,
+and `app:create-admin-user` adds no group.
 
-## Fix: logging in no longer replaces the username with the email
+## Form uploads
 
-Login, 2FA login, token refresh and impersonation wrote the user's email into
-`user_name` (`JWTService` set it before minting the token, and the refresh
-token's flush saved it). The token already identifies users by email
-(`User::getUserIdentifier()`), so those writes are removed. Usernames that were
-already overwritten are not restored; admins can correct them.
+- Files uploaded through forms are stored in `var/form-files/` and served only
+  by `GET /cms-api/v1/forms/files/{record_id}/{field}` to the submitting user
+  or users with READ on the form's data table, sandboxed and with `nosniff`.
+  The `file-input` checkbox `files_public` (off by default) makes a field's
+  files readable by anyone.
+- Any `file-input` field keeps its file (detection uses the style, not the
+  field name); a file sent for a non-file field returns `400`. Stored names no
+  longer get a doubled extension.
+- Zip downloads: `GET /forms/files/{record_id}/{field}/zip` and
+  `GET /admin/data/tables/{tableName}/files` (`admin.data.read`).
 
-## Fix: asset email attachments were never attached
+## Login rate limiting
 
-- Action emails store attachments as the asset URL, and the mailer only
-  attached real file paths, so asset attachments were silently dropped. The URL
-  is now resolved to the stored file.
+Failed logins, failed 2FA codes and password-reset requests are rate limited
+(`AUTH_LOGIN_*`, `AUTH_2FA_*`, `AUTH_RECOVERY_*` env vars; counters in Redis).
+A blocked request returns `429` with `Retry-After` and `data.retry_after`. The
+`login`, `two-factor-auth` and `reset-password` styles gain the CMS field
+`alert_rate_limited` (`{minutes}` placeholder).
 
-## Fix: last login is recorded for password logins
+## Pages and navigation
 
-- `users.last_login` was only set after a 2FA code, so every user without 2FA
-  showed `last_login: "never"` in Admin → Users. A successful password login
-  now records it too.
+- A page's `title`, `description` and modal settings are stored in its version
+  and go live only on Publish; restore brings them back.
+- Public-navigable page types are resolved by name
+  (`PageType::PUBLIC_NAVIGABLE_PAGE_TYPES = ['core', 'experiment']`), not by id.
+- Admin navigation items carry `public_visibility { rendered, reason }`
+  (`headless` | `page_type_excluded`), and `GET /admin/pages` items carry
+  `menu_eligible` (page type only; headless pages stay eligible).
+- Navigation search honours `field_policy = page_metadata_only` (title and
+  description only).
+- Deleting a published page no longer returns `500`. CMS app template form
+  pages get neutral titles.
 
-## Fix: the `[2, 3]` page-type filter was positional
+## Security and logging
 
-`PageService::getAllAccessiblePagesForUser()` restricted non-admin page trees
-with `!in_array($item['id_page_types'], [2, 3])`. `page_types` is a plain table
-with auto-increment ids and no stable lookup codes, so `2` and `3` meant `core`
-and `experiment` only because of legacy seed order. A fresh install seeding in a
-different order, or a plugin inserting a page type, silently changes which pages
-the public menu may render — with no failing test.
+`api_request_logs` masks every request/response key containing `password`,
+`token` or `secret`; outside prod, validation errors mask them too.
 
-The set is now named once, on the entity:
+## Deployment
 
-```php
-PageType::PUBLIC_NAVIGABLE_PAGE_TYPES = ['core', 'experiment'];
-```
-
-and resolved to ids by name via `PageTypeRepository::findPublicNavigableIds()`
-(memoized per repository instance). Behaviour is identical for current seed
-data — this is a robustness change, not a behaviour change. Public navigation
-renders content pages only; system types (`intern`, `maintenance`, `emails`,
-`global_css`, …) never appear.
-
-## Add: `public_visibility` on admin navigation items (additive)
-
-The admin navigation builder let you nest a page under another, save it, and see
-the nesting — while the public menu silently dropped it, making the `dropdown`
-and `mega-menu` header presets look broken (they only differ from `simple` when
-a root item has children). The frontend had to duplicate the exclusion rule to
-render its "Not in public menu" badge.
-
-Each item in the admin payload now carries:
-
-```json
-"public_visibility": { "rendered": true, "reason": null }
-```
-
-`reason` is a stable machine-readable code — the frontend owns the wording:
-
-- `headless` — the page is headless
-- `page_type_excluded` — the page type is not public-navigable
-- `page_not_accessible` — dropped by ACL or the page-type filter during payload
-  building (the per-user `$pageMap` collapses both into "absent")
-
-The verdict is derived from the same predicate the public payload uses
-(`NavigationMenuService::evaluatePagePublicVisibility()` and its `$pageMap`
-counterpart), and an integration test asserts the admin verdict matches actual
-public rendering so the two cannot drift.
-
-## Add: `menu_eligible` on the admin pages list (additive)
-
-So the menu picker can filter out pages that may never be added to a public menu,
-without hardcoding page-type ids. `IAdminPage` already carries `id_page_types`,
-so the frontend *could* filter client-side — but only by hardcoding `[2, 3]`
-again, the exact fragility this release removes. `GET /admin/pages` now answers
-directly:
-
-```json
-"menu_eligible": true
-```
-
-`true` when the page's type is in `PageType::PUBLIC_NAVIGABLE_PAGE_TYPES`,
-derived from the same `findPublicNavigableIds()` above.
-
-**It covers the page-type case only.** The three exclusions are not
-interchangeable, and conflating them is the way this goes wrong:
-
-- **Page type** — permanently unfixable → `menu_eligible: false`, filter from the picker.
-- **Headless** — a checkbox an admin can untick → stays `menu_eligible: true`; keep
-  it visible with a tag, or you hide a page they could legitimately fix.
-- **Not accessible** — per-visitor, no per-page answer → stays eligible; tag only.
-
-A headless `core` page therefore returns `menu_eligible: true`, asserted directly
-by `testMenuEligibilityCoversPageTypeOnlyNotHeadless`. Per-item reasons stay on
-`public_visibility`.
-
-## Fix: secrets no longer stored in the API request log
-
-- `api_request_logs` stored issued access/refresh tokens (login and refresh
-  responses) and request fields such as `refresh_token`, `new_password` and
-  `current_password` in plain text; only exact `password`/`token` keys were
-  masked. Any key containing `password`, `token` or `secret` is now masked, in
-  the request and in the logged JSON response.
-- Outside prod, validation errors echoed the request body
-  (`validation.request_data`) including passwords; secrets are now masked there too.
-
-**Upgrade note:** rows logged before this change may still hold tokens. Clear
-old `api_request_logs` rows if the database or its backups may be shared.
-
-## Fix: form uploads are private and no longer dropped
-
-- Files uploaded through forms were written to `public/uploads/form-files/`, so
-  anyone with the path could read them and an uploaded SVG ran its script on the
-  backend origin. They now live in `var/form-files/` and are served only by
-  `GET /cms-api/v1/forms/files/{record_id}/{field}` (migration
-  `Version20261028095413`) to the submitting user or users with READ on the
-  form's data table, sandboxed and with `nosniff`. A new `files_public`
-  checkbox on `file-input` (migration `Version20261028100251`, off by default)
-  makes a field's files readable by anyone, live for old and new files.
-- A field counted as a file upload only when its name contained "file"; any
-  other `file-input` lost its file while the form reported success. Detection
-  now uses the section style, and a file sent for a non-file field returns `400`.
-- Stored file names no longer get a doubled extension (`.svg.svg`).
-- Admins can download uploads as zips: all files of a multi-file field
-  (`GET /forms/files/{record_id}/{field}/zip`) or the files of the shown rows of
-  a data table (`GET /admin/data/tables/{tableName}/files`, `admin.data.read`).
-  Migration `Version20261028125153`.
-
-**Upgrade step:** move `public/uploads/form-files/` to `var/form-files/`,
-preserving the folder structure. Stored record values do not change. On an
-sh-manager instance (which mounts a `form_files` volume on `var/form-files`), run
-once after the update:
-`docker compose exec backend sh -c 'cp -a /app/public/uploads/form-files/. /app/var/form-files/ && rm -rf /app/public/uploads/form-files'`.
+Nothing is written under `public/` any more. Persist `var/assets/` and
+`var/form-files/` (sh-manager mounts the `assets` and `form_files` volumes;
+parameters `selfhelp.asset_storage_dir` / `selfhelp.form_file_storage_dir`).
+Tests write to `var/test/`, and the Docker build context excludes `var/`, so a
+locally built image never contains uploaded files.
 
 ## Compatibility
 
-Additive response fields only — every existing response keeps its shape, so
-`supports.frontend` stays `>=0.1.68`. The frontend that adopts these fields (and
-deletes its local `PUBLIC_NAVIGABLE_PAGE_TYPE_IDS = [2, 3]` constant) raises its
-own `supports.core` floor to 0.1.43. No migration ships. `pluginApiVersion` is
-unchanged (0.1.0).
-
-# v0.1.42
-
-**Clean user data now actually erases data.** `POST /admin/users/{userId}/clean-data`
-was a stub that returned `200 {"cleaned": true}` while deleting nothing.
-
-## Fix: the endpoint reported success without erasing anything
-
-`AdminUserService::cleanUserData()` looked up the user, hit a
-`// TODO: Implement data cleaning logic`, and returned `true`. Once the admin UI
-exposed the action, an admin could confirm an irreversible GDPR erasure and be
-told it succeeded while every record remained.
-
-The service now erases, in one transaction:
-
-- `Transaction` — the user's activity record; the Users list "Activity" column
-  drops to 0 as the confirmation modal promises.
-- `DataRow` + `DataCell` — all form/entry input the user submitted. Cells are
-  deleted explicitly rather than relying on the FK cascade, because a bulk DQL
-  `DELETE` bypasses Doctrine's ORM-level cascade entirely.
-- `ScheduledJob` — jobs owned by the user; recipients and reminder metadata
-  cascade via their FKs.
-- `ScheduledJobRecipient` — including rows on *other users'* jobs naming this
-  user as a recipient. Their FK is `ON DELETE SET NULL`, so deleting the jobs
-  would otherwise leave them behind with a null user.
-
-Deliberately **kept**: `DataAccessAudit` (a security audit surface recording who
-accessed what, not content the user produced) and session/auth state
-(`RefreshToken`, `Users2faCode`, `ValidationCode`, `UserNavigationState`).
-`PageView`/`PageViewReferrer` carry no `id_users` — pseudonymous daily
-aggregates with nothing per-user to erase. The account itself is kept: this is
-the "erase what I produced, keep the (inactive) account" path, not `deleteUser`.
-
-The operation writes its own audit entry **after** the wipe (so it survives the
-transaction delete) and **inside** the same DB transaction, so a failure at any
-point rolls the whole erasure back rather than leaving it unlogged. Failures
-surface as a non-2xx `ServiceException` instead of `200 {"cleaned": false}` —
-the frontend treats any 2xx as "data is gone".
-
-## Authorization
-
-`cleanUserData()` takes the acting user:
-`cleanUserData(int $currentUserId, int $userId)`. It requires
-`PERMISSION_DELETE` on the target (erasure is irreversible) and refuses
-`SYSTEM_USERS` with `403`. The **route** permission stays `admin.user.update`,
-matching the frontend's client-side gate. The route remains blocked under an
-impersonation token.
-
-## Response (additive)
-
-`data` gains a per-entity `removed` count map alongside `cleaned`:
-
-```json
-{ "cleaned": true,
-  "removed": { "scheduled_job_recipients": 2, "scheduled_jobs": 3,
-               "data_cells": 18, "data_rows": 7, "transactions": 42 } }
-```
-
-Entities deliberately kept have **no key** rather than a `0`.
-`supports.frontend` is raised 0.1.67 -> 0.1.68 in lockstep (the frontend that
-ships the confirmation modal + row action raises ITS `supports.core` floor to
-0.1.42). `pluginApiVersion` is unchanged (0.1.0).
-
-# v0.1.41
-
-**Security fix (breaking).** Asset files are no longer served statically; folder
-ACLs are now enforced on delivery. Requires a filesystem move on upgrade and a
-frontend that reads `url` instead of `file_path`.
-
-## Fix: folder ACLs were unenforceable on the files themselves
-
-Assets lived in `public/uploads/assets/`. Apache's
-`RewriteCond %{REQUEST_FILENAME} !-f` serves an existing file **before** PHP
-runs, so `GET /uploads/assets/<folder>/<file>` returned the bytes to anyone with
-the URL — including logged-out visitors and users explicitly denied the folder.
-Folder ACLs (v0.1.38) only ever filtered the admin **listing** endpoint, which
-made the restriction look effective while the content stayed public. URLs are
-guessable from folder + original filename, so this was not obscurity-protected.
-
-**The fix has three parts:**
-
-1. Assets move **out of the document root**: `public/uploads/assets/` →
-   `var/assets/`, so the web server cannot reach them.
-2. All delivery goes through `GET /cms-api/v1/assets/{folder}/{filename}`
-   (`AssetController`), which calls the same `read` ACL check as the admin
-   get-by-id endpoint. Closed folder → `403`; open-access folder → `200` even for
-   anonymous callers; admin role → always `200`.
-3. `AssetStorageService` is the single source of truth for on-disk location and
-   public URL, and canonicalises delivery paths (separators and `..` rejected by
-   route requirements, resolved path verified to stay inside the folder,
-   defeating symlink escapes). The ACL check runs **before** the filesystem is
-   touched, so a denied caller cannot probe which files exist.
-
-Conditional requests are preserved (`ETag`/`Last-Modified` → `304`) so
-image-heavy pages do not re-download bytes. Responses are `Cache-Control:
-private` so a shared proxy cannot serve one user's asset to another.
-
-## Breaking: `url` is now the only way to fetch bytes
-
-`GET /admin/assets` and `GET /admin/assets/{assetId}` still return both fields,
-but `file_path` is now a **logical key** (`uploads/assets/<folder>/<name>`), not
-a document-root path. Clients must use `url`. The `select-image` / `select-video`
-pickers now offer the delivery URL as the field value, and migration
-`Version20260728092021` rewrites asset references already stored in CMS content.
-
-`supports.frontend` is raised to `>=0.1.67`.
-
-## Upgrade steps
-
-1. Move `public/uploads/assets/` to `var/assets/`, preserving folder structure.
-2. Ensure `var/assets/` is not web-served and is writable by PHP.
-3. Run migrations (`Version20260728091825` registers the route,
-   `Version20260728092021` rewrites stored content references).
-4. If your vhost serves `uploads/` via its own alias or nginx `location`, remove
-   it — an alias outside `public/` bypasses both the new `.htaccess` deny rule
-   and the ACL.
-
-`public/.htaccess` denies `/uploads/assets/` as defence-in-depth for legacy
-trees. Note the deny rule and the application check are independent: the
-filesystem move is what actually closes the gap.
-
-# v0.1.40
-
-Folder-level **open access** for assets. Additive: two new admin routes and a
-new `assets_folders` table; every existing asset endpoint keeps its shape.
-
-## Feature: asset folder open access
-
-A folder can now be marked **open access**, mirroring the page contract
-(`pages.is_open_access`). An open-access folder is readable by **everyone,
-including anonymous (not logged-in) callers**, bypassing group grants — the
-escape hatch for folders that are legitimately public (logos, public-page
-imagery) under the closed-by-default folder ACLs added in v0.1.38.
-
-- Open access grants **`read` only — never `manage`**. Creating, importing and
-  deleting still require an explicit group grant or the admin role.
-- `GET /cms-api/v1/admin/assets/folders` (permission `admin.asset.read`) lists
-  every known folder with its flag: `{ folders: [{ folder, is_open_access }] }`.
-- `PUT /cms-api/v1/admin/assets/folders/{folder}/open-access` (permission
-  `admin.group.acl`) toggles it, returning `{ folder, is_open_access }`. It is
-  gated by the ACL permission rather than an asset-editing one because the
-  toggle is an access-control decision. Unknown folder returns `404`; folders
-  are created implicitly by the first upload into them.
-
-## Schema: asset folders become a first-class table
-
-Migration `Version20260728083949` adds `assets_folders` (`folder` unique +
-`is_open_access`) and repoints `assets_folders_groups.folder` to the FK
-`id_assets_folders`. Existing grants are **backfilled** by matching on the old
-string before it is dropped, so no ACL is lost, and a grant can no longer point
-at a folder that does not exist (previously a typo produced a phantom folder
-that, under closed-by-default, silently hid its assets from every non-admin).
-
-`assets.folder` intentionally stays a `varchar` — that column doubles as the
-on-disk path segment.
-
-Migration `Version20260728084108` registers the two API routes.
-
-## Scope note
-
-Asset files are still served **statically** from `public/uploads/assets/`, so
-the bytes remain reachable by direct URL regardless of this flag. Open access
-marks a folder as *intentionally* public in the authorization model; it does not
-by itself restrict the folders left closed. Enforcing folder ACLs on file
-**delivery** requires moving assets behind an authenticated route (and changing
-the emitted `url` field), which is a separate coordinated wave.
-
-# v0.1.39
-
-Dedicated **`imported` user status** for CSV-imported users. Additive: one new
-`userStatus` lookup, one extra stats field, one extra accepted list filter
-value; every existing response keeps its shape.
-
-## Feature: `imported` user status
-
-CSV-imported users now land in a dedicated `imported` status instead of keeping
-the User entity's default `id_status`, so an admin can tell "came in via a CSV
-import, never touched" apart from a genuinely `invited` or `active` user.
-
-- New `userStatus` lookup `imported` (`lookup_code = "imported"`, label
-  `Imported`) seeded on fresh installs and added to existing instances by
-  migration `Version20260727132047`. The numeric lookup id is per-instance
-  (auto-increment) — match on the `imported` code, not the id.
-- `POST /cms-api/v1/admin/users/import` now sets every **newly created** row's
-  status to `imported`. Rows skipped as duplicate emails keep their existing
-  status untouched.
-- `GET /cms-api/v1/admin/users?status=imported` is now an accepted filter value
-  (the endpoint previously 400'd on anything but `active`/`invited`/`blocked`).
-- `GET /cms-api/v1/admin/users/stats` gains an additive `imported` count:
-  `{ total, active, invited, imported, blocked }`. As before, the buckets are
-  independent counts, not a breakdown that sums to `total`.
-
-`imported` is a **passive marker only** — no auth impact. Login keys off
-`active`, activation off `invited`; neither uses a status allow-list, so an
-`imported` user behaves exactly like the previous import default. The activation
-invite moves the user `imported → invited → active` through the normal flow, so
-nobody is stuck in `imported`. The activation-mail behaviour on import is
-unchanged (import still creates users without sending mail).
-
-Coupled FE↔BE change (the FE `users list`/`stats` UI consumes the new value):
-`supports.frontend` is raised to `>=0.1.65` in lockstep; the frontend that adopts
-the `imported` tile/filter raises ITS `supports.core` floor to `0.1.39`.
-
-# v0.1.38
-
-Asset **export/import bundles** and **folder-level access control**. All
-additive: new routes, one new permission, one new table; the existing asset
-endpoints keep their response shapes and gain a second (folder-ACL) enforcement
-layer.
-
-## Feature: asset export/import bundles
-
-Adds a ZIP bundle export/import for assets, mirroring the pages/navigation
-bundle pattern (migration `Version20260722092220`):
-
-- `POST /cms-api/v1/admin/assets/export` (permission `admin.asset.read`) —
-  body `{ folders?: string[] }`; returns a binary ZIP
-  (`application/zip`, `asset_export.zip`). Empty/omitted `folders` exports every
-  folder the caller may read. The bundle is `manifest.json`
-  (`{ bundle_type: "selfhelp/asset-bundle", bundle_version: "1.0", exported_at,
-  assets: [{ folder, file_name, asset_type, bundle_path }] }`) plus
-  `files/<folder>/<name>`.
-- `POST /cms-api/v1/admin/assets/import` (permission `admin.asset.create`) —
-  `multipart/form-data` with `file` (the `.zip`) + `overwrite`; returns
-  `{ imported, skipped, errors[] }`. Each entry is created through the normal
-  asset-create path, so file-type validation, dedup/overwrite, transactions,
-  cache invalidation, and folder manage-ACL all apply. Manifest paths are
-  traversal-guarded.
-
-## Feature: group-scoped asset-folder ACLs
-
-Adds `assets_folders_groups` (folder string × group × `read`/`manage`). The ACLs
-are edited **per group**, alongside the page ACLs, on the admin Groups page, and
-reuse the existing `admin.group.acl` permission (same as the page-ACL routes):
-
-- `GET /cms-api/v1/admin/groups/{groupId}/asset-acls` (permission
-  `admin.group.acl`) — returns `{ id_groups, acls: [{ folder, access_level }] }`.
-- `PUT /cms-api/v1/admin/groups/{groupId}/asset-acls` (permission
-  `admin.group.acl`) — body `{ acls: [{ folder, access_level }] }`; a full
-  replacement of the group's grants, empty `acls` clears them.
-
-Enforcement is a second layer on top of the asset route permissions and is
-resource-side (a union across the caller's groups). It is **closed-by-default**:
-a non-admin user sees a folder only if one of their groups is explicitly granted
-`read`/`manage` on it — a folder with no grant for their groups (including a
-folder with no ACL rows at all) is not visible to them. `read` = list/get,
-`manage` = also create/delete/import. The **admin role** bypasses folder ACLs
-entirely (full access to every folder), mirroring the page-ACL contract.
-`GET /admin/assets` returns only the folders the caller may read;
-get-by-id / create / delete / a directly-requested denied folder return `403`.
-
-To keep newly-restricted folders usable, `read` is seeded by default: on the
-first upload into a new folder the runtime seeds `admin=manage`, `subject=read`,
-`therapist=read` (mirroring page create) — but only for the groups that exist.
-Pre-existing folders carry no ACL rows and are therefore admin-only until a
-group is granted on them.
-
-## Compatibility
-
-`supports.frontend` stays `>=0.1.64` — every change here is additive, so an
-older frontend keeps working against this core; the frontend that adopts the
-asset bundle + folder-ACL UI raises ITS `supports.core` floor to `0.1.38`.
-`pluginApiVersion` is unchanged (`0.1.0`): no plugin API surface changed.
-
-# v0.1.37
-
-The admin **user / group / role management** wave plus the **registration-code**
-and **scheduled-jobs stats** endpoints. All of these ship together in this
-release.
-
-## Feature: users management endpoints
-
-Adds `admin.user.{read,create,update,delete}` permissions and routes (migrations
-`Version20260716180311`, `Version20260717134503`):
-
-- `GET /cms-api/v1/admin/users` — paginated list with search / status / group
-  filters, scoped to the caller's visible users.
-- `GET /cms-api/v1/admin/users/stats` — counts per status bucket
-  (`total`/`active`/`invited`/`blocked`) for the page tiles, scoped like the list.
-- `GET /cms-api/v1/admin/users/{userId}` and `POST` / `PUT` / `DELETE` for CRUD.
-- Bulk operations: `POST /admin/users/bulk-delete`, `bulk-add-to-group`,
-  `bulk-remove-from-group`, `bulk-send-activation` (partial-success semantics).
-- CSV `GET /admin/users/export` and `POST /admin/users/import`.
-
-## Feature: group "View members" endpoint
-
-Adds `GET /cms-api/v1/admin/groups/{groupId}/members` (permission
-`admin.group.read`) backing the Groups page "View members" modal.
-
-## Feature: role / group member routes
-
-Adds `GET /cms-api/v1/admin/roles/{roleId}/users` and
-`GET /cms-api/v1/admin/groups/{groupId}/users` (permissions `admin.role.read`
-/ `admin.group.read`, migration `Version20260720132523`) listing the members of
-a role or group. The reusable member response JSON moves to
-`responses/admin/common/` so roles and groups share one schema.
-
-## Feature: registration-code stats endpoint
-
-Adds `GET /cms-api/v1/admin/registration-codes/stats` (permission
-`admin.registration_code.read`, migration `Version20260721085447`) for the admin
-Registration Codes page tiles. It returns the code counts as a breakdown of the
-whole visible set:
-
-```json
-{ "total": 120, "available": 84, "used": 36 }
-```
-
-`available` counts codes with no consumer (`consumed IS NULL`), `used` counts the
-rest, and `available + used === total`. The endpoint is **unfiltered** (it
-describes the whole set, not the current list filter) and, like the
-registration-codes list, is not group/ACL scoped — so `total` equals the
-unfiltered `totalCount` the list returns for the same caller.
-
-## Feature: scheduled-jobs stats endpoint
-
-Adds `GET /cms-api/v1/admin/scheduled-jobs/stats` (route
-`admin_scheduled_jobs_stats`, permission `admin.scheduled_job.read` — the same
-as the list endpoint, migration `Version20260721135036`) for the admin Scheduled
-Jobs page tiles. It returns a global status breakdown:
-
-```json
-{ "total": 200, "queued": 30, "done": 150, "failed": 12, "deleted": 8 }
-```
-
-`queued`/`done`/`failed`/`deleted` map to the `scheduledJobsStatus` lookup
-codes; `total` counts all jobs. The four status counts are **independent, not a
-partition** — deleted jobs still count toward `total`, so they need not sum to
-it. Computed from a single grouped aggregate (`GROUP BY status`). The endpoint
-is **unfiltered** (ignores date/search/status/type): it describes the whole set
-the caller can see, not the current list query.
-
-## Cross-repo
-
-All of the above are new (additive) admin API surface the frontend consumes, so
-`supports.frontend` is raised `0.1.63 → 0.1.64` (the first frontend that adopts
-this wave). These are admin-only surfaces the mobile app does not use, so their
-response types stay local to the frontend rather than in `@selfhelp/shared`;
-each response is anchored by its JSON Schema under `config/schemas/api/v1/`.
-`pluginApiVersion` is unchanged (`0.1.0`).
+`supports.frontend` is `>=0.1.69`; the frontend uses `@selfhelp/shared` 1.22.1.
+`pluginApiVersion` is unchanged (`0.1.0`). Migrations: `Version20260716180311`,
+`Version20260717134503`, `Version20260721085447`, `Version20260721135036`,
+`Version20260727132047`, `Version20261027085407`, `Version20261028095413`,
+`Version20261028100251`, `Version20261028125153`, `Version20261103112133`.
 
 # v0.1.36
 
