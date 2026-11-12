@@ -535,23 +535,11 @@ class PageService extends BaseService
         $hydrated = $this->hydratePublishedPage($storedPageData, $languageId, $routeParams, $routeRequirements);
 
         // Page settings (title, description, modal) come from the published
-        // version, so editing them waits for Publish. Versions published
-        // before settings were versioned have none: read the live values.
+        // version, so editing them waits for Publish. A version that holds
+        // none has no settings: nothing is read from the live page.
         if (isset($hydrated['page']) && is_array($hydrated['page'])) {
             $storedFields = is_array($storedPageData['page'] ?? null) ? ($storedPageData['page']['fields'] ?? null) : null;
-            if (is_array($storedFields)) {
-                $settings = $this->publishedPageSettings($storedFields, $languageId);
-            } else {
-                $seo = $this->resolvePageSeoFields($page_id, $languageId);
-                $modalSize = $this->resolveModalSize($page_id);
-                $settings = [
-                    'title' => $seo['title'],
-                    'description' => $seo['description'],
-                    'open_in_modal' => $this->resolveOpenInModal($page_id),
-                    'modal_width' => $modalSize['modal_width'],
-                    'modal_height' => $modalSize['modal_height'],
-                ];
-            }
+            $settings = $this->publishedPageSettings(is_array($storedFields) ? $storedFields : [], $languageId);
             unset($hydrated['page']['fields']);
             $hydrated['page'] = array_merge($hydrated['page'], $settings);
             $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
@@ -717,7 +705,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections, $routeParams, $routeRequirements) {
+        $pageData = $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections, $routeParams, $routeRequirements) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
@@ -752,6 +740,34 @@ class PageService extends BaseService
 
             return $pageData;
         });
+
+        // The asset's default alt belongs to the asset, not to the page: it is
+        // read when the page is served and never stored in the cached payload
+        // (the published path does the same in hydratePublishedPage). An alt
+        // edit then shows at once without flushing any cached page.
+        return $this->withAssetDefaultAltsOnPage($this->asAssocArray($pageData));
+    }
+
+    /**
+     * {@see withAssetDefaultAlts()} for the sections of a whole page payload.
+     *
+     * @param array<string, mixed> $pageData
+     * @return array<string, mixed>
+     */
+    private function withAssetDefaultAltsOnPage(array $pageData): array
+    {
+        $page = $pageData['page'] ?? null;
+        if (!is_array($page) || !is_array($page['sections'] ?? null)) {
+            return $pageData;
+        }
+
+        $page['sections'] = $this->withAssetDefaultAlts(array_values(array_map(
+            fn (mixed $section): array => $this->asAssocArray($section),
+            $page['sections']
+        )));
+        $pageData['page'] = $page;
+
+        return $pageData;
     }
 
     /**
@@ -1030,6 +1046,10 @@ class PageService extends BaseService
 
     /**
      * Get page sections with translations
+     *
+     * The sections are cached, so they hold nothing that belongs to another
+     * entity: the default alt of an asset is NOT filled in here but when the
+     * page is served ({@see withAssetDefaultAltsOnPage()}).
      * 
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
@@ -1123,7 +1143,7 @@ class PageService extends BaseService
                 $languageId
             );
 
-            return $this->withAssetDefaultAlts($sections);
+            return $sections;
         });
     }
 
@@ -1435,12 +1455,13 @@ class PageService extends BaseService
 
         // entry-record: same visible contract as entry-record-form —
         // `load_record_from` names the route param; the server builds the
-        // record_id predicate (no author SQL filter).
+        // record_id predicate (no author SQL filter). A section with no value,
+        // or a blank one, already carries the style default (`record_id`) here
+        // (SectionUtilityService fills it), the same rule a bundle import
+        // applies to a missing field (F64, F87). A name the route does not have
+        // finds no record below.
         if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
             $loadRecordFrom = trim($this->getSectionPropertyContent($section, 'load_record_from'));
-            if ($loadRecordFrom === '') {
-                return [];
-            }
             $routeParams = is_array($interpolationContext['route'] ?? null)
                 ? $interpolationContext['route']
                 : [];

@@ -110,10 +110,10 @@ $hasChanges = $pageVersionService->hasUnpublishedChanges($pageId);
   as `name => {language id => content}`. A published page serves them from
   the version, so editing them waits for Publish; the public page list (menu
   labels) uses the published title and description too. Admin views and
-  preview read the live values. Versions published before 2026-11-06 have no
-  `page.fields`: their pages keep serving the live values, and the
-  unpublished-changes check and draft diff ignore the settings for them until
-  the next publish.
+  preview read the live values. A version without `page.fields` (published
+  before settings were versioned, on a development database) holds no
+  settings: its page serves none, and the unpublished-changes check reports
+  the draft as changed until the next Publish writes them.
 - Section structure and hierarchy
 - Field configurations and properties
 - Translation content for all languages

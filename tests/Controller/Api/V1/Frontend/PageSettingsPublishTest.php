@@ -25,8 +25,8 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * L5: a page's title and description are part of its version. Editing them
  * changes nothing for visitors until Publish, the change is reported as
- * unpublished, and restoring a version brings the old values back. Pages
- * published before this keep serving their live values.
+ * unpublished, and restoring a version brings the old values back. A version
+ * that holds no settings serves none (the live page is never read for it).
  */
 final class PageSettingsPublishTest extends QaWebTestCase
 {
@@ -85,7 +85,7 @@ final class PageSettingsPublishTest extends QaWebTestCase
         self::assertSame('qa description v1', $this->storedField((int) $page->getId(), 'description'));
     }
 
-    public function testPagesPublishedBeforeVersionedSettingsKeepTheirLiveTitle(): void
+    public function testAVersionWithoutSettingsServesNoneAndReportsTheDraftAsChangedUntilThePublish(): void
     {
         $admin = $this->loginAsQaAdmin();
         $page = $this->createPageWithSection();
@@ -103,8 +103,16 @@ final class PageSettingsPublishTest extends QaWebTestCase
 
         $this->setPageField($page, 'title', 'qa live title');
 
+        $public = $this->publicPage();
+        self::assertNull($public['title'] ?? null, 'Nothing is read from the live page for such a version');
+        self::assertNull($public['description'] ?? null);
+        self::assertFalse($public['open_in_modal'] ?? null);
+        self::assertTrue($this->hasUnpublishedChanges($page, $admin), 'The draft has settings the version lacks');
+
+        // The next Publish writes them, and the page is in step again.
+        $this->publish($page, $admin);
         self::assertSame('qa live title', $this->publicPage()['title'] ?? null);
-        self::assertFalse($this->hasUnpublishedChanges($page, $admin), 'Legacy versions must not all report a change');
+        self::assertFalse($this->hasUnpublishedChanges($page, $admin));
     }
 
     private function createPageWithSection(): Page

@@ -32,9 +32,9 @@ class PageVersionRepository extends ServiceEntityRepository
 
     /**
      * The versioned page settings (`page.fields`) of each page's published
-     * version. Pages without a published version, or whose version predates
-     * versioned settings, are absent. Reads only that JSON path, not the
-     * whole snapshot.
+     * version. Pages without a published version, or whose version holds no
+     * settings, are absent. Reads only that JSON path, not the whole
+     * snapshot.
      *
      * @param list<int> $pageIds
      * @return array<int, array<string, array<int, string>>> page id => field name => [language id => content]

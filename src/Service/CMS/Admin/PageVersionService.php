@@ -396,7 +396,6 @@ class PageVersionService extends BaseService
             
             // Get published version structure
             $publishedJson = $publishedVersion->getPageJson();
-            $draftJson = $this->withoutFieldsIfLegacy($draftJson, $publishedJson);
             
             // Generate normalized hashes for comparison
             $draftHash = $this->generateStructureHash($draftJson);
@@ -408,25 +407,6 @@ class PageVersionService extends BaseService
             // If any error occurs, assume there are changes (fail-safe)
             return true;
         }
-    }
-
-    /**
-     * A version published before page settings were versioned has no
-     * `page.fields`, and its page still serves the live settings. Drop them
-     * from the draft too, so such pages don't all report a change.
-     *
-     * @param array<string, mixed> $draftJson
-     * @param array<string, mixed> $versionJson
-     * @return array<string, mixed>
-     */
-    private function withoutFieldsIfLegacy(array $draftJson, array $versionJson): array
-    {
-        $versionPage = $versionJson['page'] ?? null;
-        if (is_array($versionPage) && !array_key_exists('fields', $versionPage) && is_array($draftJson['page'] ?? null)) {
-            unset($draftJson['page']['fields']);
-        }
-
-        return $draftJson;
     }
 
     /**
@@ -571,7 +551,7 @@ class PageVersionService extends BaseService
         $versionJson = $version->getPageJson();
 
         // Normalize the JSON structures for comparison (sort keys to handle property order differences)
-        $normalizedDraft = JsonNormalizer::normalize($this->withoutFieldsIfLegacy($draftJson, $versionJson), JSON_PRETTY_PRINT);
+        $normalizedDraft = JsonNormalizer::normalize($draftJson, JSON_PRETTY_PRINT);
         $normalizedVersion = JsonNormalizer::normalize($versionJson, JSON_PRETTY_PRINT);
 
         $result = [
