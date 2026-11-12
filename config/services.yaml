@@ -35,6 +35,11 @@ parameters:
     auth_2fa_window_default: '15minutes'
     auth_recovery_max_requests_default: 3
     auth_recovery_window_default: '1hour'
+    # The same brute-force limits per visitor address (all accounts together).
+    auth_ip_max_attempts_default: 100
+    auth_ip_window_default: '15minutes'
+    auth_recovery_ip_max_requests_default: 20
+    auth_recovery_ip_window_default: '1hour'
     # Response-schema validation (expensive). Opt in via env; defaults to false.
     # See docs/developer/05-api-patterns.md.
     validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'

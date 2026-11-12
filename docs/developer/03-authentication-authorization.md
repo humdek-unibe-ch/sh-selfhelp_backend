@@ -191,17 +191,21 @@ sequenceDiagram
 ### Brute-Force Rate Limiting
 
 `AuthController` throttles the credential endpoints with Symfony RateLimiter
-(`config/packages/rate_limiter.yaml`, sliding windows). Counters live in the
-`cache.app` pool (Redis); there are no database tables.
+(`config/packages/rate_limiter.yaml`, sliding windows) through
+`App\Service\Auth\AuthThrottleService`. Counters live in the `cache.app` pool
+(Redis); there are no database tables. Each endpoint has two counters: one per
+account and one per visitor address over all accounts (credential stuffing
+tries many accounts from one source).
 
-| Endpoint | Counted per | Counts | Default | Over the limit |
-|---|---|---|---|---|
-| `POST /auth/login` | lowercased email | failed attempts only; a successful password check resets it | 15 / 15 minutes | `429` + `Retry-After` header + `data.retry_after` (seconds), even for the correct password |
-| `POST /auth/two-factor-verify` | `id_users` | wrong codes only; a valid code resets it | 15 / 15 minutes | `429` + `Retry-After` + `data.retry_after` |
-| `POST /auth/forgot-password` | lowercased email | every request, known account or not | 3 / 1 hour | no email is sent and it answers `429` + `Retry-After` + `data.retry_after`; below the limit the answer stays the generic `200 {requested: true}`. Unknown addresses are counted the same way, so the `429` cannot be used to enumerate accounts |
+| Endpoint | Per account (counted per) | Per visitor address | Over the limit |
+|---|---|---|---|
+| `POST /auth/login` | lowercased email; failed attempts only; a successful password check resets it. 15 / 15 minutes | failed attempts only; a success does **not** reset it. 100 / 15 minutes | `429` + `Retry-After` header + `data.retry_after` (seconds), even for the correct password |
+| `POST /auth/two-factor-verify` | `id_users`; wrong codes only; a valid code resets it. 15 / 15 minutes | wrong codes only; a success does not reset it. 100 / 15 minutes | `429` + `Retry-After` + `data.retry_after` |
+| `POST /auth/forgot-password` | lowercased email; every request, known account or not. 3 / 1 hour | every request, whatever the email. 20 / 1 hour | no email is sent and it answers `429` + `Retry-After` + `data.retry_after`; below the limits the answer stays the generic `200 {requested: true}`. Unknown addresses are counted the same way, so the `429` cannot be used to enumerate accounts |
 
 There is no permanent lockout: a window frees up on its own, and other
-accounts are never affected.
+accounts and other visitors are never affected. A blocked address does not
+keep filling the counters of the accounts it tries.
 
 Every value is an environment variable, so the Manager can tune it per
 instance. Unset variables fall back to the defaults in `config/services.yaml`
@@ -215,13 +219,41 @@ instance. Unset variables fall back to the defaults in `config/services.yaml`
 | `AUTH_2FA_WINDOW` | `15minutes` |
 | `AUTH_RECOVERY_MAX_REQUESTS` | `3` |
 | `AUTH_RECOVERY_WINDOW` | `1hour` |
+| `AUTH_IP_MAX_ATTEMPTS` (login and two-factor, per address) | `100` |
+| `AUTH_IP_WINDOW` | `15minutes` |
+| `AUTH_RECOVERY_IP_MAX_REQUESTS` | `20` |
+| `AUTH_RECOVERY_IP_WINDOW` | `1hour` |
 
 Windows are relative time strings without spaces (`15minutes`, `1hour`):
 generated instance `.env` files are unquoted, and the dotenv parser rejects an
-unquoted value containing a space. The limits are
-per account, not per client IP: browser traffic reaches the backend through the
-frontend BFF, so the backend does not see the visitor's address. Tests:
-`tests/Controller/Api/V1/AuthRateLimitTest.php`.
+unquoted value containing a space.
+
+**Which address counts.** Browser traffic reaches the backend through the
+frontend BFF, so the peer address of a call is usually the BFF's, not the
+visitor's. Counting that would put every visitor in one bucket, and one
+attacker could lock all of them out. The address counters therefore only
+count an address the backend really sees as the visitor's
+(`AuthThrottleService::visitorAddress()`):
+
+- a direct call (the peer is not a trusted proxy): the peer address. A
+  forged `X-Forwarded-For` header from such a peer is ignored;
+- a call from a trusted proxy (`TRUSTED_PROXIES`) that passed
+  `X-Forwarded-For`: the address it forwarded;
+- not counted: a trusted proxy that passed no visitor address, and any
+  private or reserved address (loopback, LAN, container network). Only the
+  per-account limits apply then.
+
+IPv6 is counted per /64 network, so rotating inside one subscriber's block
+does not dodge the limit. The operator must list the proxy in front of the
+backend (the BFF) in `TRUSTED_PROXIES`, and the proxy in front of the BFF must
+pass the visitor address on, otherwise the per-address limit stays inactive
+(private proxy addresses) or counts the proxy as one visitor (public proxy
+address). Intranet instances whose visitors have private addresses rely on
+the per-account limits.
+
+Tests: `tests/Controller/Api/V1/AuthRateLimitTest.php` (HTTP, counters and
+429s) and `tests/Unit/Service/Auth/AuthThrottleServiceTest.php` (which address
+counts in which proxy setup).
 
 ### JWTService Implementation
 ```php
