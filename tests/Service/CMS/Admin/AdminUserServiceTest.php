@@ -62,7 +62,7 @@ class AdminUserServiceTest extends QaKernelTestCase
             'enable_validation' => false,
         ], $overrides);
 
-        return $this->adminUserService->createUser($data);
+        return $this->adminUserService->createUser($this->adminId, $data);
     }
 
     /**
@@ -151,7 +151,7 @@ class AdminUserServiceTest extends QaKernelTestCase
         $this->expectException(ServiceException::class);
         $this->expectExceptionCode(Response::HTTP_BAD_REQUEST);
 
-        $this->adminUserService->createUser([
+        $this->adminUserService->createUser($this->adminId, [
             'name' => 'qa_svc_no_email',
             'password' => QaBaselineFixture::QA_PASSWORD,
         ]);
@@ -167,7 +167,7 @@ class AdminUserServiceTest extends QaKernelTestCase
 
         try {
             $this->expectException(ServiceException::class);
-            $this->adminUserService->createUser([
+            $this->adminUserService->createUser($this->adminId, [
                 'email' => $email,
                 'name' => 'qa_svc_dup_2',
                 'password' => QaBaselineFixture::QA_PASSWORD,
@@ -455,8 +455,10 @@ class AdminUserServiceTest extends QaKernelTestCase
         self::assertSame(1, $removed['data_rows']);
         self::assertSame(1, $removed['data_cells']);
         self::assertSame(1, $removed['scheduled_jobs']);
-        // DataAccessAudit is deliberately kept, so it has no count key.
-        self::assertArrayNotHasKey('data_access_audit', $removed);
+        // Audit rows are kept and only lose the link to the user; the count is
+        // the number of rows detached, not deleted.
+        self::assertSame(2, $removed['transactions']);
+        self::assertSame(0, $removed['data_access_audits']);
 
         $this->em->clear();
 
@@ -470,9 +472,17 @@ class AdminUserServiceTest extends QaKernelTestCase
         self::assertInstanceOf(User::class, $stillThere);
         self::assertSame($created['email'], $stillThere->getEmail());
 
-        // The user's own activity is gone, so the admin Users list "Activity"
-        // column (User::$transactions) drops to zero as the UI promises.
+        // The user's own activity no longer points at them, so the admin Users
+        // list "Activity" column (User::$transactions) drops to zero as the UI
+        // promises ...
         self::assertSame(0, $this->countRowsForUser(\App\Entity\Transaction::class, 'user', $userId));
+        // ... but the audit rows themselves are kept: the history of what
+        // changed survives, only the person is cut loose.
+        $keptRows = (int) $this->em
+            ->createQuery('SELECT COUNT(t) FROM App\Entity\Transaction t WHERE t.transactionLog LIKE :log')
+            ->setParameter('log', 'qa_clean_activity_%')
+            ->getSingleScalarResult();
+        self::assertSame(2, $keptRows, 'Audit rows must survive the erasure without the user link.');
 
         // The erasure itself is still audited. The entry is attributed to the
         // ACTING admin (TransactionService uses getCurrentUser(), null here in

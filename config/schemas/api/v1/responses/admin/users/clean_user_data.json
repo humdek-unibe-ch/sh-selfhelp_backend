@@ -1,0 +1,79 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Clean User Data Result Schema",
+    "description": "Result of POST /admin/users/{userId}/clean-data: what the user produced is erased, the account stays. `removed` counts the rows per kind. For `transactions` and `data_access_audits` the rows are KEPT as the audit trail and only lose the link to the user, so the count is rows detached, not deleted. `form_files` is the number of uploaded files deleted from disk.",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "cleaned": {
+                    "type": "boolean",
+                    "description": "Always true on success"
+                },
+                "removed": {
+                    "type": "object",
+                    "properties": {
+                        "scheduled_job_recipients": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Recipient rows that pointed at the user on other people's scheduled jobs (deleted)"
+                        },
+                        "scheduled_jobs": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Scheduled jobs owned by the user (deleted)"
+                        },
+                        "data_cells": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Cells of the user's data rows (deleted)"
+                        },
+                        "data_rows": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Data rows owned by the user (deleted)"
+                        },
+                        "transactions": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Transaction (activity) rows detached from the user; the rows are kept"
+                        },
+                        "data_access_audits": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Data-access audit rows detached from the user; the rows are kept"
+                        },
+                        "api_request_logs": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "API request log rows of the user (deleted)"
+                        },
+                        "form_files": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Uploaded form files removed from disk"
+                        }
+                    },
+                    "required": [
+                        "scheduled_job_recipients",
+                        "scheduled_jobs",
+                        "data_cells",
+                        "data_rows",
+                        "transactions",
+                        "data_access_audits",
+                        "api_request_logs",
+                        "form_files"
+                    ],
+                    "additionalProperties": false
+                }
+            },
+            "required": ["cleaned", "removed"],
+            "additionalProperties": false
+        }
+    },
+    "required": ["data"]
+}

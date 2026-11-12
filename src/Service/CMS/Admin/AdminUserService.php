@@ -24,7 +24,7 @@ use App\Service\Auth\UserValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use App\Service\Auth\JWTService;
-use App\Service\CMS\FormFileUploadService;
+use App\Service\Core\UserDataCleanerService;
 use App\Service\Mercure\MercureTopicResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -92,7 +92,7 @@ class AdminUserService extends BaseService
         private readonly HubInterface $mercureHub,
         private readonly MercureTopicResolver $mercureTopics,
         private readonly LoggerInterface $logger,
-        private readonly FormFileUploadService $formFileUploadService,
+        private readonly UserDataCleanerService $userDataCleaner,
     ) {
     }
 
@@ -193,15 +193,14 @@ class AdminUserService extends BaseService
     {
         $normalizedGroupIds = $this->normalizeIdList($groupIds);
         $this->assertGroupsExist($normalizedGroupIds);
+        // The group side is the same for every user, so it fails the whole
+        // request up front; the user side is checked per user by addGroupsToUser().
+        $this->assertMayChangeGroupMembership($currentUserId, $normalizedGroupIds);
 
         return $this->processBulk(
             $userIds,
             function (int $userId) use ($currentUserId, $normalizedGroupIds): void {
-                if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
-                    throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
-                }
-
-                $this->addGroupsToUser($userId, $normalizedGroupIds);
+                $this->addGroupsToUser($currentUserId, $userId, $normalizedGroupIds);
             }
         );
     }
@@ -232,15 +231,13 @@ class AdminUserService extends BaseService
     {
         $normalizedGroupIds = $this->normalizeIdList($groupIds);
         $this->assertGroupsExist($normalizedGroupIds);
+        // Same as the bulk add: the group side fails the whole request up front.
+        $this->assertMayChangeGroupMembership($currentUserId, $normalizedGroupIds);
 
         return $this->processBulk(
             $userIds,
             function (int $userId) use ($currentUserId, $normalizedGroupIds): void {
-                if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
-                    throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
-                }
-
-                $this->removeGroupsFromUser($userId, $normalizedGroupIds);
+                $this->removeGroupsFromUser($currentUserId, $userId, $normalizedGroupIds);
             }
         );
     }
@@ -342,19 +339,10 @@ class AdminUserService extends BaseService
                     continue;
                 }
 
+                // createUser() enforces the CREATE right on every group named on the row.
                 $groupIds = $this->resolveGroupNames($row['groups'] ?? null);
-                foreach ($groupIds as $groupId) {
-                    if (!$this->dataAccessSecurityService->hasPermission(
-                        $currentUserId,
-                        LookupService::RESOURCE_TYPES_GROUP,
-                        $groupId,
-                        DataAccessSecurityService::PERMISSION_CREATE
-                    )) {
-                        throw new ServiceException('Access denied: cannot create users in group ' . $groupId, Response::HTTP_FORBIDDEN);
-                    }
-                }
 
-                $this->createUser([
+                $this->createUser($currentUserId, [
                     'email' => $email,
                     'name' => $this->nullIfBlank($row['name'] ?? null),
                     'user_name' => $this->nullIfBlank($row['user_name'] ?? null),
@@ -371,6 +359,125 @@ class AdminUserService extends BaseService
         }
 
         return ['imported' => $imported, 'skipped' => $skipped, 'errors' => $errors];
+    }
+
+    /**
+     * Groups say who sees, so changing who is in a group needs the right to
+     * update THAT group, on top of the right to update the user. A grant on one
+     * group never lets a caller move people in or out of another group. The
+     * admin role passes (hasPermission() short-circuits for it).
+     *
+     * @param list<int> $groupIds groups a user is added to or removed from
+     */
+    private function assertMayChangeGroupMembership(int $currentUserId, array $groupIds): void
+    {
+        foreach (array_values(array_unique($groupIds)) as $groupId) {
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $groupId,
+                DataAccessSecurityService::PERMISSION_UPDATE
+            )) {
+                throw new ServiceException(
+                    'Access denied: cannot change the membership of group ' . $groupId,
+                    Response::HTTP_FORBIDDEN
+                );
+            }
+        }
+    }
+
+    /**
+     * A new user in a group needs the CREATE right on that group.
+     *
+     * @param list<int> $groupIds
+     */
+    private function assertMayCreateUsersInGroups(int $currentUserId, array $groupIds): void
+    {
+        foreach (array_values(array_unique($groupIds)) as $groupId) {
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $groupId,
+                DataAccessSecurityService::PERMISSION_CREATE
+            )) {
+                throw new ServiceException(
+                    'Access denied: cannot create users in group ' . $groupId,
+                    Response::HTTP_FORBIDDEN
+                );
+            }
+        }
+    }
+
+    /**
+     * Roles edit, so handing out a role hands out its rights. A non-admin may
+     * add or remove only roles it holds itself; the admin role may assign any.
+     * This stops a scoped admin from granting more than it has (and from
+     * granting `admin`) by way of the user endpoints.
+     *
+     * @param list<int> $roleIds roles that are added to or removed from a user
+     */
+    private function assertMayAssignRoles(int $currentUserId, array $roleIds): void
+    {
+        if ($roleIds === [] || $this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
+            return;
+        }
+
+        $ownRoleIds = [];
+        $actor = $this->userRepository->find($currentUserId);
+        if ($actor !== null) {
+            foreach ($actor->getUserRoles() as $role) {
+                $ownRoleIds[(int) $role->getId()] = true;
+            }
+        }
+
+        foreach (array_values(array_unique($roleIds)) as $roleId) {
+            if (!isset($ownRoleIds[$roleId])) {
+                throw new ServiceException(
+                    'Access denied: you can only assign roles you hold yourself (role ' . $roleId . ')',
+                    Response::HTTP_FORBIDDEN
+                );
+            }
+        }
+    }
+
+    /**
+     * The caller must be allowed to update this user (UPDATE on any of the
+     * user's groups, or the admin role).
+     */
+    private function assertMayUpdateUser(int $currentUserId, int $userId): void
+    {
+        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+            throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
+        }
+    }
+
+    /**
+     * `group_ids` and `role_ids` on an update replace the whole set, so what
+     * the caller needs a right for is the difference: the groups and roles that
+     * are added or dropped. Entries that stay as they are need no right, which
+     * lets a scoped admin edit a user who also holds things outside their reach.
+     *
+     * @param array<string, mixed> $userData
+     */
+    private function assertRelationshipChangesAllowed(int $currentUserId, User $user, array $userData): void
+    {
+        if (isset($userData['group_ids']) && is_array($userData['group_ids'])) {
+            $wanted = $this->normalizeIdList($userData['group_ids']);
+            $current = array_map(static fn(Group $group): int => (int) $group->getId(), $user->getGroups()->toArray());
+            $this->assertMayChangeGroupMembership(
+                $currentUserId,
+                array_merge(array_diff($wanted, $current), array_diff($current, $wanted))
+            );
+        }
+
+        if (isset($userData['role_ids']) && is_array($userData['role_ids'])) {
+            $wanted = $this->normalizeIdList($userData['role_ids']);
+            $current = array_map(static fn(Role $role): int => (int) $role->getId(), $user->getUserRoles()->toArray());
+            $this->assertMayAssignRoles(
+                $currentUserId,
+                array_merge(array_diff($wanted, $current), array_diff($current, $wanted))
+            );
+        }
     }
 
     /**
@@ -679,11 +786,21 @@ class AdminUserService extends BaseService
      * Create new user
      * Every user created will automatically require validation unless specified otherwise
      *
+     * The caller needs the CREATE right on every group the new user is put in,
+     * and (unless admin) may only hand out roles it holds itself.
+     *
      * @param array<string, mixed> $userData
      * @return array<string, mixed>
      */
-    public function createUser(array $userData): array
+    public function createUser(int $currentUserId, array $userData): array
     {
+        if (isset($userData['group_ids']) && is_array($userData['group_ids'])) {
+            $this->assertMayCreateUsersInGroups($currentUserId, $this->normalizeIdList($userData['group_ids']));
+        }
+        if (isset($userData['role_ids']) && is_array($userData['role_ids'])) {
+            $this->assertMayAssignRoles($currentUserId, $this->normalizeIdList($userData['role_ids']));
+        }
+
         $created = $this->executeInTransaction(function () use ($userData) {
             $this->validateUserData($userData, true);
 
@@ -758,9 +875,12 @@ class AdminUserService extends BaseService
     public function updateUser(int $currentUserId, int $userId, array $userData): array
     {
         // Check permission before any operations
-        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
-            throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
-        }
+        $this->assertMayUpdateUser($currentUserId, $userId);
+
+        // Changed groups and roles need a right of their own, not just the
+        // right to update the user. Checked before the transaction opens so a
+        // refusal is audited and not rolled back with it.
+        $this->assertRelationshipChangesAllowed($currentUserId, $this->findUserOrThrow($userId), $userData);
 
         return $this->executeInTransaction(function () use ($userId, $userData) {
             $user = $this->findUserOrThrow($userId);
@@ -810,7 +930,7 @@ class AdminUserService extends BaseService
             throw new ServiceException('Insufficient permissions to delete user', Response::HTTP_FORBIDDEN);
         }
 
-        return $this->executeInTransaction(function () use ($userId) {
+        $outcome = $this->executeInTransaction(function () use ($userId) {
             $user = $this->findUserOrThrow($userId);
 
             // Prevent deletion of system users
@@ -825,14 +945,32 @@ class AdminUserService extends BaseService
                 'User deleted: ' . $user->getEmail()
             );
 
+            // Removing a user removes their data (F24): the same cleaner the
+            // "clean data" action uses, inside this transaction so a failure
+            // below rolls the erasure back too. Audit rows stay, detached. It
+            // runs AFTER the log above so that, if an admin deletes their own
+            // account, the log row is cut loose from them like the others.
+            $cleanup = $this->userDataCleaner->removeData($userId);
+
+            // Group lists show member counts, so they change with the user.
+            $groupIds = [];
+            foreach ($user->getGroups() as $group) {
+                $groupIds[] = (int) $group->getId();
+            }
+
             $this->entityManager->remove($user);
             $this->entityManager->flush();
 
-            // Invalidate caches
-            $this->invalidateUserCaches($userId);
-
-            return true;
+            return ['cleanup' => $cleanup, 'groupIds' => $groupIds];
         });
+
+        // After the commit: files cannot roll back and caches must not be
+        // cleared before the data is really gone.
+        $this->userDataCleaner->finishAfterCommit($userId, $outcome['cleanup']);
+        $this->invalidateUserCaches($userId);
+        $this->invalidateUserGroupCaches($userId, $outcome['groupIds']);
+
+        return true;
     }
 
     /**
@@ -898,15 +1036,20 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Add groups to user
-     */
-    /**
+     * Add groups to user.
+     *
+     * Needs the right to update the user AND to update each group being added
+     * (the admin role passes). The checks run before the transaction opens, so
+     * a refusal is audited and not rolled back with it.
+     *
      * @param array<mixed> $groupIds
      * @return list<array<string, mixed>>
      */
-    public function addGroupsToUser(int $userId, array $groupIds): array
+    public function addGroupsToUser(int $currentUserId, int $userId, array $groupIds): array
     {
         $groupIds = $this->normalizeIdList($groupIds);
+        $this->assertMayUpdateUser($currentUserId, $userId);
+        $this->assertMayChangeGroupMembership($currentUserId, $groupIds);
 
         return $this->executeInTransaction(function () use ($userId, $groupIds) {
             $user = $this->findUserOrThrow($userId);
@@ -933,15 +1076,18 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Remove groups from user
-     */
-    /**
+     * Remove groups from user.
+     *
+     * Same rights as adding: update on the user and on each group.
+     *
      * @param array<mixed> $groupIds
      * @return list<array<string, mixed>>
      */
-    public function removeGroupsFromUser(int $userId, array $groupIds): array
+    public function removeGroupsFromUser(int $currentUserId, int $userId, array $groupIds): array
     {
         $groupIds = $this->normalizeIdList($groupIds);
+        $this->assertMayUpdateUser($currentUserId, $userId);
+        $this->assertMayChangeGroupMembership($currentUserId, $groupIds);
 
         return $this->executeInTransaction(function () use ($userId, $groupIds) {
             $user = $this->findUserOrThrow($userId);
@@ -971,15 +1117,19 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Add roles to user
-     */
-    /**
+     * Add roles to user.
+     *
+     * Needs the right to update the user, and (unless admin) the caller must
+     * hold every role they add.
+     *
      * @param array<mixed> $roleIds
      * @return list<array<string, mixed>>
      */
-    public function addRolesToUser(int $userId, array $roleIds): array
+    public function addRolesToUser(int $currentUserId, int $userId, array $roleIds): array
     {
         $roleIds = $this->normalizeIdList($roleIds);
+        $this->assertMayUpdateUser($currentUserId, $userId);
+        $this->assertMayAssignRoles($currentUserId, $roleIds);
 
         return $this->executeInTransaction(function () use ($userId, $roleIds) {
             $user = $this->findUserOrThrow($userId);
@@ -1005,15 +1155,19 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Remove roles from user
-     */
-    /**
+     * Remove roles from user.
+     *
+     * Same rights as adding: update on the user, and (unless admin) the caller
+     * must hold every role they remove.
+     *
      * @param array<mixed> $roleIds
      * @return list<array<string, mixed>>
      */
-    public function removeRolesFromUser(int $userId, array $roleIds): array
+    public function removeRolesFromUser(int $currentUserId, int $userId, array $roleIds): array
     {
         $roleIds = $this->normalizeIdList($roleIds);
+        $this->assertMayUpdateUser($currentUserId, $userId);
+        $this->assertMayAssignRoles($currentUserId, $roleIds);
 
         return $this->executeInTransaction(function () use ($userId, $roleIds) {
             $user = $this->findUserOrThrow($userId);
@@ -1089,16 +1243,17 @@ class AdminUserService extends BaseService
      * path — deliberately not deleteUser(). Restores the behaviour of the
      * SelfHelp v1 UserModel::clean_user_data().
      *
-     * Scope decisions:
-     * - Transactions ARE erased. They are v2's user-activity record and the
-     *   admin Users list counts them as the "Activity" column. Note the column
-     *   holds the ACTING user, so this erases what the user DID, while admin
-     *   actions performed ON them survive attributed to that admin (see the
-     *   note at the delete itself). This operation writes its own transaction
+     * The erasure itself is {@see UserDataCleanerService} (the same function
+     * deleteUser() and the self-service account deletion call). Scope decisions:
+     * - Transactions and data-access audits are KEPT as the audit trail: the
+     *   rows stay and only the link to the user is cleared, so the admin Users
+     *   list "Activity" column drops to 0 while the history of what changed
+     *   survives. (`transactions.id_users` holds the ACTING user, so this cuts
+     *   loose what the user DID; admin actions performed ON them stay
+     *   attributed to that admin.) This operation writes its own transaction
      *   entry AFTER the wipe so the erasure itself stays audited.
-     * - DataAccessAudit is intentionally KEPT: it records who accessed what,
-     *   which is a security audit surface rather than content this user
-     *   produced. Revisit only with a compliance decision.
+     * - The user's API request log rows ARE erased (URLs and parameters can
+     *   carry personal data).
      * - Session/auth state (RefreshToken, Users2faCode, ValidationCode,
      *   UserNavigationState) is out of scope — it is not user-produced content
      *   and dies with the account or expires on its own.
@@ -1106,6 +1261,9 @@ class AdminUserService extends BaseService
      *   aggregates), so there is nothing per-user to erase there.
      * - Form files the user uploaded (`var/form-files/user_<id>/`) ARE erased,
      *   after the DB transaction commits (`removed.form_files`).
+     * - Tables a plugin owns itself are cleaned by the plugin, which listens to
+     *   {@see \App\Plugin\Event\UserDataCleanupEvent} (F83); `removed` counts
+     *   core rows only.
      *
      * @return array{cleaned: bool, removed: array<string, int>}
      */
@@ -1121,66 +1279,21 @@ class AdminUserService extends BaseService
             throw new ServiceException('Insufficient permissions to clean user data', Response::HTTP_FORBIDDEN);
         }
 
-        $result = $this->executeInTransaction(function () use ($userId) {
+        $outcome = $this->executeInTransaction(function () use ($userId) {
             $user = $this->findUserOrThrow($userId);
 
             if (in_array($user->getName(), self::SYSTEM_USERS, true)) {
                 throw new ServiceException('Cannot clean data of system users', Response::HTTP_FORBIDDEN);
             }
 
-            $removed = [];
+            // Phase 1 of the shared erasure, inside this transaction: jobs,
+            // data rows and cells, request log; audit rows are detached.
+            $cleanup = $this->userDataCleaner->removeData($userId);
+            $removed = $cleanup->removed;
 
-            // Recipient rows pointing at this user on jobs owned by SOMEONE
-            // ELSE. These are not reachable from "jobs this user owns" below,
-            // but they are a record of what this user was sent, so an erasure
-            // request covers them. Their FK is ON DELETE SET NULL, so deleting
-            // the jobs would otherwise leave them behind with a null user.
-            $removed['scheduled_job_recipients'] = $this->asInt($this->entityManager
-                ->createQuery('DELETE FROM App\Entity\ScheduledJobRecipient r WHERE r.user = :userId')
-                ->setParameter('userId', $userId)
-                ->execute());
-
-            // Jobs owned by the user. scheduled_job_recipients and
-            // scheduled_job_reminders both FK to scheduled_jobs with
-            // ON DELETE CASCADE, so their remaining rows go with these.
-            $removed['scheduled_jobs'] = $this->asInt($this->entityManager
-                ->createQuery('DELETE FROM App\Entity\ScheduledJob j WHERE j.user = :userId')
-                ->setParameter('userId', $userId)
-                ->execute());
-
-            // Data cells are deleted explicitly rather than relying on the
-            // fk_data_cells_id_data_rows ON DELETE CASCADE: a bulk DQL DELETE
-            // bypasses Doctrine's ORM-level cascade entirely, so the erasure
-            // must not depend on the DB constraint staying in place.
-            $removed['data_cells'] = $this->asInt($this->entityManager
-                ->createQuery(
-                    'DELETE FROM App\Entity\DataCell c WHERE c.dataRow IN ('
-                    . 'SELECT dr FROM App\Entity\DataRow dr WHERE dr.idUsers = :userId)'
-                )
-                ->setParameter('userId', $userId)
-                ->execute());
-
-            $removed['data_rows'] = $this->asInt($this->entityManager
-                ->createQuery('DELETE FROM App\Entity\DataRow dr WHERE dr.idUsers = :userId')
-                ->setParameter('userId', $userId)
-                ->execute());
-
-            // NOTE: transactions.id_users is the ACTING user, not the subject —
-            // TransactionService::logTransaction() fills it from
-            // getCurrentUser(). So this erases what THIS USER DID; an admin
-            // action performed ON them (block, role change, impersonation) is
-            // attributed to that admin and SURVIVES the wipe. This is the same
-            // relation (User::$transactions) the admin Users list counts as its
-            // "Activity" column, so that column does drop to 0.
-            $removed['transactions'] = $this->asInt($this->entityManager
-                ->createQuery('DELETE FROM App\Entity\Transaction t WHERE t.user = :userId')
-                ->setParameter('userId', $userId)
-                ->execute());
-
-            // Written AFTER the wipe so this entry survives the transaction
-            // delete above, and inside the same DB transaction so a failure
-            // here rolls the whole erasure back rather than leaving it
-            // unlogged.
+            // Written AFTER the wipe and inside the same DB transaction, so a
+            // failure here rolls the whole erasure back rather than leaving it
+            // unlogged. It is attributed to the ACTING admin, not the user.
             $this->logUserTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 $user,
@@ -1193,18 +1306,19 @@ class AdminUserService extends BaseService
 
             $this->entityManager->flush();
 
-            // The Users list caches the activity count, so the list caches
-            // must go too (invalidateUserCaches covers both list + entity).
-            $this->invalidateUserCaches($userId);
-
-            return ['cleaned' => true, 'removed' => $removed];
+            return ['cleanup' => $cleanup];
         });
 
-        // Files cannot roll back, so they go only once the rows are gone. Their
-        // data cells were just deleted, so nothing else points at them.
-        $result['removed']['form_files'] = $this->formFileUploadService->deleteUserFiles($userId);
+        // Phase 2, after the commit: files cannot roll back, so they go only
+        // once the rows are gone; the data-table caches are cleared with them.
+        $removed = $outcome['cleanup']->removed;
+        $removed['form_files'] = $this->userDataCleaner->finishAfterCommit($userId, $outcome['cleanup']);
 
-        return $result;
+        // The Users list caches the activity count, so the list caches must
+        // go too (invalidateUserCaches covers both list + entity).
+        $this->invalidateUserCaches($userId);
+
+        return ['cleaned' => true, 'removed' => $removed];
     }
 
     /**
@@ -2179,6 +2293,10 @@ class AdminUserService extends BaseService
      */
     private function invalidateUserGroupCaches(int $userId, array $groupIds): void
     {
+        // Groups decide which pages the user sees, so a membership change must
+        // also rotate the user's acl_version for the frontend navigation cache.
+        $this->bumpAclVersion($userId);
+
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)

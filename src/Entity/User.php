@@ -73,8 +73,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this->usersGroups;
     }
 
-    /** @var Collection<int, Transaction> */
-    #[ORM\OneToMany(mappedBy: 'user', targetEntity: Transaction::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
+    /**
+     * No remove cascade and no orphan removal on purpose: deleting a user keeps
+     * their audit rows and only clears the link (`transactions.id_users` is
+     * ON DELETE SET NULL, see UserDataCleanerService).
+     *
+     * @var Collection<int, Transaction>
+     */
+    #[ORM\OneToMany(mappedBy: 'user', targetEntity: Transaction::class, cascade: ['persist'])]
     private Collection $transactions;
 
     /** @var Collection<int, RefreshToken> */

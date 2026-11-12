@@ -13,10 +13,13 @@ use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\Group;
 use App\Entity\Lookup;
 use App\Entity\Role;
+use App\Entity\Transaction;
 use App\Entity\User;
 use App\Entity\UsersGroup;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
+use App\Service\JSON\JsonSchemaValidationService;
+use App\Tests\Support\Factories\GroupFactory;
 use App\Tests\Support\QaWebTestCase;
 use App\Tests\Support\Security\PermissionMatrixProvider;
 use Doctrine\ORM\EntityManagerInterface;
@@ -212,7 +215,10 @@ final class AdminUserManagementTest extends QaWebTestCase
     public function testGroupFilterReturnsOnlyMembersOfThatGroup(): void
     {
         $token = $this->loginAsQaAdmin();
-        $groupId = $this->groupIdByName('researcher');
+        // The seed has one group (`subject`, shared by qa.editor and qa.user),
+        // so make qa.editor the only member of a custom group.
+        $groupId = $this->customGroupId('qa_filter_group');
+        $this->addUserToGroup($this->userIdByEmail(QaBaselineFixture::QA_EDITOR_EMAIL), $groupId);
 
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', self::USERS_URI . '?id_groups=' . $groupId . '&pageSize=100', null, $token)
@@ -223,7 +229,7 @@ final class AdminUserManagementTest extends QaWebTestCase
         self::assertNotContains(
             QaBaselineFixture::QA_USER_EMAIL,
             $emails,
-            'qa.user is in the subject group, so it must not appear under the researcher group filter'
+            'qa.user is not in the custom group, so it must not appear under its group filter'
         );
     }
 
@@ -311,13 +317,53 @@ final class AdminUserManagementTest extends QaWebTestCase
         self::assertSame([], $data['failed']);
     }
 
+    // -- clean user data -----------------------------------------------------
+
+    /**
+     * Cleaning erases what the user produced and keeps the account. The audit
+     * rows stay (only the person is cut loose), and the response keeps its
+     * published shape so the admin dialog can list what happened.
+     */
+    public function testCleanDataKeepsTheAccountAndTheAuditRowsAndMatchesItsSchema(): void
+    {
+        $token = $this->loginAsQaAdmin();
+        $userId = $this->createQaUser('qa.clean.http@selfhelp.test', LookupService::USER_STATUS_ACTIVE);
+
+        $em = $this->entityManager();
+        $transaction = new Transaction();
+        $transaction->setUser($em->getReference(User::class, $userId));
+        $transaction->setTransactionLog('qa_clean_http_activity');
+        $em->persist($transaction);
+        $em->flush();
+
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', self::USERS_URI . '/' . $userId . '/clean-data', null, $token)
+        );
+
+        $decoded = json_decode((string) $this->client->getResponse()->getContent(), false);
+        self::assertIsObject($decoded, 'Response body must be a JSON object.');
+        $errors = $this->service(JsonSchemaValidationService::class)->validate($decoded, 'responses/admin/users/clean_user_data');
+        self::assertSame([], $errors, "The clean-data response must match its published schema:\n" . implode("\n", $errors));
+
+        self::assertTrue($data['cleaned']);
+        $removed = $data['removed'];
+        self::assertIsArray($removed);
+        self::assertSame(1, $removed['transactions'], 'The user\'s activity row is detached and counted');
+
+        $em->clear();
+        self::assertNotNull($em->getRepository(User::class)->find($userId), 'The account stays');
+        $kept = $em->getRepository(Transaction::class)->findOneBy(['transactionLog' => 'qa_clean_http_activity']);
+        self::assertInstanceOf(Transaction::class, $kept, 'The audit row is kept');
+        self::assertNull($kept->getUser(), 'The audit row no longer points at the user');
+    }
+
     // -- §4 bulk add to group -----------------------------------------------
 
     public function testBulkAddToGroupIsIdempotentAndCreatesNoDuplicateMembership(): void
     {
         $token = $this->loginAsQaAdmin();
         $userId = $this->createQaUser('qa.bulk.grouped@selfhelp.test', LookupService::USER_STATUS_ACTIVE);
-        $groupId = $this->groupIdByName('researcher');
+        $groupId = $this->customGroupId('qa_bulk_group');
 
         $body = ['user_ids' => [$userId], 'group_ids' => [$groupId]];
 
@@ -343,7 +389,7 @@ final class AdminUserManagementTest extends QaWebTestCase
     {
         $token = $this->loginAsQaAdmin();
         $userId = $this->createQaUser('qa.bulk.ungrouped@selfhelp.test', LookupService::USER_STATUS_ACTIVE);
-        $groupId = $this->groupIdByName('researcher');
+        $groupId = $this->customGroupId('qa_bulk_group');
 
         $body = ['user_ids' => [$userId], 'group_ids' => [$groupId]];
 
@@ -393,7 +439,7 @@ final class AdminUserManagementTest extends QaWebTestCase
         $token = $this->loginAsQaAdmin();
         $adminId = $this->userIdByEmail(QaBaselineFixture::QA_ADMIN_EMAIL);
         // There is no admin group: put the admin in one, then remove them.
-        $adminGroupId = $this->groupIdByName('researcher');
+        $adminGroupId = $this->customGroupId('qa_admin_member_group');
         $this->assertEnvelopeSuccess(
             $this->jsonRequest('POST', self::BULK_ADD_GROUP_URI, ['user_ids' => [$adminId], 'group_ids' => [$adminGroupId]], $token)
         );
@@ -826,12 +872,20 @@ final class AdminUserManagementTest extends QaWebTestCase
         return (int) $user->getId();
     }
 
-    private function groupIdByName(string $name): int
+    /** Id of a custom `qa_` group, created on first use (the seed has only `subject`). */
+    private function customGroupId(string $name): int
     {
-        $group = $this->entityManager()->getRepository(Group::class)->findOneBy(['name' => $name]);
-        self::assertInstanceOf(Group::class, $group);
+        return (int) (new GroupFactory($this->entityManager()))->createGroup($name)->getId();
+    }
 
-        return (int) $group->getId();
+    private function addUserToGroup(int $userId, int $groupId): void
+    {
+        $em = $this->entityManager();
+        $membership = new UsersGroup();
+        $membership->setUser($em->getReference(User::class, $userId));
+        $membership->setGroup($em->getReference(Group::class, $groupId));
+        $em->persist($membership);
+        $em->flush();
     }
 
     /**

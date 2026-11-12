@@ -20,7 +20,12 @@ The User Management APIs provide comprehensive functionality for managing users,
 
 ### Groups
 - **User Groups**: Collections of users with shared permissions
-- **Group Types**: Different categories of groups
+- **Groups only decide who sees**: a page or an asset is visible to the groups
+  it is shared with; everything a person may *do* comes from roles and
+  permissions. There is no group type.
+- **Default groups**: a group flagged `add_to_new_pages` gets `select` on every
+  new public page. A fresh install has one group, `subject`, with the flag set;
+  any other group is custom.
 - **Group Membership**: Users can belong to multiple groups
 - **Access Control**: Group-based permission inheritance
 
@@ -238,7 +243,15 @@ Remove a user account from the system.
 }
 ```
 
-**Permissions:** `admin.user.delete`
+**Permissions:** `admin.user.delete` (route) and DELETE access to the user.
+
+Deleting a user removes what they produced first, in the same transaction, with
+the same function as [Clean User Data](#clean-user-data): their data rows and
+cells, scheduled jobs and recipient rows, and request-log rows; uploaded form
+files go after the commit. The `transactions` and `data_access_audits` rows are
+**kept** and lose only the link to the user (`id_users` becomes NULL), so
+deleting a user who has audit rows works and the history survives. System users
+cannot be deleted (`403`).
 
 ### Block/Unblock User
 
@@ -268,8 +281,8 @@ Toggle a user's blocked status.
 | --- | --- | --- |
 | `GET /admin/users/stats` | `admin.user.read` | `{ total, active, invited, imported, blocked }` over the caller's visible users. `blocked` wins over status; the counts do not have to sum to `total`. |
 | `POST /admin/users/bulk-delete` | `admin.user.delete` | Body `{ user_ids }` (1-500). Refuses the caller's own account. |
-| `POST /admin/users/bulk-add-to-group` | `admin.user.update` | Body `{ user_ids, group_ids }` (each 1-500). Unknown groups fail the request. |
-| `POST /admin/users/bulk-remove-from-group` | `admin.user.update` | Same body as add. |
+| `POST /admin/users/bulk-add-to-group` | `admin.user.update` | Body `{ user_ids, group_ids }` (each 1-500). Unknown groups fail the request. The caller needs UPDATE on **every listed group** (otherwise `403` for the whole request) and UPDATE on each user (reported per user). |
+| `POST /admin/users/bulk-remove-from-group` | `admin.user.update` | Same body and rights as add. |
 | `POST /admin/users/bulk-send-activation` | `admin.user.update` | Body `{ user_ids }`. Already active users are reported as failures. |
 | `GET /admin/users/export` | `admin.user.read` | CSV of the filtered list. Cells starting with `=`, `+`, `-`, `@`, tab or CR are prefixed with `'` so spreadsheets do not run them. |
 | `POST /admin/users/import` | `admin.user.create` | Multipart `file` (`.csv`, header `email,name,user_name,groups`; groups `;`-separated by name). New users get the `imported` status and no activation mail; existing emails are skipped. Every named group needs CREATE access for the caller, as for a single create, otherwise that row fails. |
@@ -305,10 +318,10 @@ Retrieve all groups a user belongs to.
     "groups": [
       {
         "id": 1,
-        "name": "admin",
-        "description": "Administrator group",
-        "id_group_types": 1,
-        "requires_2fa": true,
+        "name": "subject",
+        "description": "Study participants",
+        "add_to_new_pages": true,
+        "requires_2fa": false,
         "created_at": "2024-01-15T10:30:00Z",
         "updated_at": "2024-01-20T14:45:00Z"
       }
@@ -356,7 +369,13 @@ Assign additional groups to a user.
 }
 ```
 
-**Permissions:** `admin.user.update`
+**Permissions:** `admin.user.update` (route), plus UPDATE access to the user
+**and** UPDATE access to each group in `group_ids`: a grant on one group never
+lets a caller move people in or out of another (`403`, audited). The admin role
+passes. The same rule applies to removing groups, to `group_ids` on create and
+update (for update the rights are needed for the groups that are added or
+dropped, not for the ones that stay; creating a user in a group needs CREATE on
+it) and to the CSV import.
 
 ### Remove Groups from User
 
@@ -458,7 +477,13 @@ Assign additional roles to a user.
 
 **Response:** Similar to add groups response
 
-**Permissions:** `admin.user.update`
+**Permissions:** `admin.user.update` (route), plus UPDATE access to the user.
+Roles edit, so handing out a role hands out its rights: a caller that is not
+admin may add or remove **only roles it holds itself** (`403` otherwise, naming
+the role), which stops a scoped admin from granting more than it has, or the
+`admin` role. The admin role may assign any role. The same rule applies to
+removing roles and to `role_ids` on create and update (for update it is checked
+on the roles that are added or dropped, not on the ones that stay).
 
 ### Remove Roles from User
 
@@ -527,31 +552,39 @@ deliberately not [Delete User](#delete-user).
 **Path Parameters:**
 - `userId`: User ID
 
-**What is erased**
+**What is erased, and what stays**
 
-| Entity | Erased | Note |
+The erasure is one function, `UserDataCleanerService`; [Delete User](#delete-user),
+the bulk delete and the user's own account deletion call the same one, so no row
+is left pointing at a user that no longer exists.
+
+| Entity | Result | Note |
 | --- | --- | --- |
-| `Transaction` | Yes | The user's activity record; the admin Users list "Activity" column drops to 0. |
-| `DataRow` + `DataCell` | Yes | All form/entry input the user submitted. |
-| `ScheduledJob` | Yes | Jobs owned by the user; their recipients and reminder metadata cascade. |
-| `ScheduledJobRecipient` | Yes | Also rows on *other users'* jobs that name this user as a recipient — a record of what this user was sent. |
-| Form files | Yes | Every file the user uploaded through forms (`var/form-files/user_<id>/`). Deleted after the database transaction commits, because files cannot roll back. |
-| `DataAccessAudit` | **No** | A security audit surface (who accessed what), not content this user produced. |
-| Session/auth state | **No** | `RefreshToken`, `Users2faCode`, `ValidationCode`, `UserNavigationState` are not user-produced content. |
+| `DataRow` + `DataCell` | Erased | All form/entry input the user submitted. |
+| `ScheduledJob` | Erased | Jobs owned by the user; their recipients and reminder metadata cascade. |
+| `ScheduledJobRecipient` | Erased | Also rows on *other users'* jobs that name this user as a recipient — a record of what this user was sent. |
+| `ApiRequestLog` | Erased | The request log stores URLs and parameters that can carry personal data. It has no foreign key to users. |
+| Form files | Erased | Every file the user uploaded through forms (`var/form-files/user_<id>/`). Deleted after the database transaction commits, because files cannot roll back. |
+| `Transaction` | **Kept, person removed** | The audit trail of what changed: the row stays and `id_users` is set to NULL. The admin Users list "Activity" column drops to 0. |
+| `DataAccessAudit` | **Kept, person removed** | The audit trail of who accessed or was refused what: same, `id_users` is set to NULL. |
+| Session/auth state | Not touched | `RefreshToken`, `Users2faCode`, `ValidationCode`, `UserNavigationState` are not user-produced content; they die with the account or expire. |
 | `PageView` / `PageViewReferrer` | n/a | Pseudonymous daily aggregates with no `id_users`; nothing per-user to erase. |
+| Tables a plugin owns | Erased by the plugin | The plugin listens to `UserDataCleanupEvent`, dispatched inside the transaction, and deletes its own rows; its files go after the commit. See the [plugin developer guide](../../plugins/developer-guide.md#9-cms-extension-points). The `removed` counts below list core rows only. |
 
 The database part runs in a single transaction — a failure at any point rolls
-it back, and no file is touched. It writes its own audit entry **after** the wipe, so the
-erasure itself stays recorded even though the user's transactions are removed.
+it back (a plugin that fails stops the whole erasure), and no file is touched.
+It writes its own audit entry **after** the wipe (attributed to the acting
+admin, not to the user), so the erasure itself stays recorded.
 
 **Two implementation notes** (both have previously caused false worries):
 
 - `transactions.id_users` is the **acting** user, not the subject —
   `TransactionService::logTransaction()` fills it from `getCurrentUser()`. So
-  the wipe erases what the user *did*; an admin action performed *on* them
-  (block, role change, impersonation) is attributed to that admin and survives.
-  The Users list "Activity" column reads the same relation
-  (`User::$transactions`), so it does drop to 0.
+  what the user *did* loses its author; an admin action performed *on* them
+  (block, role change, impersonation) is attributed to that admin and keeps its
+  author. Both audit tables now have `ON DELETE SET NULL` on `id_users`, and the
+  cleaner clears the link itself because this action keeps the account, so the
+  foreign key never fires.
 - **There is no soft-delete to worry about here.** `data_rows` / `data_cells`
   carry no `id_users_deleted` column and no soft-delete flag — that column does
   not exist anywhere in the backend. All deletes on this path are hard deletes.
@@ -577,14 +610,18 @@ erasure itself stays recorded even though the user's transactions are removed.
       "data_cells": 18,
       "data_rows": 7,
       "transactions": 42,
+      "data_access_audits": 9,
+      "api_request_logs": 120,
       "form_files": 5
     }
   }
 }
 ```
 
-`removed` reports per-entity row counts (`form_files` counts files). Entities that are deliberately kept
-(e.g. `DataAccessAudit`) have **no key** rather than a `0`.
+`removed` reports a count per kind, every key always present
+([schema](../../../config/schemas/api/v1/responses/admin/users/clean_user_data.json)).
+`form_files` counts files; for `transactions` and `data_access_audits` the count
+is the rows **detached from the user** (they are kept), not deleted.
 
 **Permissions:** `admin.user.update` (route). The service additionally requires
 `PERMISSION_DELETE` on the target user, and refuses system users (`admin`,
@@ -727,10 +764,10 @@ Retrieve a list of all user groups.
     "groups": [
       {
         "id": 1,
-        "name": "admin",
-        "description": "Administrator group",
-        "id_group_types": 1,
-        "requires_2fa": true,
+        "name": "subject",
+        "description": "Study participants",
+        "add_to_new_pages": true,
+        "requires_2fa": false,
         "acls": [...],
         "created_at": "2024-01-15T10:30:00Z",
         "updated_at": "2024-01-20T14:45:00Z",
@@ -760,7 +797,7 @@ Create a new user group.
 {
   "name": "editors",
   "description": "Content editors",
-  "id_group_types": 2,
+  "add_to_new_pages": false,
   "requires_2fa": false,
   "acls": [
     {

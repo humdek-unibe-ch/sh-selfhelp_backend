@@ -13,10 +13,8 @@ use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminUserService;
 use App\Service\Core\ApiResponseFormatter;
-use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Security\DataAccessSecurityService;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -39,7 +37,6 @@ class AdminUserController extends AbstractController
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly UserContextService $userContextService,
-        private readonly EntityManagerInterface $entityManager
     ) {
     }
 
@@ -457,25 +454,9 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            // Check if user can create users in the specified groups
-            if (isset($data['group_ids']) && is_array($data['group_ids'])) {
-                foreach ($data['group_ids'] as $groupId) {
-                    $groupIdInt = is_numeric($groupId) ? (int) $groupId : 0;
-                    if (!$this->dataAccessSecurityService->hasPermission(
-                        $currentUserId,
-                        LookupService::RESOURCE_TYPES_GROUP,
-                        $groupIdInt,
-                        DataAccessSecurityService::PERMISSION_CREATE
-                    )) {
-                        return $this->responseFormatter->formatError(
-                            'Access denied: Cannot create users in group ' . $groupIdInt,
-                            Response::HTTP_FORBIDDEN
-                        );
-                    }
-                }
-            }
-
-            $user = $this->adminUserService->createUser($this->toAssocArray($data));
+            // The service checks the CREATE right on every group and that the
+            // caller holds every role they hand out.
+            $user = $this->adminUserService->createUser($currentUserId, $this->toAssocArray($data));
 
             return $this->responseFormatter->formatSuccess(
                 $user,
@@ -563,13 +544,7 @@ class AdminUserController extends AbstractController
             }
 
             // Check if user has UPDATE permission for this specific user
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_UPDATE
-            )) {
+            if (!$this->adminUserService->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -612,13 +587,7 @@ class AdminUserController extends AbstractController
             }
 
             // Check if user has permission to view this user's groups
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_READ
-            )) {
+            if (!$this->adminUserService->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_READ)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -649,13 +618,7 @@ class AdminUserController extends AbstractController
             }
 
             // Check if user has permission to view this user's roles
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_READ
-            )) {
+            if (!$this->adminUserService->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_READ)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -685,17 +648,6 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            // Check if user has UPDATE permission for this specific user
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_UPDATE
-            )) {
-                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
-            }
-
             $data = json_decode($request->getContent(), true);
             $groupIds = is_array($data) ? ($data['group_ids'] ?? []) : [];
 
@@ -706,7 +658,8 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            $groups = $this->adminUserService->addGroupsToUser($userId, $groupIds);
+            // The service checks UPDATE on the user and on every group added.
+            $groups = $this->adminUserService->addGroupsToUser($currentUserId, $userId, $groupIds);
 
             return $this->responseFormatter->formatSuccess(['groups' => $groups]);
         } catch (\Exception $e) {
@@ -723,6 +676,15 @@ class AdminUserController extends AbstractController
     public function removeGroupsFromUser(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $data = json_decode($request->getContent(), true);
             $groupIds = is_array($data) ? ($data['group_ids'] ?? []) : [];
             
@@ -733,7 +695,8 @@ class AdminUserController extends AbstractController
                 );
             }
             
-            $groups = $this->adminUserService->removeGroupsFromUser($userId, $groupIds);
+            // The service checks UPDATE on the user and on every group removed.
+            $groups = $this->adminUserService->removeGroupsFromUser($currentUserId, $userId, $groupIds);
             
             // Invalidate user and permissions cache
             // User cache is automatically invalidated by the service
@@ -754,6 +717,15 @@ class AdminUserController extends AbstractController
     public function addRolesToUser(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $data = json_decode($request->getContent(), true);
             $roleIds = is_array($data) ? ($data['role_ids'] ?? []) : [];
             
@@ -764,7 +736,8 @@ class AdminUserController extends AbstractController
                 );
             }
             
-            $roles = $this->adminUserService->addRolesToUser($userId, $roleIds);
+            // The service checks UPDATE on the user and that the caller holds every role added.
+            $roles = $this->adminUserService->addRolesToUser($currentUserId, $userId, $roleIds);
             
             // Invalidate user and permissions cache
             // User cache is automatically invalidated by the service
@@ -785,6 +758,15 @@ class AdminUserController extends AbstractController
     public function removeRolesFromUser(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $data = json_decode($request->getContent(), true);
             $roleIds = is_array($data) ? ($data['role_ids'] ?? []) : [];
             
@@ -795,7 +777,8 @@ class AdminUserController extends AbstractController
                 );
             }
             
-            $roles = $this->adminUserService->removeRolesFromUser($userId, $roleIds);
+            // The service checks UPDATE on the user and that the caller holds every role removed.
+            $roles = $this->adminUserService->removeRolesFromUser($currentUserId, $userId, $roleIds);
             
             // Invalidate user and permissions cache
             // User cache is automatically invalidated by the service
@@ -842,7 +825,7 @@ class AdminUserController extends AbstractController
             }
 
             $result = $this->adminUserService->cleanUserData($currentUserId, $userId);
-            return $this->responseFormatter->formatSuccess($result);
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/clean_user_data');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -947,30 +930,5 @@ class AdminUserController extends AbstractController
         $userIds = $this->toAssocArray($data)['user_ids'] ?? null;
 
         return is_array($userIds) ? $userIds : [];
-    }
-
-    /**
-     * Get the group ID for a user (helper method for permission checks)
-     */
-    private function getUserGroupId(int $userId): int
-    {
-        try {
-            // Get user's primary group ID
-            $conn = $this->entityManager->getConnection();
-            $sql = "SELECT id_groups FROM rel_groups_users WHERE id_users = :user_id LIMIT 1";
-            $stmt = $conn->prepare($sql);
-            $stmt->bindValue('user_id', $userId, \Doctrine\DBAL\ParameterType::INTEGER);
-            $result = $stmt->executeQuery();
-            $row = $result->fetchAssociative();
-
-            if ($row === false) {
-                return 0;
-            }
-            $idGroups = $row['id_groups'] ?? null;
-
-            return is_numeric($idGroups) ? (int) $idGroups : 0;
-        } catch (\Exception $e) {
-            return 0; // Default to no access if we can't determine group
-        }
     }
 } 
