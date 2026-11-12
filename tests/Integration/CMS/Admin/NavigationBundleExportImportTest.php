@@ -408,26 +408,31 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
         }
 
         // Regression (issue: "imported pages have no ACL access"): every embedded
-        // page must come out of the import with full admin-group ACL by default.
+        // page must come out of the import readable by the default group, the
+        // one flagged `add_to_new_pages` (`subject` on a fresh install), with
+        // `select` only. The admin role needs no group row: it bypasses page ACLs.
         /** @var EntityManagerInterface $em */
         $em = self::getContainer()->get(EntityManagerInterface::class);
-        $adminGroup = $em->getRepository(\App\Entity\Group::class)->findOneBy(['name' => 'admin']);
-        self::assertNotNull($adminGroup);
+        $defaultGroup = $em->getRepository(\App\Entity\Group::class)->findOneBy(['name' => 'subject']);
+        self::assertNotNull($defaultGroup);
+        self::assertTrue($defaultGroup->isAddToNewPages(), 'The seeded subject group is the default group of new public pages.');
         foreach ($importedPages as $importedPage) {
             $acl = $em->getRepository(PageAclGroup::class)->findOneBy([
                 'page' => $importedPage['page_id'],
-                'group' => $adminGroup,
+                'group' => $defaultGroup,
             ]);
-            self::assertInstanceOf(PageAclGroup::class, $acl, 'Missing admin ACL for ' . $importedPage['keyword']);
-            self::assertTrue($acl->isAclSelect(), 'Admin should read ' . $importedPage['keyword']);
-            self::assertTrue($acl->isAclInsert(), 'Admin should insert ' . $importedPage['keyword']);
-            self::assertTrue($acl->isAclUpdate(), 'Admin should update ' . $importedPage['keyword']);
-            self::assertTrue($acl->isAclDelete(), 'Admin should delete ' . $importedPage['keyword']);
+            self::assertInstanceOf(PageAclGroup::class, $acl, 'Missing default-group ACL for ' . $importedPage['keyword']);
+            self::assertTrue($acl->isAclSelect(), 'The default group should see ' . $importedPage['keyword']);
+            self::assertFalse($acl->isAclInsert(), 'The default group gets select only: ' . $importedPage['keyword']);
+            self::assertFalse($acl->isAclUpdate(), 'The default group gets select only: ' . $importedPage['keyword']);
+            self::assertFalse($acl->isAclDelete(), 'The default group gets select only: ' . $importedPage['keyword']);
         }
 
         // Regression (issue: "pages were not wrapped in the navigation"): the
         // public navigation payload — the exact payload web + mobile consume —
         // must contain the imported pages inside the imported menu structure.
+        // Read as the admin account: it has the admin role and no group, and the
+        // admin role is listed every page (F89), as it may open every page.
         $navEnvelope = $this->jsonRequest('GET', '/cms-api/v1/navigation', null, $admin);
         $navData = $this->assertEnvelopeSuccess($navEnvelope, Response::HTTP_OK);
         $menus = $navData['menus'] ?? null;

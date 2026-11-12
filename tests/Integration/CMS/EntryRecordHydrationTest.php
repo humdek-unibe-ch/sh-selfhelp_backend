@@ -24,12 +24,14 @@ use App\Service\Core\LookupService;
 use App\Tests\Support\Factories\PageSectionFactory;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * `entry-record` hydrates exactly one row from `fields.data_table` using
  * `load_record_from` (same visible contract as `entry-record-form`): the field
  * names the route param (e.g. `record_id`), and the server loads that row.
- * `data_config` must never choose the row table or retrieve mode.
+ * `data_config` must never choose the row table or retrieve mode. A field that
+ * is absent or blank takes the style default `record_id` (F87).
  */
 final class EntryRecordHydrationTest extends QaWebTestCase
 {
@@ -381,7 +383,24 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         self::assertSame('', $this->firstChildTextContent($entryRecord));
     }
 
-    public function testEntryRecordWithoutLoadRecordFromDoesNotHydrate(): void
+    /**
+     * `load_record_from` is optional: a section that carries no value, or a
+     * blank one, takes the style default (`record_id`), the same rule a bundle
+     * import applies to a missing field (F64, F87). Failing closed stays for a
+     * name the route does not have (the wrong-param test above).
+     *
+     * @return array<string, array{string|null}>
+     */
+    public static function absentOrBlankLoadRecordFrom(): array
+    {
+        return [
+            'field not stored' => [null],
+            'field stored blank' => [''],
+        ];
+    }
+
+    #[DataProvider('absentOrBlankLoadRecordFrom')]
+    public function testEntryRecordWithoutLoadRecordFromUsesTheDefaultRouteParameter(?string $storedValue): void
     {
         [$formPage, $formSection] = $this->pages->createFormPage('qa_er_no_filter', openAccess: true);
 
@@ -414,6 +433,9 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $this->pages->linkSectionToPage($detailPage, $recordSection, 10);
         $this->setSectionField($recordSection, 'data_table', (string) $dataTable->getId(), 1);
         $this->setSectionField($recordSection, 'own_entries_only', '0', 1);
+        if ($storedValue !== null) {
+            $this->setEntryRecordLoadFrom($recordSection, $storedValue);
+        }
 
         $cardSection = $this->pages->createSection('qa_er_no_filter_card', 'text');
         $this->linkChild($recordSection, $cardSection);
@@ -429,7 +451,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         ));
         $entryRecord = $this->findSectionByStyle($this->sectionsFromPayload($data), 'entry-record');
         self::assertNotNull($entryRecord);
-        self::assertSame('', $this->firstChildTextContent($entryRecord));
+        self::assertSame('secret', $this->firstChildTextContent($entryRecord));
     }
 
     /**

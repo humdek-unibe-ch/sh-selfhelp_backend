@@ -87,8 +87,8 @@ final class PageBundleImportUrlConsistencyTest extends QaWebTestCase
             );
 
             // Admin always has access to an imported page: the prefixed public
-            // path resolves (200) for the admin who imported it (admin-role ACL
-            // bypass + admin-group ACL row written by createPage).
+            // path resolves (200) for the admin who imported it (the admin role
+            // bypasses page ACLs; a fresh install has no admin group).
             $resolve = $this->jsonRequest(
                 'GET',
                 '/cms-api/v1/pages/resolve?path=' . rawurlencode(self::ROUTE_PREFIX . '/team-members'),
@@ -99,23 +99,34 @@ final class PageBundleImportUrlConsistencyTest extends QaWebTestCase
 
             /** @var EntityManagerInterface $em */
             $em = static::getContainer()->get(EntityManagerInterface::class);
-            $adminGroup = $em->getRepository(\App\Entity\Group::class)->findOneBy(['name' => 'admin']);
-            self::assertNotNull($adminGroup);
-            foreach ([$publicKeyword, $cmsKeyword] as $keyword) {
-                $acl = $em->getRepository(PageAclGroup::class)->findOneBy([
-                    'page' => $idByKeyword[$keyword],
-                    'group' => $adminGroup,
-                ]);
-                self::assertInstanceOf(
-                    PageAclGroup::class,
-                    $acl,
-                    'Imported page must receive full admin-group ACL: ' . $keyword
-                );
-                self::assertTrue($acl->isAclSelect());
-                self::assertTrue($acl->isAclInsert());
-                self::assertTrue($acl->isAclUpdate());
-                self::assertTrue($acl->isAclDelete());
-            }
+            // An imported public page gives `select` (only) to the default group,
+            // the one flagged `add_to_new_pages`; a cms-surface page stays
+            // editor-only and gets no default group.
+            $defaultGroup = $em->getRepository(\App\Entity\Group::class)->findOneBy(['name' => 'subject']);
+            self::assertNotNull($defaultGroup);
+            self::assertTrue($defaultGroup->isAddToNewPages(), 'The seeded subject group is the default group of new public pages.');
+
+            $publicAcl = $em->getRepository(PageAclGroup::class)->findOneBy([
+                'page' => $idByKeyword[$publicKeyword],
+                'group' => $defaultGroup,
+            ]);
+            self::assertInstanceOf(
+                PageAclGroup::class,
+                $publicAcl,
+                'Imported public page must give select to the default group.'
+            );
+            self::assertTrue($publicAcl->isAclSelect());
+            self::assertFalse($publicAcl->isAclInsert());
+            self::assertFalse($publicAcl->isAclUpdate());
+            self::assertFalse($publicAcl->isAclDelete());
+
+            self::assertNull(
+                $em->getRepository(PageAclGroup::class)->findOneBy([
+                    'page' => $idByKeyword[$cmsKeyword],
+                    'group' => $defaultGroup,
+                ]),
+                'An imported cms-surface page stays editor-only: no default group.'
+            );
         } finally {
             foreach ($idByKeyword as $pageId) {
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);

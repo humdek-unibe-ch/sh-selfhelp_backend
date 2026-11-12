@@ -44,8 +44,9 @@ final class PageBundleEntryTableFieldsMapImportTest extends QaWebTestCase
         ], $admin);
         $data = $this->assertEnvelopeSuccess($import, 201);
 
+        $created = is_array($data['created'] ?? null) ? array_values($data['created']) : [];
         $createdPageIds = [];
-        foreach (is_array($data['created'] ?? null) ? $data['created'] : [] as $entry) {
+        foreach ($created as $entry) {
             if (is_array($entry) && is_int($entry['page_id'] ?? null)) {
                 $createdPageIds[] = $entry['page_id'];
             }
@@ -53,17 +54,9 @@ final class PageBundleEntryTableFieldsMapImportTest extends QaWebTestCase
         self::assertNotEmpty($createdPageIds);
 
         try {
-            $cmsListPageId = null;
-            foreach ($createdPageIds as $pageId) {
-                $page = $this->assertEnvelopeSuccess(
-                    $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin)
-                );
-                if (($page['cms_app_role'] ?? null) === 'cms_list') {
-                    $cmsListPageId = $pageId;
-                    break;
-                }
-            }
-            self::assertNotNull($cmsListPageId);
+            // `GET /admin/pages/{id}` carries no cms_app_* keys, so the pages are
+            // found by the keywords the import returns (prefix + bundle keyword).
+            $cmsListPageId = $this->pageIdByKeyword($created, 'qa_fields_map_cms-team-members');
 
             $entryTableSectionId = $this->firstSectionIdByStyle($cmsListPageId, 'entry-table', $admin);
             self::assertGreaterThan(0, $entryTableSectionId);
@@ -90,19 +83,9 @@ final class PageBundleEntryTableFieldsMapImportTest extends QaWebTestCase
             self::assertNotContains('name', $fieldsMap);
             self::assertNotContains('email', $fieldsMap);
 
-            $formPageId = null;
-            foreach ($createdPageIds as $pageId) {
-                $page = $this->assertEnvelopeSuccess(
-                    $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin)
-                );
-                if (($page['cms_app_role'] ?? null) === 'form') {
-                    $formPageId = $pageId;
-                    break;
-                }
-            }
-            self::assertNotNull($formPageId);
+            $formPageId = $this->pageIdByKeyword($created, 'qa_fields_map_cms-team-members-form');
 
-            $formSectionId = $this->firstSectionIdByStyle($formPageId, 'form-record', $admin);
+            $formSectionId = $this->firstSectionIdByStyle($formPageId, 'entry-record-form', $admin);
             self::assertGreaterThan(0, $formSectionId);
             self::assertNotSame(
                 $dataTableId,
@@ -114,6 +97,19 @@ final class PageBundleEntryTableFieldsMapImportTest extends QaWebTestCase
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
             }
         }
+    }
+
+    /**
+     * @param list<mixed> $created the `created` list of the import response
+     */
+    private function pageIdByKeyword(array $created, string $keyword): int
+    {
+        foreach ($created as $entry) {
+            if (is_array($entry) && ($entry['keyword'] ?? null) === $keyword && is_int($entry['page_id'] ?? null)) {
+                return $entry['page_id'];
+            }
+        }
+        self::fail(sprintf('Imported page "%s" not found in the import result.', $keyword));
     }
 
     private function firstSectionIdByStyle(int $pageId, string $styleName, string $token): int
