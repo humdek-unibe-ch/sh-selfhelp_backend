@@ -84,6 +84,14 @@ final class MobilePreviewAccessGuardTest extends TestCase
         $this->guard()->onKernelController(
             $this->event('/cms-api/v1/auth/user-data', 'auth_user_data_get_v1', 'GET', self::PREVIEW_PAYLOAD),
         );
+        $this->guard()->onKernelController(
+            $this->event(
+                '/cms-api/v1/assets/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+                'assets_serve_by_uuid_v1',
+                'GET',
+                self::PREVIEW_PAYLOAD,
+            ),
+        );
         $this->expectNotToPerformAssertions();
     }
 
@@ -91,6 +99,36 @@ final class MobilePreviewAccessGuardTest extends TestCase
     {
         $this->assertDenied(
             $this->event('/cms-api/v1/admin/pages', 'admin_pages_get_all_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+    }
+
+    /**
+     * Restricted media on a previewed page is fetched via the asset UUID route
+     * with the preview token. Without this allowlist entry the mobile preview
+     * pane shows empty images while the standalone app loads them (F68).
+     */
+    public function testAllowsPreviewTokenOnAssetServeByUuidGet(): void
+    {
+        $this->guard()->onKernelController(
+            $this->event(
+                '/cms-api/v1/assets/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+                'assets_serve_by_uuid_v1',
+                'GET',
+                self::PREVIEW_PAYLOAD,
+            ),
+        );
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function testBlocksPreviewTokenOnAssetServeByUuidNonGet(): void
+    {
+        $this->assertDenied(
+            $this->event(
+                '/cms-api/v1/assets/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+                'assets_serve_by_uuid_v1',
+                'POST',
+                self::PREVIEW_PAYLOAD,
+            ),
         );
     }
 
