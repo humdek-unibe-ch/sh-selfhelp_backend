@@ -304,6 +304,7 @@ checkAdminAccessById(int $pageId, string $permission): void
 **Frontend Page Operations** (Website):
 - **ACL Required**: Pages filtered based on user ACL rules for visibility and interaction
 - **Implementation**: `PageService::getAllAccessiblePagesForUser()` applies ACL filtering
+- **Admin role**: it sees every page, by address (`ACLService::hasAccess()`) and in the page list, the menus and the search (`ACLService::getAllUserAcls()` returns all pages with full rights for it, cached under `user_acl_admin_{id}`). For everyone else the groups decide, through `get_user_acl`. So the admin account needs no group, and one rule answers "may this caller see the page?" (F89).
 - **Purpose**: Controls what content each website user can see and interact with
 
 ## ACL Architecture

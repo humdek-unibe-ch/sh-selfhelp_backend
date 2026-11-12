@@ -12,10 +12,12 @@ namespace App\Tests\Golden;
 use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\Group;
 use App\Entity\User;
+use App\Entity\UsersGroup;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Tests\Support\Factories\GroupFactory;
 use App\Tests\Support\Factories\PageSectionFactory;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
@@ -143,21 +145,22 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
     }
 
     /**
-     * Regression for the "anonymous == user id 1 (admin)" ACL bug: a genuinely
-     * anonymous caller (no JWT) must NOT inherit the admin group's ACL. The page
-     * is non-open and granted ACL select to the *admin* group only. Before the
-     * fix the guest fallback resolved to user id 1 — an admin-group member — so
-     * `get_user_acl` returned the group grant and leaked the page (200). The
-     * guest sentinel (id 0) is in no group, so branch 1 of `get_user_acl` is
-     * empty and the read is forbidden.
+     * Regression for the "anonymous == user id 1" ACL bug: a genuinely
+     * anonymous caller (no JWT) must NOT inherit the ACL of a group that user
+     * id 1 belongs to. The page is non-open and granted ACL select to such a
+     * group only. Before the fix the guest fallback resolved to user id 1 (the
+     * admin account) — a member of that group — so `get_user_acl` returned the
+     * group grant and leaked the page (200). The guest sentinel (id 0) is in no
+     * group, so branch 1 of `get_user_acl` is empty and the read is forbidden.
+     * A fresh install seeds no admin group, so the test builds its own group.
      */
-    public function testAnonymousVisitorCannotInheritAdminGroupAcl(): void
+    public function testAnonymousVisitorCannotInheritTheAclOfUserOnesGroup(): void
     {
         $page = $this->pages->createPage('qa_public_render_anon_admin', openAccess: false);
         $this->pages->linkSectionToPage($page, $this->pages->createSection('qa_render_anon_admin_s'), 10);
         $this->pages->grantGroupAcl(
             $page,
-            $this->adminGroup(),
+            $this->groupOfUserOne(),
             select: true,
             insert: false,
             update: false,
@@ -170,7 +173,7 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
         self::assertSame(
             Response::HTTP_FORBIDDEN,
             $envelope['status'] ?? null,
-            'Anonymous callers must not inherit the admin group ACL.',
+            'Anonymous callers must not inherit the ACL of the groups of user id 1.',
         );
     }
 
@@ -227,10 +230,22 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
         return $group;
     }
 
-    private function adminGroup(): Group
+    /**
+     * A custom group whose member is the user with id 1 (qa.admin here, the
+     * admin account in production): the user the old guest fallback resolved
+     * to. A fresh install seeds no admin group, so the regression builds one.
+     */
+    private function groupOfUserOne(): Group
     {
-        $group = $this->em->getRepository(Group::class)->findOneBy(['name' => 'admin']);
-        self::assertInstanceOf(Group::class, $group, 'The seeded "admin" group must exist.');
+        $group = (new GroupFactory($this->em))->createGroup('qa_public_render_user_one_group');
+        $userOne = $this->em->getRepository(User::class)->find(1);
+        self::assertInstanceOf(User::class, $userOne, 'User id 1, the account the old guest fallback resolved to, must exist.');
+
+        $membership = new UsersGroup();
+        $membership->setUser($userOne);
+        $membership->setGroup($group);
+        $this->em->persist($membership);
+        $this->em->flush();
 
         return $group;
     }
