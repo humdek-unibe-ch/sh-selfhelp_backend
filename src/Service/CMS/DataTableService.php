@@ -63,7 +63,8 @@ class DataTableService extends BaseService
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
         private readonly LookupService $lookupService,
-        private readonly CmsPreferenceService $cmsPreferenceService
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly FormFieldKeyResolver $formFieldKeyResolver,
     ) {
     }
 
@@ -477,8 +478,10 @@ class DataTableService extends BaseService
      * first (`id:null`, `standard:true`, `locked:true` — read-only, not editable
      * in the Data browser) followed by the table's dynamic data columns
      * (`standard:false`). `fieldKey` is the immutable storage key; `displayName`
-     * is the mutable human label (null when never curated). Returns false if the
-     * table is not found.
+     * is the mutable human label (null when never curated). `isFile` tells the
+     * Data browser which columns hold uploaded files: true only for a column of
+     * a core form that belongs to a `file-input` section, so the client never
+     * guesses it from a cell's value. Returns false if the table is not found.
      *
      * @return list<array<string, mixed>>|false
      */
@@ -497,15 +500,18 @@ class DataTableService extends BaseService
                 'displayName' => $label,
                 'locked' => true,
                 'standard' => true,
+                'isFile' => false,
             ];
         }
         foreach ($dataTable->getDataCols() as $col) {
+            $fieldKey = $col->getFieldKey();
             $result[] = [
                 'id' => $col->getId(),
-                'fieldKey' => $col->getFieldKey(),
+                'fieldKey' => $fieldKey,
                 'displayName' => $col->getDisplayName(),
                 'locked' => $col->isDisplayNameManual(),
                 'standard' => false,
+                'isFile' => $fieldKey !== null && $this->formFieldKeyResolver->isFileInput($tableName, $fieldKey),
             ];
         }
         return $result;

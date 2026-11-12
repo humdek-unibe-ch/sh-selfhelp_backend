@@ -109,7 +109,73 @@ final class FormFileFieldSubmitTest extends QaWebTestCase
         self::assertSame(0, $this->rowCount((int) $form->getId()), 'A rejected submission must not create a record.');
     }
 
-    private function addChild(Section $form, string $sectionName, string $styleName, string $inputName): void
+    /**
+     * The admin Data browser asks the SERVER which columns hold files: a column
+     * is a file column when its input section is a `file-input`, never because
+     * a cell's text looks like a path. A text answer that is a stored-looking
+     * path stays a plain text column.
+     */
+    public function testTheAdminColumnListFlagsOnlyFileInputColumnsAsFiles(): void
+    {
+        [$page, $form] = $this->pages->createFormPage('qa_form_file_columns', openAccess: true);
+        $upload = $this->addChild($form, 'qa_fc_upload', 'file-input', 'qa_attachment');
+        $note = $this->addChild($form, 'qa_fc_note', 'text-input', 'qa_note');
+
+        $this->client->request(
+            'POST',
+            self::SUBMIT,
+            [
+                'page_id' => (int) $page->getId(),
+                'section_id' => (int) $form->getId(),
+                // Looks exactly like a stored upload, but it is typed text.
+                'qa_note' => 'uploads/form-files/user_1/section_2/field_x/a.txt',
+            ],
+            ['qa_attachment' => $this->upload('qa-notes.txt')],
+        );
+        $data = $this->assertEnvelopeSuccess($this->decode($this->client->getResponse()));
+        foreach ($this->cellValues(self::coerceInt($data['record_id'])) as $value) {
+            if (str_contains($value, '_qa-notes.txt')) {
+                $this->storedPaths[] = $value;
+            }
+        }
+
+        $adminToken = $this->loginAsQaAdmin();
+        $this->forgetResolvedUser();
+        $envelope = $this->jsonRequest(
+            'GET',
+            '/cms-api/v1/admin/data/tables/' . (int) $form->getId() . '/columns',
+            null,
+            $adminToken,
+        );
+        $columns = $this->assertEnvelopeSuccess($envelope)['columns'] ?? null;
+        self::assertIsArray($columns);
+
+        $isFile = [];
+        foreach ($columns as $column) {
+            self::assertIsArray($column);
+            self::assertIsBool($column['isFile'] ?? null, 'Every column says whether it holds files');
+            self::assertIsString($column['fieldKey'] ?? null);
+            $isFile[$column['fieldKey']] = $column['isFile'];
+        }
+        self::assertTrue($isFile['section_' . (int) $upload->getId()] ?? null, 'The file-input column holds files');
+        self::assertFalse($isFile['section_' . (int) $note->getId()] ?? null, 'A text-input column does not, whatever its value looks like');
+        foreach (array_keys(\App\Service\CMS\DataTableService::STANDARD_COLUMNS) as $standardKey) {
+            self::assertFalse($isFile[$standardKey] ?? null, "The standard column {$standardKey} never holds files");
+        }
+    }
+
+    /**
+     * disableReboot keeps one UserContextService, which remembers the caller of
+     * the first request (here the anonymous submit). Drop that memo so the next
+     * request resolves its own caller, as in production.
+     */
+    private function forgetResolvedUser(): void
+    {
+        $context = $this->service(UserContextService::class);
+        (new \ReflectionProperty(UserContextService::class, 'userResolved'))->setValue($context, false);
+    }
+
+    private function addChild(Section $form, string $sectionName, string $styleName, string $inputName): Section
     {
         $style = $this->em->getRepository(Style::class)->findOneBy(['name' => $styleName]);
         self::assertInstanceOf(Style::class, $style);
@@ -135,6 +201,8 @@ final class FormFileFieldSubmitTest extends QaWebTestCase
         $translation->setContent($inputName);
         $this->em->persist($translation);
         $this->em->flush();
+
+        return $child;
     }
 
     private function upload(string $name): UploadedFile

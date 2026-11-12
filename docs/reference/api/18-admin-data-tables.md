@@ -121,13 +121,20 @@ columns; each row also carries record metadata (e.g. `record_id`).
 ### Get columns / column names
 
 - `GET /cms-api/v1/admin/data/tables/{tableName}/columns`
-  → `{ "data": { "columns": [ { "id": 1, "fieldKey": "email", "displayName": "Email address", "locked": false }, ... ] } }`.
+  → `{ "data": { "columns": [ { "id": 1, "fieldKey": "email", "displayName": "Email address", "locked": false, "standard": false, "isFile": false }, ... ] } }`
+  ([schema](../../config/schemas/api/v1/responses/admin/data_table_columns.json)).
   `fieldKey` is the immutable storage key (always present for a real column);
   `displayName` is the curated label and may be `null` (clients fall back to
   `fieldKey`); `locked` is `true` when the label was manually curated
-  (provenance `manual`). Treat `fieldKey` as an **opaque literal** — never split
-  it on `.` (a dotted survey key like `household.member_name` is one key, not a
-  path).
+  (provenance `manual`); `standard` is `true` for the always-present projection
+  columns, which come first and are read-only. Treat `fieldKey` as an **opaque
+  literal** — never split it on `.` (a dotted survey key like
+  `household.member_name` is one key, not a path).
+  `isFile` is `true` when the column holds uploaded files: it belongs to a
+  `file-input` section of a core form. The server decides this from the form's
+  structure, so a client must not infer it from a cell's value (a text answer can
+  look like a path). It is `false` for standard columns and for tables that are
+  not core forms (surveys, validation inputs).
 - `GET /cms-api/v1/admin/data/tables/{tableName}/column-names`
   → `{ "data": { "columnNames": ["email", "name", ...] } }`. These are
   **field keys** (the stable storage identities), not display labels.

@@ -343,7 +343,7 @@ class AdminDataController extends AbstractController
             if ($columns === false) {
                 return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
             }
-            return $this->responseFormatter->formatSuccess(['columns' => $columns]);
+            return $this->responseFormatter->formatSuccess(['columns' => $columns], 'responses/admin/data_table_columns');
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
