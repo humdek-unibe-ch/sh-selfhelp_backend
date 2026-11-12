@@ -37,7 +37,7 @@
     "role_ids": {
       "type": "string",
       "pattern": "^([0-9]+(,[0-9]+)*)?$",
-      "description": "Comma-separated ids of the roles that may manage the asset(s) in the CMS. Omitted = the uploader's roles."
+      "description": "Comma-separated ids of the roles that may manage the asset(s) in the CMS. Omitted = the uploader's roles that hold admin.asset.create. Empty = only the admin role; refused with 400 unless the caller is an admin, because the uploader would lose the asset."
     },
     "folder_id": {
       "type": "string",

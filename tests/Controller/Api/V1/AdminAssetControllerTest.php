@@ -8,7 +8,8 @@
 
 namespace App\Tests\Controller\Api\V1;
 
-use App\Entity\Group;
+use App\Service\CMS\Admin\AssetStorageService;
+use App\Tests\Support\Factories\GroupFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
@@ -20,6 +21,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AdminAssetControllerTest extends BaseControllerTest
 {
+    /** Custom group the tests restrict assets to. */
+    private const QA_GROUP = 'qa_asset_group';
+
     /** @var list<int> */
     private array $createdAssetIds = [];
 
@@ -39,6 +43,12 @@ class AdminAssetControllerTest extends BaseControllerTest
         $this->assertSame('/cms-api/v1/assets/' . $this->asString($created['uuid']), $asset['url']);
         $this->assertSame('qa list alt', $asset['alt']);
         $this->assertArrayNotHasKey('folder', $asset);
+        // The admin role views and manages every asset; per-caller flags for the
+        // other roles are covered in AssetManagementAccessTest.
+        $this->assertTrue($asset['can_view']);
+        $this->assertTrue($asset['can_update']);
+        $this->assertTrue($asset['can_delete']);
+        $this->assertTrue($created['can_view'] && $created['can_update'] && $created['can_delete'], 'The upload response carries the flags too');
     }
 
     /**
@@ -84,8 +94,8 @@ class AdminAssetControllerTest extends BaseControllerTest
 
     public function testUploadWithExplicitGroupsAndWithNoGroups(): void
     {
-        $restricted = $this->upload('qa-restricted.png', ['group_ids' => (string) $this->groupId('researcher')]);
-        $this->assertSame(['researcher'], $this->groupNames($restricted));
+        $restricted = $this->upload('qa-restricted.png', ['group_ids' => (string) $this->groupId(self::QA_GROUP)]);
+        $this->assertSame([self::QA_GROUP], $this->groupNames($restricted));
 
         $public = $this->upload('qa-public.png', ['group_ids' => '']);
         $this->assertSame([], $this->groupNames($public));
@@ -122,12 +132,12 @@ class AdminAssetControllerTest extends BaseControllerTest
     public function testEditRenamesTheLabelSetsAltAndReplacesGroupsAndKeepsTheUuid(): void
     {
         $asset = $this->upload('qa-edit.png');
-        $researcherId = $this->groupId('researcher');
+        $groupId = $this->groupId(self::QA_GROUP);
 
         $this->client->request(
             'POST',
             '/cms-api/v1/admin/assets/' . $this->asInt($asset['id']),
-            ['name' => 'qa edited', 'alt' => 'qa edited alt', 'group_ids' => (string) $researcherId],
+            ['name' => 'qa edited', 'alt' => 'qa edited alt', 'group_ids' => (string) $groupId],
             [],
             $this->adminHeaders()
         );
@@ -140,7 +150,7 @@ class AdminAssetControllerTest extends BaseControllerTest
         $found = $this->asList($this->asArray($this->decodeArray()['data'])['assets']);
         $this->assertSame([$asset['id']], array_map(fn (mixed $row): mixed => $this->asArray($row)['id'], $found), 'Search finds the asset by its name');
         $this->assertSame('qa edited alt', $edited['alt']);
-        $this->assertSame(['researcher'], $this->groupNames($edited));
+        $this->assertSame([self::QA_GROUP], $this->groupNames($edited));
         $this->assertSame($asset['uuid'], $edited['uuid']);
     }
 
@@ -171,17 +181,17 @@ class AdminAssetControllerTest extends BaseControllerTest
     {
         $first = $this->upload('qa-bulk-1.png');
         $second = $this->upload('qa-bulk-2.png');
-        $researcherId = $this->groupId('researcher');
+        $groupId = $this->groupId(self::QA_GROUP);
         $ids = [$this->asInt($first['id']), $this->asInt($second['id'])];
 
-        $this->bulkGroups($ids, [$researcherId], 'add');
+        $this->bulkGroups($ids, [$groupId], 'add');
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
         $this->assertSame(2, $this->asArray($this->decodeArray()['data'])['updated']);
-        $this->assertContains('researcher', $this->groupNames($this->fetch($ids[0])));
-        $this->assertContains('researcher', $this->groupNames($this->fetch($ids[1])));
+        $this->assertContains(self::QA_GROUP, $this->groupNames($this->fetch($ids[0])));
+        $this->assertContains(self::QA_GROUP, $this->groupNames($this->fetch($ids[1])));
 
-        $this->bulkGroups($ids, [$researcherId], 'remove');
-        $this->assertNotContains('researcher', $this->groupNames($this->fetch($ids[0])));
+        $this->bulkGroups($ids, [$groupId], 'remove');
+        $this->assertNotContains(self::QA_GROUP, $this->groupNames($this->fetch($ids[0])));
     }
 
     public function testCreateMultipleAssetsSuccess(): void
@@ -216,7 +226,7 @@ class AdminAssetControllerTest extends BaseControllerTest
      */
     public function testExportImportRoundTripKeepsTheUuidAndNeverOverwrites(): void
     {
-        $asset = $this->upload('qa-bundle.png', ['alt' => 'qa bundle alt', 'group_ids' => (string) $this->groupId('researcher')]);
+        $asset = $this->upload('qa-bundle.png', ['alt' => 'qa bundle alt', 'group_ids' => (string) $this->groupId(self::QA_GROUP)]);
         $id = $this->asInt($asset['id']);
 
         $this->client->request(
@@ -229,7 +239,8 @@ class AdminAssetControllerTest extends BaseControllerTest
         );
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
         $zipPath = (string) tempnam(sys_get_temp_dir(), 'qa_bundle');
-        file_put_contents($zipPath, (string) $this->client->getResponse()->getContent());
+        // A file response: its bytes are in the browser's copy, not getContent().
+        file_put_contents($zipPath, (string) $this->client->getInternalResponse()->getContent());
 
         $this->assertSame(['imported' => 0, 'skipped' => 1, 'errors' => []], $this->importBundle($zipPath));
 
@@ -243,8 +254,42 @@ class AdminAssetControllerTest extends BaseControllerTest
         $this->createdAssetIds[] = $this->asInt($restored['id']);
         $this->assertSame($asset['uuid'], $restored['uuid']);
         $this->assertSame('qa-bundle', $restored['name']);
-        $this->assertSame(['researcher'], $this->groupNames($restored));
+        $this->assertSame([self::QA_GROUP], $this->groupNames($restored));
         $this->assertSame('first-bytes', $this->deliveredBody($restored));
+    }
+
+    /**
+     * An entry naming a group this instance does not have is refused and
+     * reported, not imported without the group: dropping the group would
+     * silently publish a restricted asset (no groups = public). The other
+     * entries of the same bundle still import. Same rule as the users CSV
+     * import.
+     */
+    public function testImportRefusesAnAssetThatNamesAGroupMissingOnThisInstance(): void
+    {
+        /** @var AssetStorageService $storage */
+        $storage = static::getContainer()->get(AssetStorageService::class);
+        $restrictedUuid = $storage->generateUuid();
+        $publicUuid = $storage->generateUuid();
+
+        $zipPath = $this->buildBundle([
+            ['uuid' => $restrictedUuid, 'name' => 'qa-import-restricted', 'groups' => ['qa_group_missing_here']],
+            ['uuid' => $publicUuid, 'name' => 'qa-import-public', 'groups' => []],
+        ]);
+
+        $result = $this->importBundle($zipPath);
+
+        $this->assertSame(1, $result['imported']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertSame(
+            [['file' => $restrictedUuid, 'error' => 'Unknown group name(s): qa_group_missing_here']],
+            $result['errors']
+        );
+
+        $this->assertSame([], $this->listedIds(['search' => 'qa-import-restricted']), 'The refused asset does not exist, not even as a public one');
+        $imported = $this->listedIds(['search' => 'qa-import-public']);
+        $this->assertCount(1, $imported);
+        $this->createdAssetIds[] = $this->asInt($imported[0]);
     }
 
     public function testDeleteAssetRemovesIt(): void
@@ -433,6 +478,42 @@ class AdminAssetControllerTest extends BaseControllerTest
         return $this->asArray($this->decodeArray()['data']);
     }
 
+    /**
+     * A v2.0 asset bundle with these entries (uuid, name, group names).
+     *
+     * @param list<array{uuid: string, name: string, groups: list<string>}> $entries
+     */
+    private function buildBundle(array $entries): string
+    {
+        $zipPath = (string) tempnam(sys_get_temp_dir(), 'qa_bundle');
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE));
+
+        $manifestEntries = [];
+        foreach ($entries as $entry) {
+            $bundlePath = 'files/' . $entry['uuid'];
+            $zip->addFromString($bundlePath, 'first-bytes');
+            $manifestEntries[] = [
+                'uuid' => $entry['uuid'],
+                'name' => $entry['name'],
+                'alt' => null,
+                'mime_type' => 'image/png',
+                'asset_type' => 'Asset',
+                'groups' => $entry['groups'],
+                'bundle_path' => $bundlePath,
+            ];
+        }
+        $zip->addFromString('manifest.json', (string) json_encode([
+            'bundle_type' => 'selfhelp/asset-bundle',
+            'bundle_version' => '2.0',
+            'exported_at' => gmdate('Y-m-d\TH:i:s\Z'),
+            'assets' => $manifestEntries,
+        ]));
+        $zip->close();
+
+        return $zipPath;
+    }
+
     private function tempUpload(string $clientName, string $body): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'qa_asset');
@@ -549,12 +630,12 @@ class AdminAssetControllerTest extends BaseControllerTest
         self::fail('Saved folder missing from the folder list');
     }
 
+    /** Id of a custom `qa_` group, created on first use (the seed has only `subject`). */
     private function groupId(string $name): int
     {
         /** @var EntityManagerInterface $em */
         $em = static::getContainer()->get(EntityManagerInterface::class);
-        $group = $em->getRepository(Group::class)->findOneBy(['name' => $name]);
-        self::assertInstanceOf(Group::class, $group, sprintf('Seeded "%s" group is required', $name));
+        $group = (new GroupFactory($em))->createGroup($name);
 
         return (int) $group->getId();
     }

@@ -12,6 +12,7 @@ use App\Service\CMS\Admin\AdminAssetService;
 use App\Service\CMS\Admin\AssetExportImportService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Controller\Api\V1\Frontend\FormFileController;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -204,14 +205,15 @@ class AdminAssetController extends AbstractController
             $folderId = $data['folder_id'] ?? null;
             $result = $this->adminAssetService->bulkMoveToFolder($this->toIntList($data['asset_ids'] ?? []), is_int($folderId) ? $folderId : null);
 
-            return $this->responseFormatter->formatSuccess($result);
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/assets_bulk_folder_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
     }
 
     /**
-     * Delete several assets at once.
+     * Delete several assets at once: all of them or none (404 for an unknown
+     * id, 403 when one may not be deleted, and nothing is removed then).
      *
      * @route /admin/assets/bulk-delete
      * @method POST
@@ -222,7 +224,7 @@ class AdminAssetController extends AbstractController
             $data = $this->validateRequest($request, 'requests/admin/bulk_delete_assets', $this->jsonSchemaValidationService);
             $result = $this->adminAssetService->bulkDeleteAssets($this->toIntList($data['asset_ids'] ?? []));
 
-            return $this->responseFormatter->formatSuccess($result);
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/assets_bulk_delete_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -303,17 +305,9 @@ class AdminAssetController extends AbstractController
 
             $zipPath = $this->assetExportImportService->exportToZipFile($this->toIntList($data['asset_ids'] ?? []));
 
-            $zipContent = (string) file_get_contents($zipPath);
-            @unlink($zipPath);
-
-            return new Response(
-                $zipContent,
-                Response::HTTP_OK,
-                [
-                    'Content-Type' => 'application/zip',
-                    'Content-Disposition' => 'attachment; filename="asset_export.zip"',
-                ]
-            );
+            // Sent from disk and deleted afterwards: a bundle can be gigabytes,
+            // so it is never read into memory.
+            return FormFileController::zipResponse($zipPath, 'asset_export.zip');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -347,7 +341,8 @@ class AdminAssetController extends AbstractController
      * `role_ids` are comma-separated strings because multipart cannot send an
      * empty list: an empty string means "none" (no groups = public), an absent
      * field means "unchanged" (update) or the default (create: public, managed
-     * by the uploader's roles). `folder_id` '' = top level.
+     * by the uploader's roles that hold `admin.asset.create`). `folder_id` ''
+     * = top level.
      *
      * @param array<string, mixed> $formData
      * @return array<string, mixed>

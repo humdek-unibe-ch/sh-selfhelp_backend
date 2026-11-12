@@ -95,6 +95,14 @@ final class RoleDataAccessFactory
     }
 
     /**
+     * Grant a role CRUD permissions on a specific asset.
+     */
+    public function grantAssetAccess(Role $role, int $assetId, int $crud = DataAccessSecurityService::PERMISSION_READ): RoleDataAccess
+    {
+        return $this->grant($role, LookupService::RESOURCE_TYPES_ASSET, $assetId, $crud);
+    }
+
+    /**
      * Grant a role CRUD permissions on a specific group.
      */
     public function grantGroupAccess(Role $role, int $groupId, int $crud = DataAccessSecurityService::PERMISSION_READ): RoleDataAccess

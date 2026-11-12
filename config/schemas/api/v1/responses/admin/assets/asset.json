@@ -95,6 +95,18 @@
         "additionalProperties": false
       }
     },
+    "can_view": {
+      "type": "boolean",
+      "description": "Whether the CALLER may open the file on the website/app: true for a public asset, an admin, or a member of one of the asset's groups. When false the delivery URL answers 403, so a client shows a lock instead of a preview."
+    },
+    "can_update": {
+      "type": "boolean",
+      "description": "Whether the CALLER may edit this asset in the CMS: the UPDATE bit of a role_data_access grant on this asset (the admin role always). When false an edit answers 403."
+    },
+    "can_delete": {
+      "type": "boolean",
+      "description": "Whether the CALLER may delete this asset in the CMS: the DELETE bit of a role_data_access grant on this asset (the admin role always). When false a delete answers 403."
+    },
     "created_at": {
       "type": "string",
       "format": "date-time"
@@ -116,6 +128,9 @@
     "folder_id",
     "roles",
     "groups",
+    "can_view",
+    "can_update",
+    "can_delete",
     "created_at",
     "updated_at"
   ],

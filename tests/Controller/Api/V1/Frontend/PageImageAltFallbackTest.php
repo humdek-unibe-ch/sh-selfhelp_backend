@@ -73,6 +73,42 @@ final class PageImageAltFallbackTest extends QaWebTestCase
         self::assertSame('qa section alt', $alts[self::KEYWORD . '_own'] ?? null, "A section's own alt must win");
     }
 
+    /**
+     * The default alt belongs to the asset, so it is read when the page is
+     * served and is not part of the cached page. Proof: the alt is changed
+     * straight in the database, behind the cache's back (no service, nothing
+     * invalidated), and the very next request of an already cached page shows
+     * the new alt. An edit through the admin API therefore needs no flush of
+     * the cached pages either.
+     */
+    public function testAnAssetAltChangeShowsOnAnAlreadyCachedPageWithoutAnyInvalidation(): void
+    {
+        $url = $this->createAssetWithAlt();
+        $uuid = $this->service(AssetStorageService::class)->uuidFromReference($url);
+        self::assertNotNull($uuid);
+
+        $keyword = self::KEYWORD . '_cached';
+        $page = $this->pages->createPage($keyword, true);
+        $section = $this->pages->createSection($keyword . '_section', 'image');
+        $this->pages->linkSectionToPage($page, $section, 10);
+        $this->setField($section, 'img_src', $url);
+        $this->pages->invalidatePageScopedCaches();
+
+        // The first request builds and caches the page, the second reads it from the cache.
+        foreach ([1, 2] as $request) {
+            $this->client->request('GET', '/cms-api/v1/pages/by-keyword/' . $keyword . '?language_id=' . self::LANGUAGE_ID);
+            self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+            self::assertSame(self::ASSET_ALT, $this->altsBySectionName()[$keyword . '_section'] ?? null, "Request {$request}");
+        }
+
+        $this->em->getConnection()->executeStatement('UPDATE assets SET alt = :alt WHERE uuid = :uuid', ['alt' => 'qa alt changed later', 'uuid' => $uuid]);
+        $this->em->clear();
+
+        $this->client->request('GET', '/cms-api/v1/pages/by-keyword/' . $keyword . '?language_id=' . self::LANGUAGE_ID);
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        self::assertSame('qa alt changed later', $this->altsBySectionName()[$keyword . '_section'] ?? null, 'The cached page must not hold the old alt');
+    }
+
     private function createAssetWithAlt(): string
     {
         /** @var AssetStorageService $storage */

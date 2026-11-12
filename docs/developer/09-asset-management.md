@@ -3,8 +3,8 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend, core 0.1.43 and later.
-Last verified: 2026-11-09.
-Source of truth: `src/Entity/{Asset,AssetFolder}.php`, `src/Service/CMS/Admin/{AdminAssetService,AssetAccessService,AssetStorageService,AssetExportImportService}.php`, `src/Controller/Api/V1/{AssetController,Admin/AdminAssetController}.php`, migration `Version20261103112133`, and the tests named below.
+Last verified: 2026-11-11.
+Source of truth: `src/Entity/{Asset,AssetFolder}.php`, `src/Service/CMS/Admin/{AdminAssetService,AssetAccessService,AssetStorageService,AssetFileSwap,AssetExportImportService,ActionAttachmentValidator}.php`, `src/Controller/Api/V1/{AssetController,Admin/AdminAssetController}.php`, migration `Version20261103112133`, and the tests named below.
 
 The endpoint-by-endpoint contract is in
 [`docs/reference/api/06-admin-assets.md`](../reference/api/06-admin-assets.md).
@@ -53,9 +53,13 @@ Two separate questions, two mechanisms:
 | Who can **view** the file (website, app, delivery URL) | the asset's groups, `rel_assets_groups` | no groups = **public** (anonymous callers included); otherwise members of ANY of its groups; the admin role views everything |
 | Who can **manage** it in the CMS (list, pickers, edit, delete, export) | `role_data_access`, resource type `asset`, CRUD bits | per asset, like data tables ([19-data-access-management.md](19-data-access-management.md)); the admin role manages everything |
 
-- New uploads are public and managed by the uploader's roles (full CRUD),
-  unless `group_ids` / `role_ids` say otherwise. The upload form says so in
-  large letters.
+- New uploads are public and managed by the uploader's roles **that hold
+  `admin.asset.create`** (full CRUD; the same rule as the creator's grants on a
+  new page, finding F14), unless `group_ids` / `role_ids` say otherwise: an
+  explicit `role_ids` list is taken as it is. An empty one leaves the asset to
+  the admin role alone, so only an admin may send it; for anyone else it is
+  refused with `400` before anything changes, on upload and on edit, because
+  the editor would lose the asset (finding F63).
 - `canView()` reads the caller's groups with `UserRepository::getUserGroupIds()`
   by user id: the authenticated `User` from the token does not reliably carry
   its group collection.
@@ -63,10 +67,31 @@ Two separate questions, two mechanisms:
   `DataAccessSecurityService::hasPermission()`, so every check is audited and
   the admin role short-circuits. Lists use `manageableAssetIdsOrNull()`
   (`RoleDataAccessRepository::getUserPermissionsForResources()`), and their
-  cache key includes that scope, as do the section image/video pickers.
-- `setManagingRoles()` replaces an asset's grants and invalidates the touched
-  roles' permission caches. `role_data_access` has no FK to the asset, so
-  deleting an asset removes its grants first.
+  cache key includes that scope, as do the image/video option lists of the
+  section inspector. Those lists are added when the section is read
+  (`SectionFieldService::withPickerOptions()`), never stored in the cached
+  section payload: a payload cached by one editor would otherwise be served to
+  an editor with a different grant. Covered by `SectionPickerOptionsTest`.
+- `rightsFor()` answers "what may the CALLER do with each of these assets" for
+  the CMS: `can_view` (same rule as `canView()`), `can_update`, `can_delete`
+  (the grant bits). It makes one grants query and one groups query for the whole
+  list and reads the grants directly, because `hasPermission()` writes an audit
+  row per check. `AdminAssetService` adds the three flags **after** the cached
+  list is read (`withCallerRights()`), so the shared list cache never holds an
+  access answer; never move them into the cached payload. The frontend only
+  draws from them (rule 1.1).
+- `setManagingRoles()` replaces an asset's grants. It writes them through
+  `AdminDataAccessService`, the one writer of `role_data_access`, so every
+  insert and delete is logged as a `role_data_access` transaction and the
+  touched roles' permission caches are dropped exactly as on the role screens;
+  a grant that is already complete is not rewritten. `role_data_access` has no
+  FK to the asset, so deleting an asset removes its grants first.
+- Bulk actions are all-or-nothing. `bulk-delete`, `bulk-folder` and
+  `bulk-groups` load every id (one unknown id = 404 and nothing happens) and
+  check the caller's right on every asset **before** changing anything and
+  before any transaction opens, so a refusal on the last id never leaves the
+  first ones changed, and the refusal's audit row is kept (it is written in its
+  own transaction and would be rolled back with an outer one).
 - Route permissions still gate the actions (`admin.asset.read|create|update|delete`);
   `role_data_access` decides which assets they apply to.
 
@@ -86,37 +111,104 @@ delivery URL or the frontend BFF URL `/api/assets/<uuid>` — into the asset
 uuid. Everything that reads an asset reference
 from content goes through it.
 
+**The file and its row change together or not at all** (`AssetStorageService`,
+`AssetFileSwap`):
+
+- *Upload / replace.* The new bytes are first staged as a hidden file next to
+  their place (`.<uuid>.<random>.part`). The row, the grants and the log entry
+  are written, and only then is the staged file renamed over the old one, as the
+  very last step before the commit. The old bytes are kept as a hidden backup
+  until the commit succeeded: if it fails, `AssetFileSwap::undo()` puts the old
+  bytes back (or removes the file of an upload that never got a row); on
+  success `keep()` drops the backup. A request that fails earlier leaves no
+  staged file either. Covered by `AssetFileReplaceTest` (HTTP) and
+  `AdminAssetCommitFailureTest` (a commit that fails on purpose).
+- *Delete.* The rows, grants and log entries go in one transaction and the files
+  only after it committed, so a failed commit leaves every row and every file;
+  a file that cannot be removed afterwards is only an unreachable orphan.
+
 ## Default alt in page payloads
 
-`PageService::withAssetDefaultAlts()` runs on the section tree of both draft
-(cached) and published (hydrated per request) pages. It collects every section
+`PageService::withAssetDefaultAlts()` runs on the section tree of both draft and
+published pages, **when the page is served**: after the page-level cache read
+for a draft (`serveDraftVersion()` fills the cached payload's sections; the
+cached page and the cached sections hold no alt that belongs to an asset) and
+in `hydratePublishedPage()` for a published page. It collects every section
 whose `img_src` is an asset and whose `alt` is empty, resolves them in **one**
 query (`AssetRepository::findByUuids()`), and fills `alt` from the asset. A
-section's own alt always wins. Editing an asset's alt invalidates the sections
-cache so draft pages update too. The image style's Alt help text explains this.
+section's own alt always wins. Because the alt is read per request, editing an
+asset's alt shows on every page at once and needs **no cache flush**
+(`PageImageAltFallbackTest` changes the alt behind the cache's back to prove
+it). The image style's Alt help text explains this.
 
 ## Email attachments
 
-Action configs store an attachment as the asset's delivery URL.
-`JobSchedulerService` resolves it with `uuidFromReference()` to the stored file
-and attaches it as `<uuid>.<extension>`.
+Action configs store an attachment as the asset's delivery URL. **Assets
+only**: a raw server path, an external URL or a reference to anything else is
+refused. `ActionAttachmentValidator` checks every attachment when the action is
+saved (create and update): the asset must exist (400) and the person saving the
+action must be allowed to view it (403; admin may attach any), and nothing is
+stored on a refusal. `JobSchedulerService` repeats the rule when the mail is
+built (`resolveAssetAttachment()`): only assets resolve, a stored server path is
+skipped with a warning, and the file is attached as `<uuid>.<extension>`. The
+view right is checked at save time only, not again at send time. Covered by
+`ActionAttachmentAccessTest` and `JobSchedulerServiceTest`.
 
 ## Export / import (`AssetExportImportService`)
 
 Bundle `selfhelp/asset-bundle` 2.0: `manifest.json` plus `files/<uuid>`. Entries
-carry uuid, name, alt, MIME type and group **names** (ids differ between
-instances). Export covers only assets the caller may manage. Import never
-overwrites — an existing uuid is skipped — and otherwise recreates the asset
-under the same uuid, managed by the importer's roles. Other bundle versions
-are rejected.
+carry uuid, name, alt, MIME type, group **names** and the **folder path** as a
+list of folder names from the top level down (`"folder_path": ["Courses",
+"Week 1"]`; ids differ between instances, so only names travel). The managing
+roles do not travel: the importer's roles that may create assets manage what
+they import, like a normal upload. Export covers only assets the caller may
+manage.
+
+Import never overwrites — an existing uuid is skipped — and otherwise recreates
+the asset under the same uuid. Folders are recreated by name where they do not
+exist and **reused** where they do (`AdminAssetService::ensureFolderPath()`);
+`folder_path` is optional (absent, `null` or `[]` = the top level), so a bundle
+made before it existed still imports, and a `folder_path` that is not a list of
+at most 20 non-empty names refuses that entry (`Invalid folder path`). An entry that names a group
+this instance does not have is **not imported** and appears in the result's
+`errors` (`Unknown group name(s): ...`): silently dropping the group would turn a
+restricted asset public (no groups = public). Other bundle versions are
+rejected.
+
+An uploaded bundle is **untrusted**:
+
+- It is read entry by entry (`ZipArchive::getStream`) and never extracted as a
+  whole, so a file the manifest does not name is never written, and an entry
+  name like `../x` has nowhere to go. Every manifest `bundle_path` must be
+  exactly `files/<name>` (`Invalid bundle path` otherwise).
+- The bytes of each file are counted as they are read, not taken from the sizes
+  the archive declares, and the import stops at the limits below. Export adds
+  the stored files to the archive by path (nothing is loaded into memory) and
+  obeys the same count and total size, so an export can always be imported
+  again; one that is too big is refused (400) before an archive is started.
+- Every work file is removed again, also when the import fails
+  (`AssetBundleTest` checks the temporary directory), and the export archive is
+  a `BinaryFileResponse` that deletes itself after it is sent.
+
+| Limit | Value | When exceeded |
+| --- | --- | --- |
+| assets (manifest entries; the archive may hold at most this + 1 entries) | 2000 | 400, no asset is imported |
+| `manifest.json` | 8 MB | 400 |
+| one file | 512 MB | that entry is reported in `errors`, the others still import |
+| files in total | 4 GB | the import stops where it is crossed and keeps what came before; the entry is reported |
+
+The limits are class constants (`AssetExportImportService::MAX_*`) and
+constructor arguments, so tests (`AssetExportImportLimitsTest`) can lower them.
 
 ## Migration
 
 `Version20261103112133` goes straight from the baseline `assets` table to this
 model (the platform is unreleased, so there is no data backfill):
 
-1. Renames the `therapist` group to `researcher` (creates it when missing) and
-   drops the `admin` group — admin rights come from the admin role.
+1. Drops the `admin` and `therapist` groups (and the `role_data_access` rows
+   that pointed at them): admin rights come from the admin role, and `subject`
+   is the one built-in group, flagged `add_to_new_pages`. Memberships and page
+   and asset ACL rows of a removed group go with it (FK cascade).
 2. Creates the `assets_folders` tree and `rel_assets_groups`.
 3. Replaces `folder`, `file_name` and `file_path` on `assets` with `uuid`,
    `name`, `mime_type`, `size`, `alt`, timestamps and `id_assets_folders`.
@@ -130,8 +222,17 @@ model (the platform is unreleased, so there is no data backfill):
 
 | Test | Covers |
 | --- | --- |
-| `tests/Controller/Api/V1/AdminAssetControllerTest.php` | upload under uuid (public, managed by the uploader), explicit groups, no overwrite, edit, replace keeps uuid, bulk groups, bulk move, bulk delete, folders (nest, filter, no self-nesting, delete, top level `folder_id=0`, `asset_count`), export/import round trip |
-| `tests/Controller/Api/V1/Admin/AssetManagementAccessTest.php` | two researchers: an upload is managed only by the uploader's role until shared; the admin role manages all |
+| `tests/Controller/Api/V1/AdminAssetControllerTest.php` | upload under uuid (public, managed by the uploader), explicit groups, no overwrite, edit, replace keeps uuid, bulk groups, bulk move, bulk delete, folders (nest, filter, no self-nesting, delete, top level `folder_id=0`, `asset_count`), export/import round trip, import refuses an asset naming a group that does not exist here |
+| `tests/Controller/Api/V1/Admin/AssetManagementAccessTest.php` | two editors: an upload is managed only by the uploader's role until shared; the admin role manages all; the `can_view` / `can_update` / `can_delete` flags match what the server then accepts or refuses |
+| `tests/Controller/Api/V1/Admin/AssetManagingRolesTest.php` | default managing roles (the uploader's roles that hold `admin.asset.create`), explicit and empty `role_ids`, grants logged as `role_data_access` transactions, bulk delete / move / groups all-or-nothing with the refusal audit kept |
+| `tests/Controller/Api/V1/Admin/AssetFileReplaceTest.php` | a replace swaps the bytes under the same uuid and leaves no hidden work file, also when it is refused or fails |
+| `tests/Unit/Service/CMS/Admin/AssetStorageSwapTest.php` | stage, swap in, keep and undo of a file on its own: old bytes preserved, backups and staged files cleaned up |
+| `tests/Service/CMS/Admin/AdminAssetCommitFailureTest.php` | a commit that fails on purpose: create, edit and delete leave the rows and the files exactly as before |
+| `tests/Controller/Api/V1/Admin/AssetBundleTest.php` | bundle round trip with `folder_path`, folder reuse, old bundles, invalid or hostile paths, entries the manifest does not name, entry / manifest limits, no temporary file left |
+| `tests/Service/CMS/Admin/AssetExportImportLimitsTest.php` | export and import caps (count, one file, total bytes), with small caps injected |
+| `tests/Controller/Api/V1/Admin/ActionAttachmentAccessTest.php` | email attachments: assets only, the author must be allowed to view the asset, nothing stored on a refusal |
+| `tests/Unit/Service/CMS/Admin/AssetAccessRightsTest.php` | the `can_*` decision alone: admin, public asset, group membership, update/delete bits per asset |
+| `tests/Controller/Api/V1/Admin/SectionPickerOptionsTest.php` | the image picker lists only the assets the caller manages, whoever opened the section first |
 | `tests/Controller/Api/V1/AssetDeliveryAclTest.php` | view matrix (no groups = public, group members, admin role), unknown uuid, SVG sandbox |
 | `tests/Controller/Api/V1/Admin/AdminAssetPermissionTest.php` | route permission matrix incl. bulk move, bulk delete and folder routes |
 | `tests/Controller/Api/V1/Frontend/PageImageAltFallbackTest.php` | default alt fallback in the page payload |

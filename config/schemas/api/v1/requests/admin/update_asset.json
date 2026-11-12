@@ -27,7 +27,7 @@
     "role_ids": {
       "type": "string",
       "pattern": "^([0-9]+(,[0-9]+)*)?$",
-      "description": "Comma-separated ids of the roles that may manage the asset in the CMS; replaces the current set"
+      "description": "Comma-separated ids of the roles that may manage the asset in the CMS; replaces the current set. An empty value leaves the asset to the admin role alone and is refused with 400 unless the caller is an admin"
     },
     "folder_id": {
       "type": "string",

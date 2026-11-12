@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend, core 0.1.43 and later.
-Last verified: 2026-11-04.
+Last verified: 2026-11-11.
 Source of truth: `AdminAssetController`, `AssetController`, `AdminAssetService`, `AssetAccessService`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/` (`*asset*`), and migration `Version20261103112133`.
 
 ## Core concepts
@@ -20,12 +20,19 @@ Source of truth: `AdminAssetController`, `AssetController`, `AdminAssetService`,
   any of them can view it. The admin role views every asset.
 - **Managing is per asset, by role.** Which roles may list, edit, delete and
   export an asset in the CMS is a `role_data_access` grant (resource type
-  `asset`). An upload is granted to the uploader's roles. The admin role
-  manages every asset. Route permissions (`admin.asset.read|create|update|delete`)
-  still gate each action; the grant decides which assets it applies to.
+  `asset`). An upload is granted to the uploader's roles **that hold
+  `admin.asset.create`** (a role that can only read assets does not get to edit
+  what its member uploads). The admin role manages every asset. Route permissions
+  (`admin.asset.read|create|update|delete`) still gate each action; the grant
+  decides which assets it applies to. Every grant written or removed is logged
+  as a `role_data_access` transaction, like on the role screens.
 - **Folders organise.** Nestable folders have no access meaning.
 - **Default alt.** An image section whose own `alt` is empty gets the asset's
-  alt in the page payload; a section's own alt always wins.
+  alt in the page payload, read when the page is served; a section's own alt
+  always wins.
+- **File and row change together.** A replace, an upload or a delete never
+  leaves a row without its file or a file that disagrees with its row, even when
+  the database commit fails.
 
 ## Asset object
 
@@ -44,7 +51,15 @@ Returned by every admin endpoint (`responses/admin/assets/asset.json`):
 | `folder_id` | int\|null | Folder; null = top level |
 | `roles` | `{id, name}[]` | Roles that may manage it |
 | `groups` | `{id, name}[]` | Groups that may view it; empty = public |
+| `can_view` | bool | The **caller** may open the file: public asset, admin, or a member of one of its groups. When `false` the delivery URL answers `403`, so a client draws a lock instead of a preview |
+| `can_update` | bool | The **caller** may edit it: the `update` bit of a grant on this asset (admin: always). When `false` an edit answers `403` |
+| `can_delete` | bool | The **caller** may delete it: the `delete` bit of a grant on this asset (admin: always). When `false` a delete answers `403` |
 | `created_at`, `updated_at` | string | ISO 8601 |
+
+The three `can_*` flags are computed for each request, after the cached list is
+read, so no shared cache holds an access answer. A client shows or hides an
+action from them and never works the rule out itself; the server still checks
+every request.
 
 ## List assets
 
@@ -75,15 +90,16 @@ Only assets the caller may manage are listed. Response `data`:
 | `name` | Label (single upload; max 255). Default: the uploaded file name without extension |
 | `alt` | Default alt text (max 500) |
 | `group_ids` | Comma-separated ids of the groups that may view it. **Omitted or empty = public** |
-| `role_ids` | Comma-separated ids of the roles that may manage it. **Omitted = the uploader's roles** |
+| `role_ids` | Comma-separated ids of the roles that may manage it. **Omitted = the uploader's roles that hold `admin.asset.create`**; sent empty = only the admin role, which only an admin may ask for (`400` for anyone else) |
 | `folder_id` | Folder id; empty = top level |
 
 Id lists are strings because multipart cannot express an empty list.
 
 Responses: `201` with the asset (single file), or `201`/`206` with
 `{ uploaded, errors, total_files, successful_uploads, failed_uploads }`
-(several files; `206` when any failed). `400` for a disallowed file type or a
-missing file.
+(several files; `206` when any failed). `400` for a disallowed file type, a
+missing file, or an empty `role_ids` from a caller who is not admin (checked
+once, before any file is stored).
 
 Allowed extensions: images (jpg, jpeg, png, gif, webp, svg), pdf, video (mp4,
 avi, mov, wmv, flv, webm), audio (mp3, wav, ogg), css, js, archives (zip, rar,
@@ -101,11 +117,17 @@ avi, mov, wmv, flv, webm), audio (mp3, wav, ogg), css, js, archives (zip, rar,
 | `name` | New label (empty keeps the current one) |
 | `alt` | New default alt (empty clears it) |
 | `group_ids` | **Replaces** the viewing groups (empty = public) |
-| `role_ids` | **Replaces** the managing roles |
+| `role_ids` | **Replaces** the managing roles. Empty leaves the asset to the admin role alone: only an admin may send it, otherwise `400` and nothing changes |
 | `folder_id` | Moves it (empty = top level) |
 
-It is a `POST` because PHP does not parse multipart bodies on `PUT`. Changing
-the alt invalidates cached page sections so pages show the new alt at once.
+It is a `POST` because PHP does not parse multipart bodies on `PUT`. Page
+payloads read an asset's alt when they are served, so a changed alt shows on
+every page at once; no cache has to be flushed.
+
+A replacement file is put in place only after the row, the grants and the log
+entry are written, as the last step before the commit; if the commit fails the
+old bytes come back and the request is a `500`. The old file is never
+half-written, and no hidden work file is left behind.
 
 ## Bulk actions
 
@@ -116,7 +138,10 @@ the alt invalidates cached page sections so pages show the new alt at once.
 ```
 
 `mode` is `add` or `remove`. Response `data`: `{ "updated": 2 }`. `404` if any
-asset id does not exist, `403` if the caller may not update one of them.
+asset id does not exist, `403` if the caller may not update one of them. All of
+the bulk actions are **all-or-nothing**: every id is loaded and the caller's
+right is checked on each asset before the first one changes, so a refusal or an
+unknown id changes nothing.
 
 `POST /cms-api/v1/admin/assets/bulk-folder` - permission `admin.asset.update`
 
@@ -134,13 +159,16 @@ exist, `403` if the caller may not update one of them.
 { "asset_ids": [12, 13] }
 ```
 
-Response `data`: `{ "deleted": 2 }`.
+Response `data`: `{ "deleted": 2 }`. `404` if any asset id does not exist, `403`
+if the caller may not delete one of them (then nothing is deleted).
 
 ## Delete
 
 `DELETE /cms-api/v1/admin/assets/{assetId}` - permission `admin.asset.delete`
 
-Removes the row, its grants and the stored file. Pages still referencing the
+Removes the row, its grants and the stored file. The rows, grants and log
+entries go in one transaction and the files are removed after it committed, so a
+failed commit leaves the asset exactly as it was. Pages still referencing the
 URL get `404`.
 
 ## Folders
@@ -170,11 +198,20 @@ version `2.0`:
 
 ```
 manifest.json    { bundle_type, bundle_version, exported_at, assets: [
-                   { uuid, name, alt, mime_type, asset_type, groups: [names], bundle_path } ] }
+                   { uuid, name, alt, mime_type, asset_type, groups: [names],
+                     folder_path: [names], bundle_path } ] }
 files/<uuid>     the bytes
 ```
 
-Groups travel by **name** because ids differ between instances.
+Groups and folders travel by **name** because ids differ between instances;
+`folder_path` lists the asset's folders from the top level down (`[]` = the top
+level). The managing roles do not travel. The archive is sent from disk and
+deleted afterwards.
+
+An export is limited to what an import accepts (2000 assets, 4 GB of files in
+total): a larger selection is refused with `400` before an archive is started,
+and the caller exports fewer assets at a time. Assets whose file is missing on
+disk are left out of the manifest.
 
 ## Import
 
@@ -183,8 +220,31 @@ multipart field `file` (the zip).
 
 Import never overwrites: an entry whose uuid already exists is **skipped**.
 Otherwise the asset is created with the same uuid, managed by the importer's
-roles. Group names that do not exist on this instance are ignored. Version
-`1.0` (folder-era) bundles still import, as public assets.
+roles that hold `admin.asset.create`, and put into its `folder_path`: missing
+folders are created by name, existing ones are reused, and a bundle without
+`folder_path` (or with `[]`) imports into the top level. A `folder_path` that is
+not a list of at most 20 non-empty names refuses that entry (`Invalid folder
+path`). An asset that names a group which does not exist on this instance is
+**not imported**: it is reported in `errors` (`Unknown group name(s): ...`),
+because dropping the group would silently make a restricted asset public. Create
+the group, or edit the manifest, and import again; the other assets of the same
+bundle are imported normally. This is the same rule as the users CSV import.
+
+An uploaded bundle is untrusted. Files are read one entry at a time (a file the
+manifest does not name is never written; a `bundle_path` must be exactly
+`files/<name>`, otherwise the entry is reported as `Invalid bundle path`), the
+bytes are counted as they are read rather than taken from the archive's
+declared sizes, and the import stops at these limits:
+
+| Limit | Value | When exceeded |
+| --- | --- | --- |
+| assets (manifest entries; the archive may hold at most this + 1 entries) | 2000 | `400`, no asset is imported |
+| `manifest.json` | 8 MB | `400` |
+| one file | 512 MB | that entry is reported in `errors`, the others still import |
+| files in total | 4 GB | the import stops there and keeps what came before; the entry is reported in `errors` |
+
+A bundle that is not a zip, has no manifest, has another `bundle_type` or
+`bundle_version`, or whose manifest is not valid JSON is refused with `400`.
 
 Response `data`: `{ imported, skipped, errors: [{ file, error }] }`.
 
@@ -238,12 +298,16 @@ PHP.
   `select-video` options, labelled `name.<extension>`). Those URLs keep working
   across edits and replaces.
 - Action email attachments store the delivery URL; the mailer resolves it to
-  the stored file and attaches it as `<uuid>.<extension>`.
+  the stored file and attaches it as `<uuid>.<extension>`. Only assets can be
+  attached: saving an action whose attachment is a server path, an external URL
+  or an unknown asset is a `400`, and attaching an asset the person saving the
+  action may not view is a `403` (see
+  [`14-admin-actions.md`](14-admin-actions.md)).
 - The navigation logo stores the delivery URL.
 
 ## Migration (core 0.1.43)
 
-See [`docs/developer/09-asset-management.md`](../../developer/09-asset-management.md#migration-from-the-folder-model)
-for what `Version20261103112133` changes (including the group rename to
-`researcher` and the removal of the `admin` group). Folder-era asset URLs in
-content are not rewritten.
+See [`docs/developer/09-asset-management.md`](../../developer/09-asset-management.md#migration)
+for what `Version20261103112133` changes (including the removal of the `admin`
+and `therapist` groups: `subject` is the one built-in group). Folder-era asset
+URLs in content are not rewritten.

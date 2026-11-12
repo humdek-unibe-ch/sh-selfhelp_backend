@@ -10,7 +10,6 @@ namespace App\Service\CMS\Admin;
 
 use App\Entity\Asset;
 use App\Entity\Group;
-use App\Entity\Lookup;
 use App\Entity\Role;
 use App\Entity\RoleDataAccess;
 use App\Repository\RoleDataAccessRepository;
@@ -38,9 +37,13 @@ class AssetAccessService extends BaseService
         | DataAccessSecurityService::PERMISSION_UPDATE
         | DataAccessSecurityService::PERMISSION_DELETE;
 
+    /** Route permission that lets a role upload assets (and so manage its own uploads by default). */
+    private const CREATE_PERMISSION = 'admin.asset.create';
+
     public function __construct(
         private readonly UserContextService $userContextService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly AdminDataAccessService $dataAccess,
         private readonly EntityManagerInterface $entityManager,
         private readonly UserRepository $userRepository,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
@@ -50,19 +53,67 @@ class AssetAccessService extends BaseService
 
     public function canView(Asset $asset): bool
     {
-        if ($asset->getGroups()->isEmpty() || $this->isAdmin()) {
+        $groupIds = array_values(array_map(static fn (Group $group): int => (int) $group->getId(), $asset->getGroups()->toArray()));
+        if ($groupIds === [] || $this->isAdmin()) {
             return true;
         }
 
-        $userId = $this->userId();
-        $userGroupIds = $userId !== null ? $this->userRepository->getUserGroupIds($userId) : [];
-        foreach ($asset->getGroups() as $group) {
-            if (in_array($group->getId(), $userGroupIds, true)) {
-                return true;
-            }
+        return self::sharesAGroup($groupIds, $this->callerGroupIds());
+    }
+
+    /**
+     * What the caller may do with each given asset, so the CMS can draw only
+     * the actions the server would accept. One query for the grants and one
+     * for the caller's groups, whatever the number of assets. It reads the
+     * grants directly (not through DataAccessSecurityService::hasPermission,
+     * which writes an audit row per check) and applies the same rules as
+     * {@see canView()} and {@see assertCanManage()}.
+     *
+     * @param array<int, list<int>> $groupIdsByAsset asset id => ids of the groups that may view it
+     * @return array<int, array{can_view: bool, can_update: bool, can_delete: bool}>
+     */
+    public function rightsFor(array $groupIdsByAsset): array
+    {
+        if ($groupIdsByAsset === []) {
+            return [];
         }
 
-        return false;
+        $isAdmin = $this->isAdmin();
+        $userId = $this->userId();
+        $grants = [];
+        $callerGroupIds = [];
+        if (!$isAdmin && $userId !== null) {
+            $grants = $this->roleDataAccessRepository->getUserPermissionsForResources($userId, $this->resourceTypeId(), array_keys($groupIdsByAsset));
+            $callerGroupIds = $this->callerGroupIds();
+        }
+
+        return self::decideRights($groupIdsByAsset, $isAdmin, $grants, $callerGroupIds);
+    }
+
+    /**
+     * The decision behind {@see rightsFor()}, apart from where its facts come
+     * from: the admin role may do everything; anyone may view a public asset
+     * or one of a group they are in; updating and deleting need the UPDATE and
+     * DELETE bits of a grant on that asset.
+     *
+     * @param array<int, list<int>> $groupIdsByAsset asset id => ids of the groups that may view it
+     * @param array<int, int> $grantsByAsset asset id => CRUD bits the caller's roles hold on it
+     * @param list<int> $callerGroupIds
+     * @return array<int, array{can_view: bool, can_update: bool, can_delete: bool}>
+     */
+    public static function decideRights(array $groupIdsByAsset, bool $isAdmin, array $grantsByAsset, array $callerGroupIds): array
+    {
+        $rights = [];
+        foreach ($groupIdsByAsset as $assetId => $groupIds) {
+            $crud = $grantsByAsset[$assetId] ?? 0;
+            $rights[$assetId] = [
+                'can_view' => $isAdmin || $groupIds === [] || self::sharesAGroup($groupIds, $callerGroupIds),
+                'can_update' => $isAdmin || ($crud & DataAccessSecurityService::PERMISSION_UPDATE) !== 0,
+                'can_delete' => $isAdmin || ($crud & DataAccessSecurityService::PERMISSION_DELETE) !== 0,
+            ];
+        }
+
+        return $rights;
     }
 
     public function assertCanView(Asset $asset): void
@@ -146,41 +197,62 @@ class AssetAccessService extends BaseService
     }
 
     /**
+     * An explicit, empty list of managing roles leaves the asset to the admin
+     * role alone, so a caller who is not admin would lose the asset they are
+     * uploading or editing (F63). Only an admin may do that on purpose; for
+     * everyone else the request is refused (400), before anything changes.
+     */
+    public function assertMayLeaveWithoutManagingRoles(): void
+    {
+        if (!$this->isAdmin()) {
+            $this->throwBadRequest('An asset needs at least one managing role; only an admin may leave it with none');
+        }
+    }
+
+    /**
      * Replace the roles that manage an asset (each gets full access). `null`
-     * means the caller's own roles, used for a new upload.
+     * means the default for a new upload: the uploader's roles that hold
+     * `admin.asset.create` (the same rule as the creator's grants on a new
+     * page; the admin role manages every asset anyway).
+     *
+     * Grants are written through {@see AdminDataAccessService}, the one place
+     * that writes `role_data_access`, so each change is logged and the touched
+     * roles' permission caches are dropped exactly as on the role screens.
      *
      * @param list<int>|null $roleIds
      */
     public function setManagingRoles(Asset $asset, ?array $roleIds): void
     {
-        $roleIds = array_values(array_unique($roleIds ?? $this->currentUserRoleIds()));
-        $type = $this->entityManager->getReference(Lookup::class, $this->resourceTypeId());
-        assert($type instanceof Lookup);
-
-        $touched = [];
-        foreach ($this->roleDataAccessRepository->findBy(['resourceType' => $type, 'resourceId' => (int) $asset->getId()]) as $row) {
-            $touched[] = (int) $row->getRole()->getId();
-            $this->entityManager->remove($row);
-        }
-        $this->entityManager->flush();
-
+        $roleIds = array_values(array_unique($roleIds ?? $this->defaultManagingRoleIds()));
         foreach ($roleIds as $roleId) {
-            $role = $this->entityManager->find(Role::class, $roleId);
-            if (!$role instanceof Role) {
+            if (!$this->entityManager->find(Role::class, $roleId) instanceof Role) {
                 $this->throwBadRequest('Unknown role id in asset roles');
             }
-            $row = new RoleDataAccess();
-            $row->setRole($role);
-            $row->setResourceType($type);
-            $row->setResourceId((int) $asset->getId());
-            $row->setCrudPermissions(self::FULL_ACCESS);
-            $this->entityManager->persist($row);
-            $touched[] = $roleId;
         }
-        $this->entityManager->flush();
 
-        foreach (array_unique($touched) as $roleId) {
-            $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
+        $assetId = (int) $asset->getId();
+        $typeId = $this->resourceTypeId();
+
+        $current = [];
+        foreach ($this->roleDataAccessRepository->findBy(['idResourceTypes' => $typeId, 'resourceId' => $assetId]) as $row) {
+            $current[(int) $row->getRole()->getId()] = $row;
+        }
+
+        foreach ($current as $roleId => $row) {
+            if (!in_array($roleId, $roleIds, true)) {
+                $this->dataAccess->deleteRolePermission($roleId, (int) $row->getId());
+            }
+        }
+
+        foreach ($roleIds as $roleId) {
+            if (isset($current[$roleId]) && $current[$roleId]->getCrudPermissions() === self::FULL_ACCESS) {
+                continue;
+            }
+            $this->dataAccess->addRolePermission($roleId, (object) [
+                'resource_type_id' => $typeId,
+                'resource_id' => $assetId,
+                'crud_permissions' => self::FULL_ACCESS,
+            ]);
         }
     }
 
@@ -208,8 +280,9 @@ class AssetAccessService extends BaseService
     }
 
     /**
-     * Resolve group names to entities, silently skipping names that do not
-     * exist on this instance (used by bundle import across instances).
+     * Resolve group names to entities. Names that do not exist on this instance
+     * are simply absent from the result; the caller decides what that means
+     * (bundle import refuses the asset rather than publish it).
      *
      * @param list<string> $names
      * @return list<Group>
@@ -227,9 +300,12 @@ class AssetAccessService extends BaseService
     }
 
     /**
+     * The caller's roles that hold the permission to create assets: who
+     * manages an upload when the request names no roles.
+     *
      * @return list<int>
      */
-    private function currentUserRoleIds(): array
+    private function defaultManagingRoleIds(): array
     {
         $userId = $this->userId();
         if ($userId === null) {
@@ -238,11 +314,14 @@ class AssetAccessService extends BaseService
 
         /** @var list<array{id: int|string}> $rows */
         $rows = $this->entityManager->createQueryBuilder()
-            ->select('r.id')
+            ->select('DISTINCT r.id')
             ->from(Role::class, 'r')
             ->innerJoin('r.users', 'u')
+            ->innerJoin('r.permissions', 'p')
             ->where('u.id = :userId')
+            ->andWhere('p.name = :permission')
             ->setParameter('userId', $userId)
+            ->setParameter('permission', self::CREATE_PERMISSION)
             ->getQuery()
             ->getArrayResult();
 
@@ -252,6 +331,29 @@ class AssetAccessService extends BaseService
     private function resourceTypeId(): int
     {
         return (int) $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_ASSET);
+    }
+
+    /**
+     * Ids of the groups the caller belongs to (none for an anonymous caller).
+     *
+     * @return list<int>
+     */
+    private function callerGroupIds(): array
+    {
+        $userId = $this->userId();
+
+        return $userId !== null ? $this->userRepository->getUserGroupIds($userId) : [];
+    }
+
+    /**
+     * The view rule for a non-public asset: the caller is in ANY of its groups.
+     *
+     * @param list<int> $assetGroupIds
+     * @param list<int> $callerGroupIds
+     */
+    private static function sharesAGroup(array $assetGroupIds, array $callerGroupIds): bool
+    {
+        return array_intersect($assetGroupIds, $callerGroupIds) !== [];
     }
 
     private function userId(): ?int

@@ -87,7 +87,8 @@ class AdminAssetService extends BaseService
         $aclScope = $manageable === null ? 'all' : md5(implode(',', $manageable));
         $cacheKey = "assets_list_{$page}_{$pageSize}_" . md5(($search ?? '') . '|' . ($groupId ?? '') . '|' . ($folderId ?? '')) . "_{$aclScope}";
 
-        return $this->cache
+        /** @var array<string, mixed> $result */
+        $result = $this->cache
             ->withCategory(CacheService::CATEGORY_ASSETS)
             ->getList(
                 $cacheKey,
@@ -96,7 +97,7 @@ class AdminAssetService extends BaseService
                     $roles = $this->accessService->managingRoles(array_map(static fn (Asset $asset): int => (int) $asset->getId(), $result['assets']));
 
                     return [
-                        'assets' => array_map(fn (Asset $asset): array => $this->toArray($asset, $roles[(int) $asset->getId()] ?? []), $result['assets']),
+                        'assets' => array_map(fn (Asset $asset): array => $this->payload($asset, $roles[(int) $asset->getId()] ?? []), $result['assets']),
                         'pagination' => [
                             'page' => $page,
                             'pageSize' => $pageSize,
@@ -106,6 +107,13 @@ class AdminAssetService extends BaseService
                     ];
                 }
             );
+
+        // What the caller may do with each asset is NOT cached: the cached page
+        // is shared by every caller with the same manageable set, but viewing
+        // depends on the caller's groups and updating/deleting on the grant bits.
+        $result['assets'] = $this->withCallerRights($this->asArray($result['assets'] ?? null));
+
+        return $result;
     }
 
     /**
@@ -121,7 +129,8 @@ class AdminAssetService extends BaseService
      *
      * `$data` keys: `name` (label; default the uploaded file name), `alt`,
      * `group_ids` (who may view it; none = public), `folder_id`, `role_ids`
-     * (who may manage it; default the uploader's roles), and — for bundle
+     * (who may manage it; default the uploader's roles that hold
+     * `admin.asset.create`), and — for bundle
      * import only — `uuid`.
      *
      * @param array<string, mixed> $data
@@ -129,6 +138,7 @@ class AdminAssetService extends BaseService
      */
     public function createAsset(UploadedFile $file, array $data): array
     {
+        $this->assertManagingRolesNotEmptied($data);
         $extension = $this->validateUpload($file);
 
         $uuid = $this->asStringOrNull($data['uuid'] ?? null) ?? $this->storage->generateUuid();
@@ -150,12 +160,13 @@ class AdminAssetService extends BaseService
         foreach ($groups as $group) {
             $asset->addGroup($group);
         }
+        $this->recordFile($file, $asset);
 
-        $storedPath = $this->storage->absolutePath($uuid);
-
+        $staged = null;
+        $swap = null;
         $this->entityManager->beginTransaction();
         try {
-            $this->storeFile($file, $asset);
+            $staged = $this->storage->stage($file, $uuid);
 
             $this->entityManager->persist($asset);
             $this->entityManager->flush();
@@ -170,14 +181,17 @@ class AdminAssetService extends BaseService
                 'Asset created: ' . $asset->getName()
             );
 
+            // The file goes in place last, so the commit is the only step left
+            // that can fail; if it does the file goes again.
+            $swap = $this->storage->swapIn($staged, $uuid);
             $this->entityManager->commit();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->entityManager->rollback();
-            if (is_file($storedPath)) {
-                unlink($storedPath);
-            }
+            $swap?->undo();
+            $this->storage->discardStaged($staged);
             throw $e;
         }
+        $swap->keep();
 
         $this->invalidateAssetLists();
 
@@ -193,6 +207,9 @@ class AdminAssetService extends BaseService
      */
     public function createMultipleAssets(array $files, array $data): array
     {
+        // One refusal for the whole request, not one failed file after another.
+        $this->assertManagingRolesNotEmptied($data);
+
         $results = [];
         $errors = [];
 
@@ -227,15 +244,17 @@ class AdminAssetService extends BaseService
     public function updateAsset(int $id, array $data, ?UploadedFile $file = null): array
     {
         $asset = $this->findManagedAsset($id, DataAccessSecurityService::PERMISSION_UPDATE);
-        $altChanged = false;
+        // Before the first change, so a refusal leaves the asset as it was.
+        $this->assertManagingRolesNotEmptied($data);
 
         if (array_key_exists('name', $data)) {
             $asset->setName($this->assetName($data['name'], (string) $asset->getName()));
         }
         if (array_key_exists('alt', $data)) {
-            $alt = $this->normalizeAlt($data['alt']);
-            $altChanged = $alt !== $asset->getAlt();
-            $asset->setAlt($alt);
+            // Not cached anywhere: page payloads read the asset's alt when they
+            // are served (PageService::withAssetDefaultAlts), so an edit shows
+            // at once without flushing cached sections.
+            $asset->setAlt($this->normalizeAlt($data['alt']));
         }
         if (array_key_exists('group_ids', $data)) {
             $this->replaceGroups($asset, $this->accessService->resolveGroups($this->toIntList($data['group_ids'])));
@@ -244,12 +263,15 @@ class AdminAssetService extends BaseService
             $asset->setFolder($this->folderOrNull($data['folder_id']));
         }
 
+        $staged = null;
+        $swap = null;
         $this->entityManager->beginTransaction();
         try {
             if ($file !== null) {
                 $extension = $this->validateUpload($file);
                 $asset->setAssetType($this->assetTypeFor($extension));
-                $this->storeFile($file, $asset);
+                $this->recordFile($file, $asset);
+                $staged = $this->storage->stage($file, $asset->getUuid());
             }
 
             $asset->touch();
@@ -267,19 +289,23 @@ class AdminAssetService extends BaseService
                 'Asset updated: ' . $asset->getName() . ($file !== null ? ' (file replaced)' : '')
             );
 
+            // The new bytes replace the old ones in one rename, last, so the
+            // commit is the only step left that can fail; if it does the old
+            // bytes come back. The row and the file never disagree.
+            if ($staged !== null) {
+                $swap = $this->storage->swapIn($staged, $asset->getUuid());
+            }
             $this->entityManager->commit();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->entityManager->rollback();
+            $swap?->undo();
+            $this->storage->discardStaged($staged);
             throw $e;
         }
+        $swap?->keep();
 
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ASSET, $id);
         $this->invalidateAssetLists();
-        if ($altChanged) {
-            // Page payloads embed the default alt (PageService), so cached
-            // sections must be rebuilt.
-            $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateCategory();
-        }
 
         return $this->toArray($asset);
     }
@@ -298,15 +324,17 @@ class AdminAssetService extends BaseService
         }
 
         $groups = $this->accessService->resolveGroups($groupIds);
-        $assets = $this->assetRepository->findByIds($assetIds);
-        if (count($assets) !== count(array_unique($assetIds))) {
-            $this->throwNotFound('Asset not found');
+        $assets = $this->findAllOrFail($assetIds);
+
+        // Every right is checked before anything changes (and before the
+        // transaction, so a refusal's audit row is kept, not rolled back).
+        foreach ($assets as $asset) {
+            $this->accessService->assertCanManage($asset, DataAccessSecurityService::PERMISSION_UPDATE);
         }
 
         $this->entityManager->beginTransaction();
         try {
             foreach ($assets as $asset) {
-                $this->accessService->assertCanManage($asset, DataAccessSecurityService::PERMISSION_UPDATE);
                 foreach ($groups as $group) {
                     $mode === 'add' ? $asset->addGroup($group) : $asset->removeGroup($group);
                 }
@@ -346,13 +374,13 @@ class AdminAssetService extends BaseService
     public function bulkMoveToFolder(array $assetIds, ?int $folderId): array
     {
         $folder = $this->folderOrNull($folderId);
-        $assets = $this->assetRepository->findByIds($assetIds);
-        if (count($assets) !== count(array_unique($assetIds))) {
-            $this->throwNotFound('Asset not found');
-        }
+        $assets = $this->findAllOrFail($assetIds);
 
+        // Every right is checked before the first asset moves.
         foreach ($assets as $asset) {
             $this->accessService->assertCanManage($asset, DataAccessSecurityService::PERMISSION_UPDATE);
+        }
+        foreach ($assets as $asset) {
             $asset->setFolder($folder);
             $asset->touch();
         }
@@ -371,65 +399,142 @@ class AdminAssetService extends BaseService
     }
 
     /**
+     * Delete several assets as one step: all of them or none. Every asset must
+     * exist and be deletable by the caller before the first one is removed, so
+     * a refusal on the third id never leaves the first two deleted.
+     *
      * @param list<int> $assetIds
      * @return array{deleted: int}
      */
     public function bulkDeleteAssets(array $assetIds): array
     {
-        foreach (array_unique($assetIds) as $id) {
-            $this->deleteAsset($id);
+        $assets = $this->findAllOrFail($assetIds);
+        foreach ($assets as $asset) {
+            $this->accessService->assertCanManage($asset, DataAccessSecurityService::PERMISSION_DELETE);
         }
 
-        return ['deleted' => count(array_unique($assetIds))];
+        $this->removeAssets($assets);
+
+        return ['deleted' => count($assets)];
     }
 
     public function deleteAsset(int $id): bool
     {
-        $asset = $this->findManagedAsset($id, DataAccessSecurityService::PERMISSION_DELETE);
-        $fullPath = $this->storage->absolutePath($asset->getUuid());
-
-        $this->entityManager->beginTransaction();
-
-        try {
-            // Log transaction before deletion
-            $this->transactionService->logTransaction(
-                LookupService::TRANSACTION_TYPES_DELETE,
-                LookupService::TRANSACTION_BY_BY_USER,
-                'assets',
-                $asset->getId(),
-                $asset,
-                'Asset deleted: ' . $asset->getName()
-            );
-
-            // role_data_access has no FK to the asset: drop its grants first.
-            $this->accessService->setManagingRoles($asset, []);
-            $this->entityManager->remove($asset);
-            $this->entityManager->flush();
-
-            // Delete physical file after successful database deletion
-            if (is_file($fullPath)) {
-                unlink($fullPath);
-            }
-
-            $this->entityManager->commit();
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
-
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ASSET, $id);
-        $this->invalidateAssetLists();
+        $this->removeAssets([$this->findManagedAsset($id, DataAccessSecurityService::PERMISSION_DELETE)]);
 
         return true;
     }
 
     /**
-     * The API shape of an asset.
+     * Delete assets whose delete right has been checked: the rows, their
+     * grants and their log entries in ONE transaction, and the files only
+     * after it committed. A failed commit therefore leaves every row and every
+     * file; the other order would leave rows without files. A file that cannot
+     * be removed afterwards is only an unreachable orphan.
+     *
+     * @param list<Asset> $assets
+     */
+    private function removeAssets(array $assets): void
+    {
+        $removed = [];
+
+        $this->entityManager->beginTransaction();
+        try {
+            foreach ($assets as $asset) {
+                $removed[(int) $asset->getId()] = $asset->getUuid();
+
+                // Log before the delete: the entity is still readable.
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_DELETE,
+                    LookupService::TRANSACTION_BY_BY_USER,
+                    'assets',
+                    $asset->getId(),
+                    $asset,
+                    'Asset deleted: ' . $asset->getName()
+                );
+
+                // role_data_access has no FK to the asset: drop its grants first.
+                $this->accessService->setManagingRoles($asset, []);
+                $this->entityManager->remove($asset);
+            }
+            $this->entityManager->flush();
+
+            $this->entityManager->commit();
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
+
+        foreach ($removed as $id => $uuid) {
+            $this->storage->delete($uuid);
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ASSET, $id);
+        }
+        $this->invalidateAssetLists();
+    }
+
+    /**
+     * The assets with these ids; every id must exist, otherwise nothing is
+     * returned and the request is a 404 (so a bulk action never does half).
+     *
+     * @param list<int> $assetIds
+     * @return list<Asset>
+     */
+    private function findAllOrFail(array $assetIds): array
+    {
+        $assets = $this->assetRepository->findByIds($assetIds);
+        if (count($assets) !== count(array_unique($assetIds))) {
+            $this->throwNotFound('Asset not found');
+        }
+
+        return $assets;
+    }
+
+    /**
+     * The API shape of an asset for the CALLER: the cache-safe payload plus
+     * what the caller may do with it (`can_view`, `can_update`, `can_delete`).
      *
      * @param list<array{id: int, name: string}>|null $roles null = look them up
      * @return array<string, mixed>
      */
     public function toArray(Asset $asset, ?array $roles = null): array
+    {
+        return $this->withCallerRights([$this->payload($asset, $roles)])[0];
+    }
+
+    /**
+     * Add the caller's rights to asset payloads. Never put the result in a
+     * shared cache: it differs per caller.
+     *
+     * @param array<mixed> $payloads asset payloads as built by {@see payload()}
+     * @return list<array<string, mixed>>
+     */
+    private function withCallerRights(array $payloads): array
+    {
+        $assets = array_map(fn (mixed $payload): array => $this->asAssocArray($payload), array_values($payloads));
+
+        $groupIdsByAsset = [];
+        foreach ($assets as $asset) {
+            $groupIdsByAsset[$this->asInt($asset['id'] ?? 0)] = array_values(array_map(
+                fn (mixed $group): int => $this->asInt($this->asAssocArray($group)['id'] ?? 0),
+                $this->asArray($asset['groups'] ?? null)
+            ));
+        }
+        $rights = $this->accessService->rightsFor($groupIdsByAsset);
+
+        return array_map(
+            fn (array $asset): array => $asset + ($rights[$this->asInt($asset['id'] ?? 0)] ?? ['can_view' => false, 'can_update' => false, 'can_delete' => false]),
+            $assets
+        );
+    }
+
+    /**
+     * The cache-safe API shape of an asset: everything that is the same for
+     * every caller. Rights are added per caller by {@see withCallerRights()}.
+     *
+     * @param list<array{id: int, name: string}>|null $roles null = look them up
+     * @return array<string, mixed>
+     */
+    private function payload(Asset $asset, ?array $roles = null): array
     {
         return [
             'id' => $asset->getId(),
@@ -501,6 +606,36 @@ class AdminAssetService extends BaseService
     }
 
     /**
+     * The folder at the end of a name path (`['Courses', 'Week 1']`), created
+     * where it does not exist yet; an empty path is the top level (null).
+     * Bundle import uses it: a bundle carries the folder as names because ids
+     * differ between instances. An existing folder of that name under the same
+     * parent is reused, never duplicated.
+     *
+     * @param list<string> $names folder names from the top level down
+     */
+    public function ensureFolderPath(array $names): ?AssetFolder
+    {
+        $parent = null;
+        foreach ($names as $name) {
+            $name = mb_substr(trim($name), 0, 100);
+            if ($name === '') {
+                $this->throwBadRequest('Invalid folder path');
+            }
+
+            $folder = $this->entityManager->getRepository(AssetFolder::class)->findOneBy(['name' => $name, 'parent' => $parent], ['id' => 'ASC']);
+            if (!$folder instanceof AssetFolder) {
+                $folder = (new AssetFolder())->setName($name)->setParent($parent);
+                $this->entityManager->persist($folder);
+                $this->entityManager->flush();
+            }
+            $parent = $folder;
+        }
+
+        return $parent;
+    }
+
+    /**
      * Delete a folder and its subfolders; their assets move to the top level.
      *
      * @return list<array{id: int|null, name: string, parent_id: int|null, asset_count: int}>
@@ -566,21 +701,14 @@ class AdminAssetService extends BaseService
     }
 
     /**
-     * Move the upload to the asset's uuid path and record its mime type and
-     * size (read before the move, while the temp file still exists).
+     * Record the upload's mime type and size on the asset. Read before the
+     * file is staged (moved), while the temp file still exists.
      */
-    private function storeFile(UploadedFile $file, Asset $asset): void
+    private function recordFile(UploadedFile $file, Asset $asset): void
     {
         $asset->setMimeType($file->getMimeType() ?? $file->getClientMimeType());
         $size = $file->getSize();
         $asset->setSize($size === false ? null : $size);
-
-        $root = $this->storage->storageRoot();
-        if (!is_dir($root)) {
-            mkdir($root, 0755, true);
-        }
-
-        $file->move($root, $asset->getUuid());
     }
 
     private function assetTypeFor(string $extension): \App\Entity\Lookup
@@ -644,6 +772,20 @@ class AdminAssetService extends BaseService
         }
 
         return $ids;
+    }
+
+    /**
+     * A `role_ids` that is present and empty would leave the asset to the admin
+     * role alone (F63): only an admin may send that. An absent key is the
+     * default on upload and "unchanged" on edit, so it is not checked.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function assertManagingRolesNotEmptied(array $data): void
+    {
+        if (array_key_exists('role_ids', $data) && $this->toIntList($data['role_ids']) === []) {
+            $this->accessService->assertMayLeaveWithoutManagingRoles();
+        }
     }
 
     private function invalidateAssetLists(): void

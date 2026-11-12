@@ -12,11 +12,15 @@ namespace App\Tests\Controller\Api\V1;
 use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\Asset;
 use App\Entity\Group;
+use App\Entity\User;
 use App\Service\CMS\Admin\AssetStorageService;
 use App\Service\Core\LookupService;
+use App\Tests\Support\Factories\GroupFactory;
+use App\Tests\Support\Factories\UserFactory;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group as TestGroup;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
  * Security regression coverage for asset DELIVERY (Testing Rule 27).
@@ -87,17 +91,20 @@ final class AssetDeliveryAclTest extends QaWebTestCase
     }
 
     /**
-     * `qa.editor` is in the `researcher` group: an asset shared only with
-     * `subject` is refused, one shared with `researcher` is served.
+     * `qa.editor` is made a member of `qa_asset_viewers` only: an asset shared
+     * just with `qa_asset_outsiders` is refused, one shared with both is served.
      */
     public function testUserReceivesOnlyAssetsSharedWithOneOfTheirGroups(): void
     {
-        $subjectOnly = $this->createAsset('qa-subject.txt', 'text/plain', ['subject']);
-        $shared = $this->createAsset('qa-shared.txt', 'text/plain', ['subject', 'researcher']);
+        $this->customGroup('qa_asset_outsiders');
+        $this->addEditorToGroup($this->customGroup('qa_asset_viewers'));
+
+        $outsidersOnly = $this->createAsset('qa-outsiders.txt', 'text/plain', ['qa_asset_outsiders']);
+        $shared = $this->createAsset('qa-shared.txt', 'text/plain', ['qa_asset_outsiders', 'qa_asset_viewers']);
         $token = $this->loginAs(QaBaselineFixture::QA_EDITOR_EMAIL);
         $headers = ['HTTP_AUTHORIZATION' => 'Bearer ' . $token];
 
-        $this->client->request('GET', '/cms-api/v1/assets/' . $subjectOnly->getUuid(), [], [], $headers);
+        $this->client->request('GET', '/cms-api/v1/assets/' . $outsidersOnly->getUuid(), [], [], $headers);
         self::assertSame(403, $this->client->getResponse()->getStatusCode(), 'A user outside every asset group must be refused');
 
         $this->client->request('GET', '/cms-api/v1/assets/' . $shared->getUuid(), [], [], $headers);
@@ -106,7 +113,8 @@ final class AssetDeliveryAclTest extends QaWebTestCase
 
     public function testTheAdminRoleReadsAnAssetOutsideItsGroups(): void
     {
-        $asset = $this->createAsset('qa-subject-only.txt', 'text/plain', ['subject']);
+        $this->customGroup('qa_asset_outsiders');
+        $asset = $this->createAsset('qa-outsiders-only.txt', 'text/plain', ['qa_asset_outsiders']);
 
         $editor = $this->loginAs(QaBaselineFixture::QA_EDITOR_EMAIL);
         $this->client->request('GET', '/cms-api/v1/assets/' . $asset->getUuid(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $editor]);
@@ -158,6 +166,25 @@ final class AssetDeliveryAclTest extends QaWebTestCase
         self::assertFalse($response->headers->has('Content-Security-Policy'));
     }
 
+    /** A custom `qa_` group; the seed has only `subject`. */
+    private function customGroup(string $name): Group
+    {
+        return (new GroupFactory($this->entityManager))->createGroup($name);
+    }
+
+    /** Add the QA editor persona to the given group (it already is in `subject`). */
+    private function addEditorToGroup(Group $group): void
+    {
+        $users = new UserFactory(
+            $this->entityManager,
+            $this->service(UserPasswordHasherInterface::class),
+            $this->service(LookupService::class),
+        );
+        $editor = $this->entityManager->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_EDITOR_EMAIL]);
+        self::assertInstanceOf(User::class, $editor);
+        $users->addToGroup($editor, $group);
+    }
+
     /**
      * Persist an asset stored under its uuid, as an upload would.
      *
@@ -180,7 +207,7 @@ final class AssetDeliveryAclTest extends QaWebTestCase
         $asset->setMimeType($mimeType);
         foreach ($groupNames as $name) {
             $group = $this->entityManager->getRepository(Group::class)->findOneBy(['name' => $name]);
-            self::assertInstanceOf(Group::class, $group, sprintf('Seeded "%s" group is required', $name));
+            self::assertInstanceOf(Group::class, $group, sprintf('Group "%s" must exist (seeded `subject` or created by the test)', $name));
             $asset->addGroup($group);
         }
         $this->entityManager->persist($asset);
