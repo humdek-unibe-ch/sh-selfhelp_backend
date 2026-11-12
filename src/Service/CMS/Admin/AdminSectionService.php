@@ -55,6 +55,11 @@ class AdminSectionService extends BaseService
 
     /**
      * Get a section by its ID with its fields and translations
+     *
+     * The caller's READ grant on the page is checked on EVERY read, before and
+     * outside the cache: the cached payload is the same for every caller, so it
+     * can never stand in for an access decision.
+     *
      * @param int|null $page_id
      * @param int $section_id
      * @return array<string, mixed>
@@ -62,7 +67,11 @@ class AdminSectionService extends BaseService
      */
     public function getSection(?int $page_id, int $section_id): array
     {
-        $cacheKey = "section_{$section_id}_" . ($page_id ?? 'auto');
+        $this->assertCallerMayReadSection($page_id, $section_id);
+
+        // `v2`: entries cached before the picker option lists left this payload
+        // held option lists computed for whoever read the section first.
+        $cacheKey = "section_v2_{$section_id}_" . ($page_id ?? 'auto');
 
         // The section payload (section + fields + languages) is cached under this
         // SECTION scope; updateSection() invalidates the scope after edits. The
@@ -70,24 +79,37 @@ class AdminSectionService extends BaseService
         // fresh by the unified interpolation endpoint
         // (GET /admin/interpolation/variables?context=section) so a column added
         // by a later form submission appears immediately without re-saving the
-        // section.
-        return $this->cache
+        // section. Neither are the option lists of the pickers (groups, data
+        // tables, page keywords, the assets the caller may manage): they change
+        // on their own and differ per caller, so they are added after the cache
+        // read, on every request.
+        $payload = $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section_id)
             ->getItem(
                 $cacheKey,
-                fn() => $this->fetchSectionFromDatabase($page_id, $section_id)
+                fn() => $this->fetchSectionFromDatabase($section_id)
             );
+
+        $payload['fields'] = $this->sectionFieldService->withPickerOptions($this->asArray($payload['fields'] ?? null));
+
+        return $payload;
     }
 
     /**
-     * @return array<string, mixed>
+     * Decide, for THIS caller and NOW, whether the section may be read: it
+     * exists, it sits on a page (the given one, else the first page that holds
+     * it), the caller holds the READ grant on that page, and the section really
+     * belongs to that page.
+     *
+     * Runs on every read and is never part of a cached value: a cache hit must
+     * not skip it.
+     *
+     * @throws ServiceException 404 when the section or its page is missing; 403 without the grant or when the section is not on the page
      */
-    private function fetchSectionFromDatabase(?int $page_id, int $section_id): array
+    private function assertCallerMayReadSection(?int $page_id, int $section_id): void
     {
-        // Fetch section
-        $section = $this->sectionRepository->find($section_id);
-        if (!$section) {
+        if (!$this->sectionRepository->find($section_id)) {
             $this->throwNotFound('Section not found');
         }
 
@@ -97,13 +119,7 @@ class AdminSectionService extends BaseService
             $pageSection = $this->entityManager->getRepository(PagesSection::class)
                 ->findOneBy(['section' => $section_id]);
 
-            if ($pageSection) {
-                $page = $pageSection->getPage();
-                if ($page) {
-                    $page_id = $page->getId();
-                }
-            }
-
+            $page_id = $pageSection?->getPage()?->getId();
             if (!$page_id) {
                 $this->throwNotFound('Page not found for this section');
             }
@@ -118,6 +134,20 @@ class AdminSectionService extends BaseService
         // Permission check
         $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'select');
         $this->sectionRelationshipService->checkSectionInPage($page_id, $section_id);
+    }
+
+    /**
+     * Build the section payload shared by every caller. Holds no access
+     * decision: see {@see assertCallerMayReadSection()}.
+     *
+     * @return array<string, mixed>
+     */
+    private function fetchSectionFromDatabase(int $section_id): array
+    {
+        $section = $this->sectionRepository->find($section_id);
+        if (!$section) {
+            $this->throwNotFound('Section not found');
+        }
 
         // Get fields using the dedicated service
         $formattedFields = $this->sectionFieldService->getSectionFields($section);

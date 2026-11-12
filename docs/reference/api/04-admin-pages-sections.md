@@ -393,6 +393,13 @@ Retrieve detailed information about a specific section including its content fie
 
 **Permissions:** `admin.page.read`
 
+**Data access:** the caller's role needs the READ grant on the page, and the
+section must belong to that page; otherwise `403` (`404` for an unknown page or
+section). The response is built from a shared cache, but this check runs on every
+read, so a cached section is never served to a role without the grant. The option
+lists of the pickers inside `fields[].config.options` are read per request (assets
+only those the caller may manage).
+
 ### Create Page Section
 
 Create a new section and add it directly to a page.

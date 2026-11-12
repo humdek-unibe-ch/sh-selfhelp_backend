@@ -36,6 +36,15 @@ class SectionFieldService extends BaseService
     use TranslationManagerTrait;
     use FieldValidatorTrait;
 
+    /**
+     * Field types whose option list is read from the database when the field is
+     * drawn: groups, data tables, page keywords, and the assets the CALLER may
+     * manage. These lists change on their own and (for assets) differ per
+     * caller, so they are never part of the cached section payload; see
+     * {@see withPickerOptions()}.
+     */
+    private const PICKER_FIELD_TYPES = ['select-group', 'select-data_table', 'select-page-keyword', 'select-image', 'select-video'];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly DataTableService $dataTableService,
@@ -49,25 +58,64 @@ class SectionFieldService extends BaseService
     }
 
     /**
-     * Get section fields with translations
-     * 
+     * Cache key of one section's fields. Every place that invalidates it uses
+     * this method. The `v2` marks the payload that holds no picker option
+     * lists: entries cached before that change held per-caller option lists.
+     */
+    public static function fieldsCacheKey(int $sectionId): string
+    {
+        return "section_fields_v2_{$sectionId}";
+    }
+
+    /**
+     * Get section fields with translations.
+     *
+     * The result is cached and the same for every caller, so a field whose
+     * options are read from the database (a picker with no config of its own)
+     * has `config: null` here. Add its options with {@see withPickerOptions()}
+     * after every cache read, whether this one or a cache that holds this
+     * result.
+     *
      * @param Section $section The section entity
      * @return list<array<string, mixed>> The formatted fields with translations
      */
     public function getSectionFields(Section $section): array
     {
-        // Try to get from cache first
-        $cacheKey = "section_fields_{$section->getId()}";
-
         return $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId())
             ->getItem(
-                $cacheKey,
+                self::fieldsCacheKey((int) $section->getId()),
                 function () use ($section) {
                     return $this->fetchSectionFieldsFromDatabase($section);
                 }
             );
+    }
+
+    /**
+     * Fill in the option lists of the pickers in fields read from a cache.
+     *
+     * A picker whose config is `null` takes its options from the database now:
+     * groups, data tables and page keywords from their own caches (so a new
+     * group shows at once), and the assets the CALLER may manage (an editor
+     * with a narrower grant must not see, or be served, another editor's list).
+     * A field that carries its own config in the database keeps it.
+     *
+     * @param array<mixed> $fields fields as returned by {@see getSectionFields()}
+     * @return list<array<string, mixed>>
+     */
+    public function withPickerOptions(array $fields): array
+    {
+        $result = [];
+        foreach ($fields as $field) {
+            $field = $this->asAssocArray($field);
+            if (array_key_exists('config', $field) && $field['config'] === null) {
+                $field['config'] = $this->getFieldConfig($this->asString($field['type'] ?? ''));
+            }
+            $result[] = $field;
+        }
+
+        return $result;
     }
 
     /**
@@ -144,7 +192,11 @@ class SectionFieldService extends BaseService
                 'disabled' => $stylesField->isDisabled(),
                 'hidden' => $stylesField->getHidden(),
                 'display' => $field->isDisplay(),
-                'config' => $field->getConfig() ?? $this->getFieldConfig($this->asString($fieldTypeName)),
+                // null = a picker whose options are added per read (withPickerOptions);
+                // a field's own config from the database always wins.
+                'config' => $field->getConfig() ?? (in_array($fieldTypeName, self::PICKER_FIELD_TYPES, true)
+                    ? null
+                    : $this->getFieldConfig($this->asString($fieldTypeName))),
                 'translations' => [],
             ];
 
