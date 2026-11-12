@@ -6,6 +6,14 @@ publish-gated page settings; and public-navigation visibility for the menu
 builder.** Pre-release: fresh installs only, no upgrade path from earlier
 development builds.
 
+## Manager probe and release floors
+
+- `selfhelp:maintenance --format=json` prints one JSON line of the maintenance
+  state (`enabled`, `forced_by_env`, `message`, `since`, `updated_by`) for the
+  SelfHelp Manager backup probe; the default text output is unchanged.
+- `release-manifest.json` floors: `supports.frontend` `>=0.1.70 <0.2.0`,
+  `supports.manager` `>=1.7.0`.
+
 ## Users management
 
 - `GET /admin/users` filters by `status` (`active`, `invited`, `imported`,
@@ -21,13 +29,43 @@ development builds.
   `POST /admin/users/import`. Imported users get the new `imported` status and
   no activation mail. Every group named on a row needs CREATE access for the
   caller, exactly like a single create; otherwise that row fails.
+- **Assigning groups and roles is checked on every path** (add/remove, update,
+  create, bulk, CSV import): moving a user into or out of a group needs UPDATE
+  on that group (CREATE for a new user), and a caller that is not admin may add
+  or remove only roles it holds itself, so a scoped admin cannot hand out more
+  than it has (nor `admin`). When `group_ids` / `role_ids` replace a user's set,
+  the rights are needed for what is added or dropped, not for what stays.
 - Group and role members are listed through the users list (`id_groups` /
   `id_roles`); there are no separate member routes.
 - `POST /admin/users/{userId}/clean-data` erases what the user produced, in one
-  transaction: transactions, data rows and cells, scheduled jobs and recipient
-  rows. After the commit it deletes the user's uploaded form files. It requires
-  delete access to the user, refuses system users, and returns a `removed`
-  count per entity (`form_files` counts files). Audit and session data are kept.
+  transaction: data rows and cells, scheduled jobs and the recipient rows that
+  point at the user, and the user's `api_request_logs` rows (URLs and parameters
+  can carry personal data). The `transactions` and `data_access_audits` rows
+  **stay**, with the person removed (`id_users` set to NULL; both foreign keys
+  are now `ON DELETE SET NULL`, and `data_access_audits.id_users` is nullable):
+  they are the audit trail. After the commit it deletes the user's uploaded form
+  files and clears the data-table caches. It requires delete access to the user,
+  refuses system users, and returns a `removed` count per entity (`form_files`
+  counts files; `transactions` / `data_access_audits` count detached rows).
+  Session and sign-in state is not touched. Deleting a user (single, bulk or
+  one's own account) runs the same cleaner first, so no row is left pointing at
+  a user that no longer exists, and deleting a user who has audit rows no longer
+  fails. `api_request_logs.id_users` is now indexed: without it the log delete
+  scanned the whole table and held a lock on every row it passed, which stalled
+  the logging of other requests.
+- **A plugin is told when a user's data is removed** (new extension point, F83).
+  The cleaner dispatches `App\Plugin\Event\UserDataCleanupEvent` with the user
+  id, once per user, for "clean user data" and for every way of deleting a user.
+  It is dispatched **inside the removal's transaction** and before the core rows
+  go: a plugin that owns tables with user data deletes its rows there, and if it
+  throws, nothing is removed. Files and caches cannot roll back, so a listener
+  hands them to `$event->afterCommit(...)`; those callbacks run once the
+  transaction committed, and one that throws is logged without failing the
+  removal. `removeData()` now returns a `UserDataRemoval` (counts, data table
+  ids, the after-commit callbacks) that is passed to `finishAfterCommit()`. The
+  `removed` counts of the response list core rows only. Only enabled plugins
+  hear the event, so a plugin should also give its user tables a foreign key to
+  `users` with `ON DELETE CASCADE`. Guide: `docs/plugins/developer-guide.md` §9.
 - Logging in no longer overwrites `user_name` with the email, and password
   logins record `last_login` (before, only 2FA logins did).
 
@@ -50,27 +88,84 @@ development builds.
   `Cache-Control: private`, keep `ETag`/`304`, and markup types (SVG, HTML, XML)
   get a sandboxing CSP so uploaded scripts cannot run.
 - **Management.** A new `asset` resource type in `role_data_access` decides
-  which roles may list, edit, delete and export each asset; uploads go to the
-  uploader's roles and the admin role manages all. New permission
-  `admin.asset.update` (granted to every role that can upload):
-  `POST /admin/assets/{id}` edits name, alt, groups, roles and folder, and can
-  replace the file under the same uuid.
+  which roles may list, edit, delete and export each asset; the admin role
+  manages all. An upload is managed by the uploader's roles **that hold
+  `admin.asset.create`** (the same rule as a creator's grants on a new page,
+  F14), an explicit `role_ids` list is taken as sent, and an empty one is refused
+  with `400` unless the caller is admin (then the asset is left to the admin role
+  alone; a caller who is not admin could otherwise lock themselves out of the
+  asset they just made, F63). Grants are written through `AdminDataAccessService`
+  like every other grant, so each one is logged and the touched roles' permission
+  caches are dropped. New permission `admin.asset.update` (granted to every role
+  that can upload): `POST /admin/assets/{id}` edits name, alt, groups, roles and
+  folder, and can replace the file under the same uuid.
+- **File and row change together.** A replace, upload or delete never leaves a
+  row without its file or a file that disagrees with its row, also when the
+  database commit fails: new bytes are staged, put in place as the last step
+  before the commit and rolled back if it fails (the old bytes are kept until
+  then); a delete removes the files only after its transaction committed.
 - **Folders** are an organisation-only tree: `GET|POST /admin/asset-folders`,
   `PUT|DELETE /admin/asset-folders/{id}`; the list filters by `folder_id`.
-- **Bulk:** `POST /admin/assets/bulk-groups`, `bulk-folder`, `bulk-delete`.
+- **Bulk:** `POST /admin/assets/bulk-groups`, `bulk-folder`, `bulk-delete` are
+  all-or-nothing: an unknown id (`404`) or a missing right (`403`, audited) on
+  any asset changes none of them.
 - **Export/import:** `POST /admin/assets/export` returns a ZIP
   (`selfhelp/asset-bundle` 2.0: `manifest.json` + `files/<uuid>`);
   `POST /admin/assets/import` creates each entry through the normal upload path
-  and skips uuids that already exist.
+  and skips uuids that already exist. Entries carry the **folder path** (names
+  from the top level down, `folder_path`; the folders are recreated or reused on
+  import, and bundles without it still import); managing roles do not travel, so
+  the importer's roles that may create assets manage what they import. An entry
+  that names a group missing on this instance is **not imported** and appears in
+  `errors` (`Unknown group name(s): ...`), because dropping the group would make
+  a restricted asset public; the other entries still import. An uploaded bundle
+  is untrusted: entries are read one at a time (nothing is extracted, files the
+  manifest does not name are never written, `bundle_path` must be
+  `files/<name>`), bytes are counted as read, and the import stops at 2000
+  assets, an 8 MB manifest, 512 MB per file and 4 GB in total; an export obeys
+  the same count and total size (`400` before an archive is started), so what
+  was exported can be imported again.
+- **Rights per caller.** Every asset object carries `can_view`, `can_update`
+  and `can_delete` for the caller (list, one, upload, edit): `can_view` is the
+  group rule of the delivery URL, the other two are the update/delete bits of
+  the caller's grant on that asset (admin role: all true). They are added after
+  the cached list is read, so no shared cache holds an access answer. Clients
+  draw from them instead of working the rule out.
 - **Default alt.** An image section with an empty `alt` gets the asset's alt in
-  the page payload. The image style fields are titled (Image Source, Alt,
-  Title, Fluid). Asset email attachments are resolved to the stored file.
+  the page payload, read when the page is served (draft and published), so an
+  alt change shows everywhere at once with no cache flush. The image style
+  fields are titled (Image Source, Alt, Title, Fluid).
+- **Email attachments are assets only.** An action's attachment must be an
+  uploaded asset (its delivery URL); a server file path, an external URL or an
+  unknown asset is refused with `400` when the action is saved, and attaching an
+  asset the person saving the action may not view is `403` (admin may attach any).
+  The mailer repeats the asset-only rule when it sends, so a config that reached
+  the database another way still cannot read a path. Before, the action sent
+  whatever path its config named, with system rights.
+- **Live preview shows assets.** `MobilePreviewAccessGuard` allows
+  `GET /cms-api/v1/assets/{uuid}` for `purpose: mobile_preview` tokens (read
+  only; other methods stay `403`). Before, the mobile pane of the live preview
+  got `403` and showed empty images; the asset's own group check still decides
+  (F68).
 
 ## Groups
 
-`therapist` is renamed `researcher`; new public pages are readable by subject +
-researcher. The `admin` group is removed: admin rights come from the admin role,
-and `app:create-admin-user` adds no group.
+A group only decides who can see a page or an asset; roles and permissions do
+the rest. So the **group type is removed**: the column `groups.id_group_types`,
+the lookup type `groupTypes` (`db_role`, `group`), the `id_group_types` field of
+the group API and its schemas. New in its place is a flag on the group,
+`add_to_new_pages`, settable through the group API (`POST /admin/groups`,
+`PUT /admin/groups/{id}`, returned on every group): a **new public page gives
+every flagged group `select`**, any number of groups may carry it, and no flagged
+group simply means nothing is added. The admin checkbox for it is a frontend
+follow-up.
+
+The seed is clean: a fresh install has **one built-in group, `subject`**, flagged
+`add_to_new_pages`. The `admin`, `therapist` and `researcher` groups are gone
+(admin rights come from the admin role); every other group is custom, and the
+tests use `subject` plus their own `qa_` groups. `app:create-admin-user` adds no
+group. Migrations `Version20261103112133` (removes `admin` and `therapist`) and
+`Version20261111082842` (group type out, flag in).
 
 ## Form uploads
 
@@ -84,6 +179,29 @@ and `app:create-admin-user` adds no group.
   longer get a doubled extension.
 - Zip downloads: `GET /forms/files/{record_id}/{field}/zip` and
   `GET /admin/data/tables/{tableName}/files` (`admin.data.read`).
+- `GET /admin/data/tables/{tableName}/columns` adds `isFile` to every column
+  (response schema `responses/admin/data_table_columns`): true only for a column
+  of a core form that belongs to a `file-input` section. The Data browser draws
+  file links and builds the zip from it instead of guessing from a cell's value.
+
+## Section inspector pickers
+
+The cached section payload (`section_v2_*`, `section_fields_v2_*`) no longer
+holds the option lists of the pickers. Groups, data tables, page keywords and the
+image/video assets are read when the section is read: the assets differ per
+caller (an editor with a narrower asset grant was served the list of whoever
+opened the section first), and the others went stale after a group, table or
+page changed. Fields that carry their own `config` keep it. Entries cached under
+the old keys are simply not read.
+
+## Admin section read access
+
+`GET /admin/pages/{page_id}/sections/{section_id}` checks the caller's READ grant
+on the page, and that the section belongs to it, on every read. Before, the check
+ran only while the payload was built, so after one editor opened a section, a role
+that held the route permission `admin.page.read` but no grant on that page was
+served the cached section (content, fields, translations). The cached payload is
+unchanged and still shared; only the access decision moved out of it.
 
 ## Login rate limiting
 
@@ -93,10 +211,23 @@ A blocked request returns `429` with `Retry-After` and `data.retry_after`. The
 `login`, `two-factor-auth` and `reset-password` styles gain the CMS field
 `alert_rate_limited` (`{minutes}` placeholder).
 
+The per-account limits alone let one address try many accounts, so login,
+two-factor and recovery also have a **per-address limit** (`AUTH_IP_MAX_ATTEMPTS`
+100 per `AUTH_IP_WINDOW` 15 minutes; recovery `AUTH_RECOVERY_IP_MAX_REQUESTS` 20
+per `AUTH_RECOVERY_IP_WINDOW` 1 hour). An address is counted only when the
+backend really sees the visitor's: a direct call (a forged `X-Forwarded-For` from
+it is ignored), or a trusted proxy (`TRUSTED_PROXIES`) that passed
+`X-Forwarded-For`. A proxy without a forwarded address and private or reserved
+addresses are not counted, so one visitor behind the frontend can never lock out
+everyone else; IPv6 counts per /64. Details in `docs/developer/03-authentication-authorization.md`.
+
 ## Pages and navigation
 
 - A page's `title`, `description` and modal settings are stored in its version
-  and go live only on Publish; restore brings them back.
+  and go live only on Publish; restore brings them back. A version without
+  stored settings serves none (it no longer falls back to the live values, which
+  would let an unpublished edit leak) and shows the draft as changed until the
+  next Publish; on a fresh install no such version exists.
 - Public-navigable page types are resolved by name
   (`PageType::PUBLIC_NAVIGABLE_PAGE_TYPES = ['core', 'experiment']`), not by id.
 - Admin navigation items carry `public_visibility { rendered, reason }`
@@ -104,8 +235,24 @@ A blocked request returns `429` with `Retry-After` and `data.retry_after`. The
   `menu_eligible` (page type only; headless pages stay eligible).
 - Navigation search honours `field_policy = page_metadata_only` (title and
   description only).
+- **The admin role is listed every page** (F89). It could already open any page
+  by its address, but the page list, the public menu and the search used the
+  group rules only, so on a fresh install (no admin group) the admin account saw
+  open pages and nothing else. `ACLService::getAllUserAcls()` now returns every
+  page with full rights for a caller with the admin role (cached per user under
+  `user_acl_admin_{id}`); for everyone else the groups still decide.
 - Deleting a published page no longer returns `500`. CMS app template form
   pages get neutral titles.
+- A CMS app bundle can be imported again after it was exported. The export
+  leaves out every field that equals the style default, and `load_record_from`
+  defaults to `record_id`, so an `entry-record` section built with the default
+  carried no such field and the import was refused (`422`,
+  `missing_entry_record_load_record_from`). A field the bundle does not carry now
+  means the style default, as documented for the minimized shape. A value that is
+  present but empty, or that is not a parameter name, is still refused.
+- At run time an `entry-record` whose `load_record_from` is absent or blank reads
+  the record named by the style default, `record_id` (F87). Before, a blank value
+  showed no record at all, which disagreed with the import above.
 
 ## Security and logging
 
@@ -122,11 +269,18 @@ locally built image never contains uploaded files.
 
 ## Compatibility
 
-`supports.frontend` is `>=0.1.69`; the frontend uses `@selfhelp/shared` 1.22.1.
+`supports.frontend` is `>=0.1.70 <0.2.0` (uuid asset contract, `can_view` /
+`can_update` / `can_delete`, `isFile`; 0.1.69 was never tagged); the frontend
+uses `@selfhelp/shared` 1.22.1. `supports.manager` is `>=1.7.0` (first manager
+that backs up `form_files`, `assets` and the plugin artifact volumes; the
+registry `requiresManager` floor is raised when 0.1.43 is published).
 `pluginApiVersion` is unchanged (`0.1.0`). Migrations: `Version20260716180311`,
 `Version20260717134503`, `Version20260721085447`, `Version20260721135036`,
 `Version20260727132047`, `Version20261027085407`, `Version20261028095413`,
-`Version20261028100251`, `Version20261028125153`, `Version20261103112133`.
+`Version20261028100251`, `Version20261028125153`, `Version20261103112133`,
+`Version20261111082842` (group type out, `add_to_new_pages` in),
+`Version20261111083203` (audit rows keep their history without the person),
+`Version20261111104125` (index on `api_request_logs.id_users`).
 
 # v0.1.36
 
