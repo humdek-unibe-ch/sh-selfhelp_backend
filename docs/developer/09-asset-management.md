@@ -3,8 +3,8 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend, core 0.1.43 and later.
-Last verified: 2026-11-11.
-Source of truth: `src/Entity/{Asset,AssetFolder}.php`, `src/Service/CMS/Admin/{AdminAssetService,AssetAccessService,AssetStorageService,AssetFileSwap,AssetExportImportService,ActionAttachmentValidator}.php`, `src/Controller/Api/V1/{AssetController,Admin/AdminAssetController}.php`, migration `Version20261103112133`, and the tests named below.
+Last verified: 2026-11-12.
+Source of truth: `src/Entity/{Asset,AssetFolder}.php`, `src/Service/CMS/Admin/{AdminAssetService,AssetAccessService,AssetStorageService,AssetFileTypes,AssetFileSwap,AssetExportImportService,ActionAttachmentValidator}.php`, `src/Controller/Api/V1/{AssetController,Admin/AdminAssetController}.php`, migrations `Version20261103112133` and `Version20261112103337`, and the tests named below.
 
 The endpoint-by-endpoint contract is in
 [`docs/reference/api/06-admin-assets.md`](../reference/api/06-admin-assets.md).
@@ -23,7 +23,9 @@ erDiagram
         int id
         string uuid "identity and stored file name"
         string name "editable label, no extension"
+        string extension "checked at upload, nullable"
         string mime_type
+        string content_hash "SHA-256, indexed, nullable"
         int size
         string alt "default alt"
         int id_assets_folders "nullable"
@@ -33,16 +35,86 @@ erDiagram
 - **uuid is the identity and the file name.** The file is stored as
   `var/assets/<uuid>`, with no extension, so names never collide; there is no
   `file_name` column. `name` is an editable label without extension (the
-  uploaded file name by default, searchable). The type comes from the stored
-  MIME type; downloads and email attachments are named
-  `<uuid>.<extension of the MIME type>` and pickers show `name.<extension>`.
+  uploaded file name by default, searchable). The checked extension is stored
+  in `extension` (see "Why the extension is stored"); downloads and email
+  attachments are named `<name>-<uuid>.<extension>` (`AssetStorageService::
+  downloadName()`, also the `file_name` of the asset object) and pickers show
+  `name.<extension>`.
 - **No overwrite.** Uploading a name that already exists creates a second
   asset. Changing bytes is an explicit edit (`updateAsset` with a file), which
   writes to the same uuid path, so every reference keeps working.
 - **Folders only organise.** `assets_folders` is a tree (`id_parent`); an
-  asset sits in at most one folder. Folders never decide access. Deleting a
-  folder deletes its subfolders (FK cascade) and moves their assets to the top
-  level (`ON DELETE SET NULL`).
+  asset sits in at most one folder. Folders never decide access. Only an empty
+  folder is deleted (see "Folder rules").
+
+## Why the extension is stored (`AssetFileTypes`)
+
+The stored file is named by its uuid and has no extension, and sniffing the
+bytes cannot tell a CSV from plain text or a DOCX from a ZIP. So the
+extension, checked against the allowlist `AssetFileTypes::ALLOWED_EXTENSIONS`,
+is what gives the right MIME type (the canonical type of the extension: a CSV
+is `text/csv`), the right download name and the right program. Two checks run
+at upload and replace, in `AdminAssetService::validateUpload()`:
+
+1. the extension is on the allowlist (`400` otherwise);
+2. the bytes fit the extension: the file is sniffed with `finfo`
+   (`UploadedFile::getMimeType()`) and the result must be one the extension
+   may have (`AssetFileTypes::contentMatches()`; `400 The file content does not
+   match its extension`). A script or HTML page named `x.png` is refused and
+   leaves no row and no file. The sniff is a safety check, not the source of
+   the type: text formats accept `text/plain`, Office and OpenDocument files
+   accept the zip types (and `octet-stream` only when the bytes start with a zip
+   signature), old Office files accept the OLE container.
+
+Delivery shows images, audio, video, PDF and plain text inline and sends
+everything else as an attachment (`AssetFileTypes::isInline()`). The sandboxing
+CSP for SVG, HTML and XML is unchanged. Assets stored before the column existed
+have `extension` NULL; their download name falls back to the extension of the
+stored MIME type, and there is no backfill (the platform is unreleased).
+
+## Folder rules (`AdminAssetService::saveFolder()`, `deleteFolder()`)
+
+- A folder needs a name (`400` when empty or blank).
+- A name is unique among siblings, compared case-insensitively (`409 A folder
+  named 'X' already exists here`). It is checked in code, not by an index,
+  because a unique index cannot cover a NULL parent (the top level). The same
+  comparison is used by `ensureFolderPath()` when an import reuses folders.
+- A folder cannot move into itself or one of its descendants (`400`).
+- A folder nests at most `AdminAssetService::MAX_FOLDER_DEPTH` (20) levels deep,
+  counting the subtree under a folder that is moved (`400`). The bundle import
+  uses the same limit.
+- Only an empty folder is deleted: a subfolder or any asset, **visible to the
+  caller or not**, gives `409 The folder is not empty` and changes nothing. The
+  FK is `RESTRICT`; there is no cascade.
+- `GET /admin/asset-folders` returns `asset_count` (assets directly in the
+  folder) and `subtree_asset_count` (in it and below), both only of assets the
+  caller may manage. The tree and the counts are built in PHP from one folder
+  query and one grouped asset count, so the number of queries does not grow
+  with the tree (`AssetFolderTreeTest` counts them).
+
+## Folder access (`AdminAssetService::setFolderAccess()`)
+
+`POST /admin/asset-folders/{folderId}/access` applies who sees and/or who
+manages to every asset in the folder and all its subfolders, **once**. Nothing
+is stored on the folder: assets added later are not affected, so a folder still
+decides no access. It is the bulk
+pattern: the folder subtree is collected from one folder query, **every** asset
+in it (not only those the caller can see) is checked with
+`assertCanManage(UPDATE)` before the transaction opens (`403` and nothing
+changed if one fails), then groups and/or roles are replaced and each asset is
+touched in one transaction with one log line, and each asset's cache scope and
+the asset lists are invalidated. `role_ids: []` follows the rule for an empty
+role list (only an admin may send it).
+
+## Duplicate warning
+
+Upload and replace store the SHA-256 of the bytes in `content_hash`
+(`recordFile()`). The upload response of `createAsset()` carries `duplicates`:
+up to 5 other assets with the same hash that **the caller may manage**
+(`{id, name, folder_id}`), so an editor is never told that a file they cannot
+see exists. Nothing is refused. `duplicates` is added to the response after the
+asset is built and is never part of a cached payload (a cached value holds only
+what is the same for everybody).
 
 ## Access (`AssetAccessService`)
 
@@ -53,11 +125,18 @@ Two separate questions, two mechanisms:
 | Who can **view** the file (website, app, delivery URL) | the asset's groups, `rel_assets_groups` | no groups = **public** (anonymous callers included); otherwise members of ANY of its groups; the admin role views everything |
 | Who can **manage** it in the CMS (list, pickers, edit, delete, export) | `role_data_access`, resource type `asset`, CRUD bits | per asset, like data tables ([19-data-access-management.md](19-data-access-management.md)); the admin role manages everything |
 
+- **The admin role is implicit.** It manages every asset without a grant, so
+  its grant is never written (`AssetAccessService::withoutAdminRole()` drops
+  it from every list of roles, found by name), never listed (`managingRoles()`
+  skips it) and never offered as a default (`defaultManagingRoleIds()`).
+  Migration `Version20261112103337` removed the grants older versions stored
+  for it. Sending the admin role id in `role_ids` is accepted and stores
+  nothing; a list that holds only the admin role counts as an empty list.
 - New uploads are public and managed by the uploader's roles **that hold
   `admin.asset.create`** (full CRUD; the same rule as the creator's grants on a
   new page, finding F14), unless `group_ids` / `role_ids` say otherwise: an
-  explicit `role_ids` list is taken as it is. An empty one leaves the asset to
-  the admin role alone, so only an admin may send it; for anyone else it is
+  explicit `role_ids` list is taken as it is (minus the admin role). An empty
+  one leaves the asset to the admin role alone, so only an admin may send it; for anyone else it is
   refused with `400` before anything changes, on upload and on edit, because
   the editor would lose the asset (finding F63).
 - `canView()` reads the caller's groups with `UserRepository::getUserGroupIds()`
@@ -104,7 +183,9 @@ must persist: sh-manager mounts the `assets` and `form_files` volumes there, and
 a non-Docker install must keep them across deploys. Tests use `var/test/`. `GET /assets/{uuid}` is the only way out: it checks
 `canView()`, resolves the file with `resolveForDelivery()` (which refuses
 anything that escapes the storage root, including symlinks), and sets
-`Content-Type` from the stored MIME type. Markup types get a sandboxing CSP.
+`Content-Type` from the stored MIME type and `Content-Disposition` naming the
+file `<name>-<uuid>.<extension>` (`inline` for images, audio, video, PDF and
+plain text, `attachment` for everything else). Markup types get a sandboxing CSP.
 
 `uuidFromReference()` turns any stored reference — absolute or relative
 delivery URL or the frontend BFF URL `/api/assets/<uuid>` — into the asset
@@ -150,14 +231,18 @@ saved (create and update): the asset must exist (400) and the person saving the
 action must be allowed to view it (403; admin may attach any), and nothing is
 stored on a refusal. `JobSchedulerService` repeats the rule when the mail is
 built (`resolveAssetAttachment()`): only assets resolve, a stored server path is
-skipped with a warning, and the file is attached as `<uuid>.<extension>`. The
+skipped with a warning, and the file is attached under its download name
+`<name>-<uuid>.<extension>`. The
 view right is checked at save time only, not again at send time. Covered by
 `ActionAttachmentAccessTest` and `JobSchedulerServiceTest`.
 
 ## Export / import (`AssetExportImportService`)
 
-Bundle `selfhelp/asset-bundle` 2.0: `manifest.json` plus `files/<uuid>`. Entries
-carry uuid, name, alt, MIME type, group **names** and the **folder path** as a
+Bundle `selfhelp/asset-bundle` 2.0: `manifest.json` plus
+`files/<name>-<uuid>.<ext>` (the download name, so an unpacked bundle opens in
+the right program; the manifest's `bundle_path` names each file and the importer
+reads by it). Entries carry uuid, name, alt, MIME type, `extension` (an older
+bundle without it takes the extension of its MIME type), group **names** and the **folder path** as a
 list of folder names from the top level down (`"folder_path": ["Courses",
 "Week 1"]`; ids differ between instances, so only names travel). The managing
 roles do not travel: the importer's roles that may create assets manage what
@@ -218,11 +303,19 @@ model (the platform is unreleased, so there is no data backfill):
 5. Titles the image style's fields (Image Source, Alt, Title, Fluid) and
    explains the alt fallback.
 
+`Version20261112103337` (generated) adds `assets.extension` and
+`assets.content_hash` with its index, makes the `assets_folders.id_parent` FK
+`RESTRICT`, adds the route `POST /admin/asset-folders/{folderId}/access`
+(permission `admin.asset.update`) and deletes the `role_data_access` rows of the
+admin role on assets. `down()` reverses the schema and the route; the admin
+grants are not restored, which is harmless because the admin role short-circuits.
+Existing assets keep a NULL extension and hash.
+
 ## Tests
 
 | Test | Covers |
 | --- | --- |
-| `tests/Controller/Api/V1/AdminAssetControllerTest.php` | upload under uuid (public, managed by the uploader), explicit groups, no overwrite, edit, replace keeps uuid, bulk groups, bulk move, bulk delete, folders (nest, filter, no self-nesting, delete, top level `folder_id=0`, `asset_count`), export/import round trip, import refuses an asset naming a group that does not exist here |
+| `tests/Controller/Api/V1/AdminAssetControllerTest.php` | upload under uuid (public, managed by the uploader), explicit groups, no overwrite, edit, replace keeps uuid, bulk groups, bulk move, bulk delete, folders (nest, filter, no self-nesting, delete only when empty, top level `folder_id=0`, `asset_count`), export/import round trip, import refuses an asset naming a group that does not exist here |
 | `tests/Controller/Api/V1/Admin/AssetManagementAccessTest.php` | two editors: an upload is managed only by the uploader's role until shared; the admin role manages all; the `can_view` / `can_update` / `can_delete` flags match what the server then accepts or refuses |
 | `tests/Controller/Api/V1/Admin/AssetManagingRolesTest.php` | default managing roles (the uploader's roles that hold `admin.asset.create`), explicit and empty `role_ids`, grants logged as `role_data_access` transactions, bulk delete / move / groups all-or-nothing with the refusal audit kept |
 | `tests/Controller/Api/V1/Admin/AssetFileReplaceTest.php` | a replace swaps the bytes under the same uuid and leaves no hidden work file, also when it is refused or fails |
@@ -238,3 +331,9 @@ model (the platform is unreleased, so there is no data backfill):
 | `tests/Controller/Api/V1/Frontend/PageImageAltFallbackTest.php` | default alt fallback in the page payload |
 | `tests/Service/Core/JobSchedulerServiceTest.php` | asset URL attachments are attached |
 | `tests/Integration/Migrations/Version20261103112133RoundTripTest.php` | migration up/down/up (migration tier) |
+| `tests/Integration/Migrations/Version20261112103337RoundTripTest.php` | the same for the extension / hash / folder RESTRICT / access route migration |
+| `tests/Controller/Api/V1/Admin/AssetFileTypeTest.php` | CSV, Office files and images keep their type and download name; inline vs attachment; a script or HTML named `.png`, a wrong extension and a disallowed extension are refused and leave no row and no file |
+| `tests/Controller/Api/V1/Admin/AssetDuplicateTest.php` | the same bytes twice report the first asset; an identical asset the caller may not manage is not listed |
+| `tests/Controller/Api/V1/Admin/AssetFolderTreeTest.php` | sibling names (any case), empty name, depth 20, delete only when empty (also with an asset the caller cannot see), moves, `subtree_asset_count`, constant query count |
+| `tests/Controller/Api/V1/Admin/AssetFolderAccessTest.php` | folder access: groups, roles, public, subtree only, all-or-nothing 403, empty role list, input errors, unknown folder |
+| `tests/Support/AssetFixtures.php`, `tests/Support/InteractsWithAssetApi.php` | real file bytes for uploads (a `.png` must be a PNG) and small helpers for the asset API |

@@ -105,12 +105,13 @@ development builds.
   before the commit and rolled back if it fails (the old bytes are kept until
   then); a delete removes the files only after its transaction committed.
 - **Folders** are an organisation-only tree: `GET|POST /admin/asset-folders`,
-  `PUT|DELETE /admin/asset-folders/{id}`; the list filters by `folder_id`.
+  `PUT|DELETE /admin/asset-folders/{id}`; the list filters by `folder_id`
+  (rules and folder access are below).
 - **Bulk:** `POST /admin/assets/bulk-groups`, `bulk-folder`, `bulk-delete` are
   all-or-nothing: an unknown id (`404`) or a missing right (`403`, audited) on
   any asset changes none of them.
 - **Export/import:** `POST /admin/assets/export` returns a ZIP
-  (`selfhelp/asset-bundle` 2.0: `manifest.json` + `files/<uuid>`);
+  (`selfhelp/asset-bundle` 2.0: `manifest.json` + `files/<name>-<uuid>.<ext>`);
   `POST /admin/assets/import` creates each entry through the normal upload path
   and skips uuids that already exist. Entries carry the **folder path** (names
   from the top level down, `folder_path`; the folders are recreated or reused on
@@ -147,6 +148,31 @@ development builds.
   only; other methods stay `403`). Before, the mobile pane of the live preview
   got `403` and showed empty images; the asset's own group check still decides
   (F68).
+- **File type and download name.** The checked extension is stored
+  (`assets.extension`) and gives the MIME type (a CSV is `text/csv`) and the
+  download name `<name>-<uuid>.<extension>` (also `file_name` in every asset
+  object; also the email attachment name and the bundle entry name). The
+  allowlist gains csv, tsv, rtf, odt, ods, odp, gz and tar. An upload or replace
+  must also fit its extension by content (`400 The file content does not match
+  its extension`): a script or HTML page named `x.png` is refused and leaves no
+  row and no file. Images, audio, video, PDF and plain text are delivered
+  inline; everything else as an attachment.
+- **Duplicate warning.** The SHA-256 of the bytes is stored
+  (`assets.content_hash`, indexed). An upload response carries `duplicates`:
+  up to 5 other assets with the same bytes that the caller may manage. Nothing
+  is refused. Assets uploaded before this keep a NULL extension and hash.
+- **Folder rules.** An empty folder name is `400`; a sibling with the same name,
+  in any letter case, is `409`; folders nest at most 20 levels. A folder is
+  deleted only when it is empty (`409` when it holds a subfolder or any asset,
+  also one the caller cannot see); before, deleting a folder deleted its
+  subfolders. The folder list adds `subtree_asset_count`.
+- **Folder access.** New `POST /admin/asset-folders/{folderId}/access`
+  (`admin.asset.update`) applies groups and/or managing roles once to every
+  asset in a folder and its subfolders, all or nothing; nothing is stored on the
+  folder. Migration `Version20261112103337` (extension, hash, folder FK, route).
+- **The admin role is implicit.** It manages every asset without a grant, so it
+  is no longer written, listed under `roles` or offered as a default; the grants
+  older builds stored for it are removed by the migration.
 
 ## Groups
 

@@ -3,16 +3,17 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend, core 0.1.43 and later.
-Last verified: 2026-11-11.
-Source of truth: `AdminAssetController`, `AssetController`, `AdminAssetService`, `AssetAccessService`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/` (`*asset*`), and migration `Version20261103112133`.
+Last verified: 2026-11-12.
+Source of truth: `AdminAssetController`, `AssetController`, `AdminAssetService`, `AssetAccessService`, `AssetFileTypes`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/` (`*asset*`), and migrations `Version20261103112133` and `Version20261112103337`.
 
 ## Core concepts
 
 - **Identity.** Every asset has a stable `uuid`, and the uuid **is** its file
   name: the file is stored on disk under it with no extension, so two uploads
   never collide and there is no overwrite. `name` is an editable label without
-  extension (the uploaded file name by default). The type comes from the stored
-  MIME type.
+  extension (the uploaded file name by default). The checked `extension` is
+  stored next to it and gives the MIME type and the download name
+  `<name>-<uuid>.<extension>` (`file_name`).
 - **Replace keeps the uuid.** Editing an asset can replace its file; the uuid,
   and therefore the URL every page already uses, stays the same.
 - **Viewing is per asset, by group.** An asset with **no groups is public**,
@@ -22,11 +23,15 @@ Source of truth: `AdminAssetController`, `AssetController`, `AdminAssetService`,
   export an asset in the CMS is a `role_data_access` grant (resource type
   `asset`). An upload is granted to the uploader's roles **that hold
   `admin.asset.create`** (a role that can only read assets does not get to edit
-  what its member uploads). The admin role manages every asset. Route permissions
+  what its member uploads). The admin role manages every asset **without a
+  grant**: it is never listed under `roles`, and sending its id in `role_ids`
+  stores nothing. Route permissions
   (`admin.asset.read|create|update|delete`) still gate each action; the grant
   decides which assets it applies to. Every grant written or removed is logged
   as a `role_data_access` transaction, like on the role screens.
-- **Folders organise.** Nestable folders have no access meaning.
+- **Folders organise.** Nestable folders (20 levels at most) have no access
+  meaning; "set access" on a folder applies once to the assets in it and stores
+  nothing on the folder.
 - **Default alt.** An image section whose own `alt` is empty gets the asset's
   alt in the page payload, read when the page is served; a section's own alt
   always wins.
@@ -45,11 +50,13 @@ Returned by every admin endpoint (`responses/admin/assets/asset.json`):
 | `asset_type` | string | `Asset` or `CSS` |
 | `name` | string\|null | Editable label, no extension |
 | `url` | string | `/cms-api/v1/assets/<uuid>`, the only way to fetch the bytes |
-| `mime_type` | string\|null | Recorded at upload |
+| `mime_type` | string\|null | Recorded at upload: the canonical type of the extension (a CSV is `text/csv`) |
+| `extension` | string\|null | The checked extension, lower case, no dot. `null` for assets uploaded before it was stored |
+| `file_name` | string | The download name `<name>-<uuid>.<extension>` (name sanitised, at most 100 characters; `<uuid>.<extension>` without a name) |
 | `size` | int\|null | Bytes |
 | `alt` | string\|null | Default alt text |
 | `folder_id` | int\|null | Folder; null = top level |
-| `roles` | `{id, name}[]` | Roles that may manage it |
+| `roles` | `{id, name}[]` | Roles that may manage it. The admin role is never listed: it manages every asset |
 | `groups` | `{id, name}[]` | Groups that may view it; empty = public |
 | `can_view` | bool | The **caller** may open the file: public asset, admin, or a member of one of its groups. When `false` the delivery URL answers `403`, so a client draws a lock instead of a preview |
 | `can_update` | bool | The **caller** may edit it: the `update` bit of a grant on this asset (admin: always). When `false` an edit answers `403` |
@@ -98,12 +105,22 @@ Id lists are strings because multipart cannot express an empty list.
 Responses: `201` with the asset (single file), or `201`/`206` with
 `{ uploaded, errors, total_files, successful_uploads, failed_uploads }`
 (several files; `206` when any failed). `400` for a disallowed file type, a
-missing file, or an empty `role_ids` from a caller who is not admin (checked
-once, before any file is stored).
+file whose content does not fit its extension, a missing file, or an empty
+`role_ids` from a caller who is not admin (checked once, before any file is
+stored).
 
 Allowed extensions: images (jpg, jpeg, png, gif, webp, svg), pdf, video (mp4,
 avi, mov, wmv, flv, webm), audio (mp3, wav, ogg), css, js, archives (zip, rar,
-7z), json, txt and Office files.
+7z, gz, tar), json, txt, csv, tsv, rtf, Microsoft Office (doc, docx, xls, xlsx,
+ppt, pptx) and OpenDocument (odt, ods, odp). The bytes are sniffed and must fit
+the extension: a PHP or HTML file named `x.png` is refused with `400 The file
+content does not match its extension`, and nothing is stored.
+
+**Duplicates.** The asset in the response (each one of `uploaded` for several
+files) also carries `duplicates`: up to 5 other assets with exactly the same
+bytes that the **caller may manage**, as `{ id, name, folder_id }`. Nothing is
+refused; both assets exist. An asset the caller may not manage is never listed.
+`duplicates` is only in upload responses, not in the list or the single asset.
 
 ## Edit and replace
 
@@ -113,7 +130,7 @@ avi, mov, wmv, flv, webm), audio (mp3, wav, ogg), css, js, archives (zip, rar,
 
 | Field | Notes |
 | --- | --- |
-| `file` | Optional. Replaces the bytes under the **same** uuid |
+| `file` | Optional. Replaces the bytes under the **same** uuid (the same type checks as an upload; the extension, MIME type and hash are updated) |
 | `name` | New label (empty keeps the current one) |
 | `alt` | New default alt (empty clears it) |
 | `group_ids` | **Replaces** the viewing groups (empty = public) |
@@ -182,11 +199,40 @@ Organisation only; returned as a flat list, clients build the tree from
 | `POST /cms-api/v1/admin/asset-folders` | `admin.asset.create` | `{ "name": "Team", "parent_id": null }` |
 | `PUT /cms-api/v1/admin/asset-folders/{folderId}` | `admin.asset.update` | same (rename and/or move) |
 | `DELETE /cms-api/v1/admin/asset-folders/{folderId}` | `admin.asset.delete` | - |
+| `POST /cms-api/v1/admin/asset-folders/{folderId}/access` | `admin.asset.update` | `{ "group_ids"?: int[], "role_ids"?: int[] }` |
 
-Response `data`: `[{ id, name, parent_id, asset_count }]`; `asset_count` is
-the number of assets directly in the folder that the caller may manage. `400` when a folder would move
-into itself or one of its subfolders. Deleting a folder deletes its
-subfolders; their assets move to the top level.
+Response `data`: `[{ id, name, parent_id, asset_count, subtree_asset_count }]`;
+`asset_count` is the number of assets directly in the folder and
+`subtree_asset_count` the number in it and in every folder below it, both only
+of assets the caller may manage.
+
+Rules:
+
+- `400` for an empty name, when a folder would move into itself or one of its
+  subfolders, and when it would sit deeper than 20 levels (counting the
+  subfolders it takes along).
+- `409` when a sibling under the same parent already has the name, compared
+  case-insensitively (`A folder named 'X' already exists here`). The same name
+  under another parent is fine.
+- Only an **empty** folder is deleted: `409 The folder is not empty` when it has
+  a subfolder or any asset, including assets the caller cannot see. Nothing
+  changes then.
+
+### Set access on a folder
+
+`POST /cms-api/v1/admin/asset-folders/{folderId}/access` applies who sees and/or
+who manages to **every asset in the folder and all its subfolders, once**.
+Nothing is stored on the folder: assets added later are not affected.
+
+- At least one key is required (`400` otherwise). A present key **replaces**
+  that set on each asset; an absent key leaves it. `group_ids: []` makes the
+  assets public. `role_ids: []` (or only the admin role) leaves them to the admin
+  role alone: only an admin may send it, anyone else gets `400`.
+- `404` for an unknown folder. `403` and **nothing changed** when the subtree
+  holds an asset the caller may not update, whether the caller can see it or
+  not (all or nothing).
+- `200`, `data: { "updated": n }` with the number of assets changed (`0` for a
+  folder without assets).
 
 ## Export
 
@@ -198,10 +244,13 @@ version `2.0`:
 
 ```
 manifest.json    { bundle_type, bundle_version, exported_at, assets: [
-                   { uuid, name, alt, mime_type, asset_type, groups: [names],
-                     folder_path: [names], bundle_path } ] }
-files/<uuid>     the bytes
+                   { uuid, name, alt, mime_type, extension, asset_type,
+                     groups: [names], folder_path: [names], bundle_path } ] }
+files/<name>-<uuid>.<ext>   the bytes, named like a download
 ```
+
+A bundle without `extension` (made before it existed) is imported with the
+extension of its `mime_type`.
 
 Groups and folders travel by **name** because ids differ between instances;
 `folder_path` lists the asset's folders from the top level down (`[]` = the top
@@ -265,9 +314,10 @@ The route carries **no permission link** in `api_routes` (like `health`),
 because access is resource-side: a route-level permission would reject
 anonymous readers of public assets.
 
-**Responses:** `200` with the file inline. `Content-Type` comes from the stored
-MIME type, `Content-Disposition` names the file
-`<uuid>.<extension of its MIME type>`, and `X-Content-Type-Options: nosniff` is
+**Responses:** `200` with the file. `Content-Type` comes from the stored
+MIME type, `Content-Disposition` names the file `<name>-<uuid>.<extension>` and
+is `inline` for images, audio, video, PDF and plain text and `attachment` for
+everything else, and `X-Content-Type-Options: nosniff` is
 always set. SVG, HTML and XML get a sandboxing `Content-Security-Policy` so an
 uploaded file cannot run script on the app's origin. `ETag`/`Last-Modified` are
 emitted, conditional requests return `304`, and responses are
@@ -298,7 +348,7 @@ PHP.
   `select-video` options, labelled `name.<extension>`). Those URLs keep working
   across edits and replaces.
 - Action email attachments store the delivery URL; the mailer resolves it to
-  the stored file and attaches it as `<uuid>.<extension>`. Only assets can be
+  the stored file and attaches it as `<name>-<uuid>.<extension>`. Only assets can be
   attached: saving an action whose attachment is a server path, an external URL
   or an unknown asset is a `400`, and attaching an asset the person saving the
   action may not view is a `403` (see
@@ -310,4 +360,7 @@ PHP.
 See [`docs/developer/09-asset-management.md`](../../developer/09-asset-management.md#migration)
 for what `Version20261103112133` changes (including the removal of the `admin`
 and `therapist` groups: `subject` is the one built-in group). Folder-era asset
-URLs in content are not rewritten.
+URLs in content are not rewritten. `Version20261112103337` then adds the
+extension and content hash, makes folder deletion `RESTRICT`, adds the folder
+access route and removes the admin role's asset grants; existing assets keep a
+NULL extension and hash.
