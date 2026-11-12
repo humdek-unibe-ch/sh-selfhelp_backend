@@ -296,7 +296,7 @@ checkAdminAccessById(int $pageId, string $permission): void
 **Admin Page Operations** (CMS Backend):
 - **ACL Bypass**: Admin users bypass frontend ACL restrictions
 - **Data Access Required**: Must pass `DataAccessSecurityService` permission checks
-- **Implementation**: `AdminPageService::getAllPagesForAdmin()` returns all pages without ACL filtering
+- **Implementation**: `AdminPageService::getFilteredPages()` returns pages without frontend ACL filtering (admins get all pages; others get their data-access-permitted set)
 - **Filtering**: `DataAccessSecurityService::filterData()` applies role-based resource filtering
 - **CRUD Permissions**: Sets `crud` field (bitwise: 1=CREATE, 2=READ, 4=UPDATE, 8=DELETE)
 - **Purpose**: Allows admins to manage content while maintaining granular security controls
@@ -304,6 +304,7 @@ checkAdminAccessById(int $pageId, string $permission): void
 **Frontend Page Operations** (Website):
 - **ACL Required**: Pages filtered based on user ACL rules for visibility and interaction
 - **Implementation**: `PageService::getAllAccessiblePagesForUser()` applies ACL filtering
+- **Admin role**: it sees every page, by address (`ACLService::hasAccess()`) and in the page list, the menus and the search (`ACLService::getAllUserAcls()` returns all pages with full rights for it, cached under `user_acl_admin_{id}`). For everyone else the groups decide, through `get_user_acl`. So the admin account needs no group, and one rule answers "may this caller see the page?" (F89).
 - **Purpose**: Controls what content each website user can see and interact with
 
 ## ACL Architecture

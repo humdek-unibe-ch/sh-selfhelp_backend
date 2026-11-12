@@ -96,6 +96,7 @@ class PageExportImportService extends BaseService
         private readonly CmsAppService $cmsAppService,
         private readonly CmsAppHubSyncService $cmsAppHubSyncService,
         private readonly CmsAppRepository $cmsAppRepository,
+        private readonly StyleSchemaService $styleSchemaService,
     ) {
     }
 
@@ -2642,7 +2643,7 @@ class PageExportImportService extends BaseService
             $sectionName = $this->asString($section['section_name'] ?? $styleName);
 
             if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
-                $loadRecordFrom = trim($this->readBundlePropertyField($section, 'load_record_from'));
+                $loadRecordFrom = trim($this->readBundlePropertyFieldOrDefault($section, $styleName, 'load_record_from'));
                 if ($loadRecordFrom === '') {
                     $issues[] = $this->issue(
                         self::ISSUE_ERROR,
@@ -2686,6 +2687,26 @@ class PageExportImportService extends BaseService
                 $this->walkCmsAppTemplateSections($this->asSectionList($section['children']), $keyword, $issues);
             }
         }
+    }
+
+    /**
+     * Read a non-translatable property from a bundle section as the import will
+     * store it: a field the bundle does not carry takes the style default.
+     *
+     * The export leaves out every field whose value equals the style default, so
+     * "not in the bundle" means "the default", not "empty". A field that is in
+     * the bundle keeps its own value, empty included.
+     *
+     * @param array<string, mixed> $section
+     */
+    private function readBundlePropertyFieldOrDefault(array $section, string $styleName, string $fieldName): string
+    {
+        $fields = is_array($section['fields'] ?? null) ? $section['fields'] : [];
+        if (array_key_exists($fieldName, $fields)) {
+            return $this->readBundlePropertyField($section, $fieldName);
+        }
+
+        return $this->styleSchemaService->getDefaultValuesByStyleName()[$styleName][$fieldName] ?? '';
     }
 
     /**

@@ -42,7 +42,6 @@ final class LookupService
     public const STYLE_RENDER_TARGETS = 'styleRenderTargets';
     public const HOOK_TYPES = 'hookTypes';
     public const ASSET_TYPES = 'assetTypes';
-    public const GROUP_TYPES = 'groupTypes';
     public const USER_TYPES = 'userTypes';
     public const USER_STATUS = 'userStatus';
     public const STYLE_TYPE = 'styleType';
@@ -232,9 +231,6 @@ final class LookupService
     public const ASSET_TYPES_ASSET = 'asset';
     public const ASSET_TYPES_STATIC = 'static';
 
-    // groupTypes
-    public const GROUP_TYPES_DB_ROLE = 'db_role';
-    public const GROUP_TYPES_GROUP = 'group';
 
     // userTypes
     public const USER_TYPES_USER = 'user';
@@ -244,6 +240,7 @@ final class LookupService
     public const USER_STATUS_INVITED = 'invited';
     public const USER_STATUS_ACTIVE = 'active';
     public const USER_STATUS_LOCKED = 'locked';
+    public const USER_STATUS_IMPORTED = 'imported';
 
     // styleType
     public const STYLE_TYPE_VIEW = 'view';
@@ -257,6 +254,7 @@ final class LookupService
     public const RESOURCE_TYPES_GROUP = 'group';    
     public const RESOURCE_TYPES_DATA_TABLE = 'data_table';
     public const RESOURCE_TYPES_PAGES = 'pages';
+    public const RESOURCE_TYPES_ASSET = 'asset';
 
     // auditActions
     public const AUDIT_ACTIONS = 'auditActions';

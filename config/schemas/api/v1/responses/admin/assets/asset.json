@@ -4,15 +4,179 @@
   "title": "Asset Response",
   "description": "Response schema for single asset",
   "properties": {
-    "id": { "type": "integer", "description": "Asset ID" },
-    "asset_type": { "type": "string", "description": "Asset type" },
-    "folder": { "type": ["string", "null"], "description": "Asset folder" },
-    "file_name": { "type": ["string", "null"], "description": "File name" },
-    "file_path": { "type": "string", "description": "File path" },
-    "url": { "type": "string", "description": "Asset URL" }
+    "id": {
+      "type": "integer",
+      "description": "Asset ID"
+    },
+    "uuid": {
+      "type": "string",
+      "description": "Stable public identifier; survives file replacement"
+    },
+    "asset_type": {
+      "type": "string",
+      "description": "Asset type"
+    },
+    "name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Editable label; the uploaded file name by default"
+    },
+    "url": {
+      "type": "string",
+      "description": "Delivery URL (/cms-api/v1/assets/<uuid>). The only way to fetch asset bytes; 403 when the asset has groups and the caller is in none of them."
+    },
+    "mime_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "MIME type recorded at upload: the canonical type of the extension (a CSV is text/csv)"
+    },
+    "extension": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The checked file extension, lower case, no dot (\"png\"). The stored file has none; this is what gives the right type and download name. null for assets uploaded before extensions were stored."
+    },
+    "file_name": {
+      "type": "string",
+      "description": "The download name: <name>-<uuid>.<extension> (the name with other characters than letters, digits, space, dot, underscore and hyphen replaced by an underscore, cut to 100 characters), or <uuid>.<extension> for an asset without a name. The delivery URL sends it in Content-Disposition."
+    },
+    "size": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "File size in bytes"
+    },
+    "alt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Default alt text; a section's own alt field overrides it"
+    },
+    "folder_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Folder (organisation only); null = top level"
+    },
+    "roles": {
+      "type": "array",
+      "description": "Roles that may manage the asset in the CMS (role_data_access, resource type asset). The admin role is never listed: it manages every asset without a grant.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "groups": {
+      "type": "array",
+      "description": "Groups that may view the asset; empty = public",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "can_view": {
+      "type": "boolean",
+      "description": "Whether the CALLER may open the file on the website/app: true for a public asset, an admin, or a member of one of the asset's groups. When false the delivery URL answers 403, so a client shows a lock instead of a preview."
+    },
+    "can_update": {
+      "type": "boolean",
+      "description": "Whether the CALLER may edit this asset in the CMS: the UPDATE bit of a role_data_access grant on this asset (the admin role always). When false an edit answers 403."
+    },
+    "can_delete": {
+      "type": "boolean",
+      "description": "Whether the CALLER may delete this asset in the CMS: the DELETE bit of a role_data_access grant on this asset (the admin role always). When false a delete answers 403."
+    },
+    "duplicates": {
+      "type": "array",
+      "maxItems": 5,
+      "description": "Only in an upload response: other assets with exactly the same bytes that the CALLER may manage (at most 5). Nothing is refused; the editor is only told. Never cached.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "folder_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "folder_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
   },
-  "required": ["id", "asset_type", "folder", "file_name", "file_path", "url"],
+  "required": [
+    "id",
+    "uuid",
+    "asset_type",
+    "name",
+    "url",
+    "mime_type",
+    "extension",
+    "file_name",
+    "size",
+    "alt",
+    "folder_id",
+    "roles",
+    "groups",
+    "can_view",
+    "can_update",
+    "can_delete",
+    "created_at",
+    "updated_at"
+  ],
   "additionalProperties": false
 }
-
-

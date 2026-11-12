@@ -12,11 +12,11 @@
           "id": { "type": "integer", "description": "Group ID" },
           "name": { "type": "string", "description": "Group name" },
           "description": { "type": "string", "description": "Group description" },
-          "id_group_types": { "type": ["integer", "null"], "description": "Group type ID" },
           "requires_2fa": { "type": "boolean", "description": "Whether the group requires 2FA" },
+          "add_to_new_pages": { "type": "boolean", "description": "Whether every new public page gives this group `select`" },
           "users_count": { "type": "integer", "description": "Number of users in the group" }
         },
-        "required": ["id", "name", "description", "requires_2fa", "users_count"],
+        "required": ["id", "name", "description", "requires_2fa", "add_to_new_pages", "users_count"],
         "additionalProperties": false
       }
     },

@@ -43,6 +43,12 @@ the export, and a missing field in an import falls back to that same DB
 default. This keeps payloads small and makes hand-authored or AI-generated
 JSON much easier to write correctly.
 
+The page import validation reads a bundle the same way. For example, an
+`entry-record` section without `load_record_from` means the default route
+parameter `record_id`; only a value that is present and empty, or that is not a
+parameter name, is refused (`missing_entry_record_load_record_from`,
+`invalid_entry_record_load_record_from`).
+
 Example (minimized export of one hero container):
 
 ```json

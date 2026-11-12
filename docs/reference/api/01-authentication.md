@@ -134,6 +134,7 @@ Authenticate a user and receive JWT tokens.
 
 **Error Responses:**
 - `401 Unauthorized`: Invalid credentials
+- `429 Too Many Requests`: too many failed attempts for this account, or from this visitor address (see [Brute-force limits](../../developer/03-authentication-authorization.md#brute-force-rate-limiting)). The wait is in the `Retry-After` header and in `data.retry_after` (seconds); even the correct password is refused until then
 - `400 Bad Request`: Missing or invalid fields
 - `422 Unprocessable Entity`: Validation errors
 
@@ -181,6 +182,7 @@ Complete the login process when 2FA is enabled.
 
 **Error Responses:**
 - `401 Unauthorized`: Invalid or expired verification code
+- `429 Too Many Requests`: too many wrong codes for this user, or from this visitor address; wait `Retry-After` seconds (also in `data.retry_after`)
 - `404 Not Found`: User not found
 - `400 Bad Request`: Missing or invalid fields
 
@@ -344,6 +346,7 @@ Request a password-recovery email for an account. The response is **always a gen
 - For a known **active** account a one-time recovery token is stored on the user and a recovery email (`mail_recovery`) is sent immediately. The email links to `<FRONTEND_BASE_URL>/reset/{user_id}/{token}`.
 - The recovery email is a **system mail** (`required_system` delivery policy), so it is delivered even when the recipient disabled platform emails in their profile (issue #29).
 - Unknown emails and non-active accounts are silently ignored.
+- Requests are counted per email (3 per hour) and per visitor address over all emails (20 per hour), known account or not. Beyond a limit no email is sent and the answer is `429 Too Many Requests` with `Retry-After` and `data.retry_after`; below the limits the answer stays the generic `200`, so the `429` cannot be used to find out which emails are registered.
 
 **Permissions:** None (public endpoint)
 
@@ -1072,6 +1075,7 @@ class ApiClient
 All authentication endpoints follow the standard API error format. Common error scenarios:
 
 - **Invalid Credentials**: 401 with message "Invalid credentials"
+- **Too Many Attempts**: 429 on login, two-factor verify and forgot-password, with the wait in the `Retry-After` header and `data.retry_after`
 - **Expired Token**: 401 with message "JWT Token not found" or "Expired JWT Token"
 - **Missing Permissions**: 403 with message "Access Denied"
 - **Validation Errors**: 400/422 with validation details in the response

@@ -435,6 +435,30 @@ Events the host dispatches:
   `App\Plugin\Event\PluginRealtimeTopicRegistryEvent` to advertise a
   Mercure topic and to `App\Plugin\Event\PluginRealtimePermissionEvent`
   to grant subscribers access at JWT-mint time.
+- **User data removal** — subscribe to
+  `App\Plugin\Event\UserDataCleanupEvent` when the plugin keeps user data
+  in tables it owns itself (for example chat conversations). The host
+  dispatches it once per user for the admin action "clean user data" and
+  for every way of deleting a user (one, bulk, one's own account), inside
+  the database transaction of the removal and before the core removes its
+  own rows.
+  - Delete the plugin's rows for `$event->getUserId()` on the default
+    connection. A listener that throws stops the whole removal and
+    everything rolls back, so do not swallow errors.
+  - Files and caches cannot roll back. Collect what you need while your
+    rows still exist and pass the deletion to
+    `$event->afterCommit(static function () use ($paths): void { … })`;
+    the host runs it once the transaction has committed, in the order
+    registered. A callback that throws is logged and does not fail the
+    removal (the data is already gone).
+  - Touch only tables the plugin owns. Plugin data kept in the generic
+    data store under the plugin's prefix needs no listener: the core
+    removes it.
+  - Only enabled plugins hear the event (a disabled plugin is not
+    loaded). Give the plugin's user tables a foreign key to `users` with
+    `ON DELETE CASCADE` as well, so deleting the account removes the rows
+    while the plugin is disabled. "Clean user data" keeps the account, so
+    it cannot reach a disabled plugin's tables.
 - **Lifecycle events** — react to `PluginInstalledEvent`,
   `PluginEnabledEvent`, `PluginDisabledEvent`, `PluginUpdatedEvent`,
   `PluginUninstalledEvent`, `PluginPurgedEvent`, and

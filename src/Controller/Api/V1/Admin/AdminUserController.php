@@ -9,17 +9,18 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminUserService;
 use App\Service\Core\ApiResponseFormatter;
-use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Security\DataAccessSecurityService;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Admin User Controller
@@ -36,7 +37,6 @@ class AdminUserController extends AbstractController
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly UserContextService $userContextService,
-        private readonly EntityManagerInterface $entityManager
     ) {
     }
 
@@ -52,6 +52,9 @@ class AdminUserController extends AbstractController
             $search = $request->query->get('search');
             $sort = $request->query->get('sort');
             $sortDirection = $request->query->get('sortDirection', 'asc');
+            $status = $request->query->getString('status') ?: null;
+            $groupId = $request->query->getInt('id_groups') ?: null;
+            $roleId = $request->query->getInt('id_roles') ?: null;
             $userId = $this->userContextService->getCurrentUser()?->getId();
 
             if ($userId === null) {
@@ -68,14 +71,332 @@ class AdminUserController extends AbstractController
                 $pageSize,
                 $search,
                 $sort,
-                $sortDirection
+                $sortDirection,
+                $status,
+                $groupId,
+                $roleId
             );
-
-
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/users_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Get user counts per status bucket for the admin Users page tiles.
+     *
+     * Scoped to the caller's visible users so the tiles reconcile with the
+     * list; see AdminUserService::STATUS_BUCKETS for the precedence rule.
+     *
+     * @route /admin/users/stats
+     * @method GET
+     */
+    public function getUserStats(): JsonResponse
+    {
+        try {
+            $userId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($userId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $stats = $this->adminUserService->getUserStats($userId);
+
+            return $this->responseFormatter->formatSuccess($stats, 'responses/admin/users/user_stats_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Delete several users, reporting per-user failures.
+     *
+     * @route /admin/users/bulk-delete
+     * @method POST
+     */
+    public function bulkDeleteUsers(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/bulk_user_ids', $this->jsonSchemaValidationService);
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $result = $this->adminUserService->bulkDeleteUsers(
+                $currentUserId,
+                $this->userIdsFrom($data)
+            );
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/bulk_operation_result');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Add several users to several groups.
+     *
+     * @route /admin/users/bulk-add-to-group
+     * @method POST
+     */
+    public function bulkAddUsersToGroups(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->toAssocArray(
+                $this->validateRequest($request, 'requests/admin/bulk_group_membership', $this->jsonSchemaValidationService)
+            );
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $result = $this->adminUserService->bulkAddUsersToGroups(
+                $currentUserId,
+                is_array($data['user_ids'] ?? null) ? $data['user_ids'] : [],
+                is_array($data['group_ids'] ?? null) ? $data['group_ids'] : []
+            );
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/bulk_operation_result');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Remove several users from several groups.
+     *
+     * @route /admin/users/bulk-remove-from-group
+     * @method POST
+     */
+    public function bulkRemoveUsersFromGroups(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->toAssocArray(
+                $this->validateRequest($request, 'requests/admin/bulk_group_membership', $this->jsonSchemaValidationService)
+            );
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $result = $this->adminUserService->bulkRemoveUsersFromGroups(
+                $currentUserId,
+                is_array($data['user_ids'] ?? null) ? $data['user_ids'] : [],
+                is_array($data['group_ids'] ?? null) ? $data['group_ids'] : []
+            );
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/bulk_operation_result');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Send the activation mail to several users.
+     *
+     * @route /admin/users/bulk-send-activation
+     * @method POST
+     */
+    public function bulkSendActivationMail(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/bulk_user_ids', $this->jsonSchemaValidationService);
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $result = $this->adminUserService->bulkSendActivationMail(
+                $currentUserId,
+                $this->userIdsFrom($data)
+            );
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/bulk_operation_result');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Export the filtered user set as CSV.
+     *
+     * Returns raw CSV rather than the JSON envelope; the frontend reads the
+     * filename from Content-Disposition.
+     *
+     * @route /admin/users/export
+     * @method GET
+     */
+    public function exportUsers(Request $request): Response
+    {
+        $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+        if ($currentUserId === null) {
+            return $this->responseFormatter->formatError(
+                'User not authenticated',
+                Response::HTTP_UNAUTHORIZED
+            );
+        }
+
+        try {
+            $rows = $this->adminUserService->exportUsers(
+                $currentUserId,
+                $request->query->getString('search') ?: null,
+                $request->query->getString('status') ?: null,
+                $request->query->getInt('id_groups') ?: null,
+                $request->query->getInt('id_roles') ?: null
+            );
+        } catch (\Exception $e) {
+            // An invalid filter must surface as a normal API error, not as a
+            // half-written CSV download.
+            return $this->responseFormatter->formatThrowable($e);
+        }
+
+        $filename = 'users_' . (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Ymd_His') . '.csv';
+        $columns = AdminUserService::exportColumns();
+
+        $response = new StreamedResponse(function () use ($rows, $columns): void {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+
+            // PHP 8.4: pass $escape explicitly (its default changes to '' in 9.0);
+            // '' yields RFC 4180-correct CSV with no backslash escaping.
+            fputcsv($out, $columns, escape: '');
+
+            foreach ($rows as $row) {
+                fputcsv($out, array_map(static fn(string $c): string => self::csvSafe($row[$c] ?? ''), $columns), escape: '');
+            }
+
+            fclose($out);
+        });
+
+        $response->headers->set('Content-Type', 'text/csv; charset=UTF-8');
+        $response->headers->set('Content-Disposition', 'attachment; filename="' . $filename . '"');
+
+        return $response;
+    }
+
+    /**
+     * Neutralise a CSV cell a spreadsheet would run as a formula (`=`, `+`,
+     * `-`, `@`, tab, CR) by prefixing it with a quote.
+     */
+    private static function csvSafe(string $value): string
+    {
+        return $value !== '' && str_contains("=+-@\t\r", $value[0]) ? "'" . $value : $value;
+    }
+
+    /**
+     * Import users from an uploaded CSV.
+     *
+     * @route /admin/users/import
+     * @method POST
+     */
+    public function importUsers(Request $request): JsonResponse
+    {
+        try {
+            $file = $request->files->get('file');
+
+            if (!$file instanceof UploadedFile) {
+                return $this->responseFormatter->formatError(
+                    'A CSV file is required in the "file" field',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
+
+            $result = $this->adminUserService->importUsers($currentUserId, $this->parseCsvUpload($file));
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/user_import_result');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Parse an uploaded CSV into associative rows keyed by header.
+     *
+     * A missing required header fails the whole request: without it we cannot
+     * tell which column is which, so importing would silently write garbage.
+     *
+     * @return list<array<string, string>>
+     */
+    private function parseCsvUpload(UploadedFile $file): array
+    {
+        $extension = strtolower($file->getClientOriginalExtension());
+        if ($extension !== 'csv') {
+            throw new ServiceException('Only .csv files are supported', Response::HTTP_BAD_REQUEST);
+        }
+
+        $handle = fopen($file->getPathname(), 'r');
+        if ($handle === false) {
+            throw new ServiceException('Could not read the uploaded file', Response::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $header = fgetcsv($handle, escape: '');
+            if (!is_array($header)) {
+                throw new ServiceException('The CSV file is empty', Response::HTTP_BAD_REQUEST);
+            }
+
+            // Strip a UTF-8 BOM so a spreadsheet-exported file's first header
+            // does not silently fail the required-column check below.
+            $header = array_map(
+                static fn(mixed $c): string => strtolower(trim(ltrim((string) $c, "\xEF\xBB\xBF"))),
+                $header
+            );
+
+            $missing = array_diff(AdminUserService::importColumns(), $header);
+            if (!empty($missing)) {
+                throw new ServiceException(
+                    'Missing required CSV column(s): ' . implode(', ', $missing),
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+
+            $rows = [];
+            while (($values = fgetcsv($handle, escape: '')) !== false) {
+                // Skip blank trailing lines rather than reporting them as errors.
+                // fgetcsv() yields [null] for an empty line.
+                if ($values === [null] || $values === ['']) {
+                    continue;
+                }
+
+                $row = [];
+                foreach ($header as $i => $column) {
+                    $row[$column] = trim((string) ($values[$i] ?? ''));
+                }
+                $rows[] = $row;
+            }
+
+            return $rows;
+        } finally {
+            fclose($handle);
         }
     }
 
@@ -133,25 +454,9 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            // Check if user can create users in the specified groups
-            if (isset($data['group_ids']) && is_array($data['group_ids'])) {
-                foreach ($data['group_ids'] as $groupId) {
-                    $groupIdInt = is_numeric($groupId) ? (int) $groupId : 0;
-                    if (!$this->dataAccessSecurityService->hasPermission(
-                        $currentUserId,
-                        LookupService::RESOURCE_TYPES_GROUP,
-                        $groupIdInt,
-                        DataAccessSecurityService::PERMISSION_CREATE
-                    )) {
-                        return $this->responseFormatter->formatError(
-                            'Access denied: Cannot create users in group ' . $groupIdInt,
-                            Response::HTTP_FORBIDDEN
-                        );
-                    }
-                }
-            }
-
-            $user = $this->adminUserService->createUser($this->toAssocArray($data));
+            // The service checks the CREATE right on every group and that the
+            // caller holds every role they hand out.
+            $user = $this->adminUserService->createUser($currentUserId, $this->toAssocArray($data));
 
             return $this->responseFormatter->formatSuccess(
                 $user,
@@ -239,13 +544,7 @@ class AdminUserController extends AbstractController
             }
 
             // Check if user has UPDATE permission for this specific user
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_UPDATE
-            )) {
+            if (!$this->adminUserService->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -288,13 +587,7 @@ class AdminUserController extends AbstractController
             }
 
             // Check if user has permission to view this user's groups
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_READ
-            )) {
+            if (!$this->adminUserService->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_READ)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -325,13 +618,7 @@ class AdminUserController extends AbstractController
             }
 
             // Check if user has permission to view this user's roles
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_READ
-            )) {
+            if (!$this->adminUserService->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_READ)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -361,17 +648,6 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            // Check if user has UPDATE permission for this specific user
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_UPDATE
-            )) {
-                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
-            }
-
             $data = json_decode($request->getContent(), true);
             $groupIds = is_array($data) ? ($data['group_ids'] ?? []) : [];
 
@@ -382,7 +658,8 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            $groups = $this->adminUserService->addGroupsToUser($userId, $groupIds);
+            // The service checks UPDATE on the user and on every group added.
+            $groups = $this->adminUserService->addGroupsToUser($currentUserId, $userId, $groupIds);
 
             return $this->responseFormatter->formatSuccess(['groups' => $groups]);
         } catch (\Exception $e) {
@@ -399,6 +676,15 @@ class AdminUserController extends AbstractController
     public function removeGroupsFromUser(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $data = json_decode($request->getContent(), true);
             $groupIds = is_array($data) ? ($data['group_ids'] ?? []) : [];
             
@@ -409,7 +695,8 @@ class AdminUserController extends AbstractController
                 );
             }
             
-            $groups = $this->adminUserService->removeGroupsFromUser($userId, $groupIds);
+            // The service checks UPDATE on the user and on every group removed.
+            $groups = $this->adminUserService->removeGroupsFromUser($currentUserId, $userId, $groupIds);
             
             // Invalidate user and permissions cache
             // User cache is automatically invalidated by the service
@@ -430,6 +717,15 @@ class AdminUserController extends AbstractController
     public function addRolesToUser(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $data = json_decode($request->getContent(), true);
             $roleIds = is_array($data) ? ($data['role_ids'] ?? []) : [];
             
@@ -440,7 +736,8 @@ class AdminUserController extends AbstractController
                 );
             }
             
-            $roles = $this->adminUserService->addRolesToUser($userId, $roleIds);
+            // The service checks UPDATE on the user and that the caller holds every role added.
+            $roles = $this->adminUserService->addRolesToUser($currentUserId, $userId, $roleIds);
             
             // Invalidate user and permissions cache
             // User cache is automatically invalidated by the service
@@ -461,6 +758,15 @@ class AdminUserController extends AbstractController
     public function removeRolesFromUser(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $data = json_decode($request->getContent(), true);
             $roleIds = is_array($data) ? ($data['role_ids'] ?? []) : [];
             
@@ -471,7 +777,8 @@ class AdminUserController extends AbstractController
                 );
             }
             
-            $roles = $this->adminUserService->removeRolesFromUser($userId, $roleIds);
+            // The service checks UPDATE on the user and that the caller holds every role removed.
+            $roles = $this->adminUserService->removeRolesFromUser($currentUserId, $userId, $roleIds);
             
             // Invalidate user and permissions cache
             // User cache is automatically invalidated by the service
@@ -508,8 +815,17 @@ class AdminUserController extends AbstractController
     public function cleanUserData(int $userId): JsonResponse
     {
         try {
-            $result = $this->adminUserService->cleanUserData($userId);
-            return $this->responseFormatter->formatSuccess(['cleaned' => $result]);
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $result = $this->adminUserService->cleanUserData($currentUserId, $userId);
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/clean_user_data');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -605,27 +921,14 @@ class AdminUserController extends AbstractController
     }
 
     /**
-     * Get the group ID for a user (helper method for permission checks)
+     * Read `user_ids` from a schema-validated bulk request body.
+     *
+     * @return array<mixed>
      */
-    private function getUserGroupId(int $userId): int
+    private function userIdsFrom(mixed $data): array
     {
-        try {
-            // Get user's primary group ID
-            $conn = $this->entityManager->getConnection();
-            $sql = "SELECT id_groups FROM rel_groups_users WHERE id_users = :user_id LIMIT 1";
-            $stmt = $conn->prepare($sql);
-            $stmt->bindValue('user_id', $userId, \Doctrine\DBAL\ParameterType::INTEGER);
-            $result = $stmt->executeQuery();
-            $row = $result->fetchAssociative();
+        $userIds = $this->toAssocArray($data)['user_ids'] ?? null;
 
-            if ($row === false) {
-                return 0;
-            }
-            $idGroups = $row['id_groups'] ?? null;
-
-            return is_numeric($idGroups) ? (int) $idGroups : 0;
-        } catch (\Exception $e) {
-            return 0; // Default to no access if we can't determine group
-        }
+        return is_array($userIds) ? $userIds : [];
     }
 } 

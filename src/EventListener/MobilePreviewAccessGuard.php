@@ -45,9 +45,11 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
      * are read-only reads the preview renderer needs: resolve + render a page,
      * fetch the navigation payload (drawer/bottom-tab menus + startup pages —
      * without it the preview shell falls back to modal-only rendering), list
-     * languages, read the plugin manifest, and read the (admin) user data the
-     * shared renderer expects. Plugin PUBLIC runtime routes are allowed in
-     * addition to this list — see {@see isPluginPublicRoute()}.
+     * languages, read the plugin manifest, read the (admin) user data the
+     * shared renderer expects, and serve restricted assets by UUID (images,
+     * audio, video the page embeds — without it the preview pane shows empty
+     * media while the live app loads them). Plugin PUBLIC runtime routes are
+     * allowed in addition to this list — see {@see isPluginPublicRoute()}.
      */
     private const ALLOWED_ROUTES = [
         'pages_get_by_keyword_v1',
@@ -58,6 +60,7 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
         'languages_get_all_v1',
         'plugins_manifest_v1',
         'auth_user_data_get_v1',
+        'assets_serve_by_uuid_v1',
     ];
 
     /**

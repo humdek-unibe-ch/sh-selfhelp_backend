@@ -11,10 +11,13 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Page;
 use App\Entity\PageVersion;
 use App\Entity\User;
+use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\PageVersionRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
+use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
+use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
@@ -53,6 +56,9 @@ class PageVersionService extends BaseService
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly LoggerInterface $logger,
         private readonly PagePublishedVersionRepairService $pagePublishedVersionRepairService,
+        private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
+        private readonly CacheService $cache,
+        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
     ) {
     }
 
@@ -185,6 +191,7 @@ class PageVersionService extends BaseService
             );
 
             $this->entityManager->commit();
+            $this->invalidatePublishedSettingsCaches($pageId);
 
             return $version;
         } catch (\Exception $e) {
@@ -253,6 +260,7 @@ class PageVersionService extends BaseService
             );
 
             $this->entityManager->commit();
+            $this->invalidatePublishedSettingsCaches($pageId);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw new \App\Exception\ServiceException(
@@ -399,6 +407,17 @@ class PageVersionService extends BaseService
             // If any error occurs, assume there are changes (fail-safe)
             return true;
         }
+    }
+
+    /**
+     * Published page settings feed the public page list and menus, so a
+     * publish or unpublish must refresh those caches.
+     */
+    private function invalidatePublishedSettingsCaches(int $pageId): void
+    {
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+        $this->cache->withCategory(CacheService::CATEGORY_PAGES)->invalidateAllListsInCategory();
+        $this->navigationCacheInvalidator->invalidateForPage($pageId);
     }
 
     /**
@@ -793,6 +812,7 @@ class PageVersionService extends BaseService
                 'url' => $page->getUrl(),
                 'parent_page_id' => $page->getParentPage()?->getId(),
                 'is_headless' => $page->isHeadless(),
+                'fields' => $this->pagesFieldsTranslationRepository->fetchFieldsByLanguageForPage($pageId, PageVersion::VERSIONED_PAGE_FIELDS),
                 'sections' => $sections
             ]
         ];

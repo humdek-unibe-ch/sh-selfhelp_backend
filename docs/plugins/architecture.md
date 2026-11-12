@@ -315,6 +315,10 @@ runtime, and never write to config outside the installer.
 - `App\Plugin\Event\Lifecycle\*` — react to install / update / enable / disable / uninstall / purge events.
 - `App\Plugin\Event\PluginRealtimePermissionEvent` — scope SSE subscriber JWTs.
 - `App\Plugin\Event\ScheduledJobTypeEvent` — register a scheduled job type.
+- `App\Plugin\Event\UserDataCleanupEvent` — remove the plugin's own rows
+  for a user that is cleaned or deleted. Dispatched inside the removal's
+  transaction by `UserDataCleanerService`; `afterCommit()` callbacks run
+  once it committed (files, caches).
 
 > Plugin HTTP routes are not an event surface. The host persists
 > `plugin.json#apiRoutes` directly into `api_routes` (tagged with

@@ -191,12 +191,17 @@ A single migration touches up to four tables:
 
    | group | select | insert | update | delete |
    |---|---|---|---|---|
-   | `admin`     | 1 | 0 | 1 | 0 |
-   | `therapist` | 1 | 0 | 0 | 0 |
-   | `subject`   | 1 | 0 | 0 | 0 |
+   | `subject`    | 1 | 0 | 0 | 0 |
 
-   Anonymous visitors are handled by the `is_open_access` flag, not by
-   ACL rows.
+   Admins need no row: the admin role bypasses page ACLs. Since core 0.1.43
+   `subject` is the one built-in group on a fresh install, and it is flagged
+   `add_to_new_pages`; every other group is custom and never seeded. (Older
+   seed migrations still write rows for the former `admin` and `therapist`
+   groups; `Version20261103112133` removes both groups and their ACL rows go
+   with them.) A seeding migration writes the `subject` row itself; a page
+   created later in the CMS gets `select` for every group that has
+   `add_to_new_pages` set, with no code involved. Anonymous visitors are
+   handled by the `is_open_access` flag, not by ACL rows.
 
 4. **`sections` + `rel_pages_sections` + `rel_sections_hierarchy` + `sections_fields_translation`**:
    - one row per section
@@ -426,10 +431,9 @@ curl -s "http://localhost:8000/cms-api/v1/frontend/pages?language_id=3" | jq '.d
    This was the root cause of the "login still 403s after publishing"
    bug fixed in `Version20260601000800`.
 
-2. **Forgetting the `page_acl_groups` rows.** Without them only `admin`
-   sees the page (the admin role bypasses ACL). Therapist + subject
-   users will get a 404 from the navigation API even though the row
-   exists in `pages`.
+2. **Forgetting the `page_acl_groups` rows.** Without them only the admin
+   role sees the page (it bypasses ACL). `subject` users will get a 404
+   from the navigation API even though the row exists in `pages`.
 
 3. **Forgetting the `is_open_access` flag on pre-login pages.** Login,
    2FA, reset-password, validate, no-access-guest, privacy, agb,

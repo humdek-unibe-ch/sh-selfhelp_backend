@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (auth two-factor flow, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-04.
+Last verified: 2026-10-27.
 Source of truth: `ITwoFactorAuthStyle` in `@selfhelp/shared`, `TwoFactorAuthStyle.tsx`, and `AuthController::twoFactorVerify`.
 
 ## Summary
@@ -32,6 +32,12 @@ how long the code stays valid (`label_expiration_2fa`).
 access/refresh tokens (the same payload as a direct login). The code has a
 limited lifetime; `label_expiration_2fa` is the human-readable hint for it.
 
+Wrong codes are rate-limited per user (`AUTH_2FA_MAX_ATTEMPTS` /
+`AUTH_2FA_WINDOW`). On a `429` both renderers show the `alert_rate_limited`
+text instead of `alert_fail`, with `{minutes}` filled from `data.retry_after`
+(web: error area + orange notification; mobile: inline error), via the shared
+`formatRateLimitMessage` helper.
+
 ## Fields
 
 `display`: `1` = translatable content, `0` = internal config. Exact defaults
@@ -45,6 +51,7 @@ live in the DB / `admin/styles/schema` endpoint.
 | `label_submit` | text | 1 | Submit-button label. |
 | `alert_fail` | text | 1 | Shown when the code is wrong/expired. |
 | `label_expiration_2fa` | text | 1 | Tells the user how long the code is valid. |
+| `alert_rate_limited` | text | 1 | Shown when too many wrong codes block verification (backend `429`); `{minutes}` = remaining wait. Seeded en-GB/de-CH on `twofa-sys-form` (`Version20261027085407`). |
 | spacing fields | various | 0 | Inherited from `IStyleWithSpacing`. |
 
 ## Related files

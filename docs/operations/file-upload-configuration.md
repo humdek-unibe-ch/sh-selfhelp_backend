@@ -213,7 +213,7 @@ Monitor disk space usage as upload limits increase:
 df -h
 
 # Monitor upload directory size
-du -sh public/uploads/
+du -sh var/assets/ var/form-files/
 ```
 
 ## Performance Tips

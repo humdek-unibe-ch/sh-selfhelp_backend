@@ -14,6 +14,7 @@ use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\QueuedJobTimezoneAdjustmentService;
 use App\Service\Core\TransactionService;
+use App\Service\Core\UserDataCleanerService;
 use App\Service\Cache\Core\CacheService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -28,7 +29,8 @@ class ProfileService extends BaseService
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
         private readonly EntityManagerInterface $entityManager,
-        private readonly QueuedJobTimezoneAdjustmentService $timezoneAdjustmentService
+        private readonly QueuedJobTimezoneAdjustmentService $timezoneAdjustmentService,
+        private readonly UserDataCleanerService $userDataCleaner,
     ) {
     }
 
@@ -258,7 +260,7 @@ class ProfileService extends BaseService
             throw new \InvalidArgumentException('Email confirmation does not match your account email');
         }
 
-        $this->executeInTransaction(function () use ($user) {
+        $outcome = $this->executeInTransaction(function () use ($user) {
             // Fetch fresh managed entity to ensure proper change tracking
             $managedUser = $this->entityManager->find(User::class, $user->getId());
             if (!$managedUser) {
@@ -268,6 +270,12 @@ class ProfileService extends BaseService
             // Prevent deletion of system users
             if (in_array(strtolower($managedUser->getName() ?? ''), ['admin', 'tpf'])) {
                 throw new \InvalidArgumentException('Cannot delete system accounts');
+            }
+
+            // Group lists show member counts, so they change with the user.
+            $groupIds = [];
+            foreach ($managedUser->getGroups() as $group) {
+                $groupIds[] = (int) $group->getId();
             }
 
             // Log the transaction before deletion
@@ -288,13 +296,31 @@ class ProfileService extends BaseService
             // Get user ID before deletion for cache invalidation
             $userId = (int) $managedUser->getId();
 
-            // Delete the user (cascade will handle related entities)
+            // Removing a user removes their data (F24): the same cleaner every
+            // delete path uses, inside this transaction so a failure below
+            // rolls the erasure back too. Audit rows stay, detached. It runs
+            // AFTER the log above, because the user deletes their own account:
+            // the log row is attributed to them and must be cut loose from
+            // them like every other audit row.
+            $cleanup = $this->userDataCleaner->removeData($userId);
+
+            // Delete the user (database cascades handle memberships and the
+            // like; audit rows are kept and only lose the link to the user)
             $this->entityManager->remove($managedUser);
             $this->entityManager->flush();
 
-            // Invalidate user caches
-            $this->invalidateUserCaches($userId);
+            return ['userId' => $userId, 'cleanup' => $cleanup, 'groupIds' => $groupIds];
         });
+
+        // After the commit: files cannot roll back and caches must not be
+        // cleared before the data is really gone.
+        $this->userDataCleaner->finishAfterCommit($outcome['userId'], $outcome['cleanup']);
+        $this->invalidateUserCaches($outcome['userId']);
+        if ($outcome['groupIds'] !== []) {
+            $groupCache = $this->cache->withCategory(CacheService::CATEGORY_GROUPS);
+            $groupCache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_GROUP, $outcome['groupIds']);
+            $groupCache->invalidateAllListsInCategory();
+        }
     }
 
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Asset Bulk Folder Response Envelope",
+  "description": "Result of moving several assets into one folder (or back to the top level)",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "moved": { "type": "integer", "minimum": 0, "description": "Number of assets moved" }
+      },
+      "required": ["moved"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["data"]
+}

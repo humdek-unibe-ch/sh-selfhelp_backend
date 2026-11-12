@@ -511,9 +511,10 @@ The new backend currently dispatches zero custom domain events. The plugin layer
 - `LookupRegistryEvent` (extends `App\Service\Core\LookupService`).
 - `ScheduledJobTypeEvent` (extends the scheduled-job service).
 - `PluginRealtimeTopicRegistryEvent` + `PluginRealtimePermissionEvent` (plugin-layer infrastructure).
+- `UserDataCleanupEvent` (dispatched by `App\Service\Core\UserDataCleanerService` inside the transaction that removes a user's data; the plugin deletes its own rows, `afterCommit()` callbacks delete files; F83).
 - Lifecycle: `PluginInstalledEvent` / `PluginEnabledEvent` / `PluginDisabledEvent` / `PluginUninstalledEvent` / `PluginPurgedEvent` / `PluginUpdatedEvent` / `PluginOperationProgressEvent`.
 
-Old PHP-CMS hooks (`SecurityHeadersEvent`, `SensiblePagesEvent`, `CustomFieldRenderEvent`, `RequestPreHandleEvent`, `NavMenuRenderEvent`, `ProfilePageRenderEvent`, `AdminUserDetailRenderEvent`, `UserActivationEvent`, `UserDataCleanupEvent`, `SectionDebugDataEvent`, `InterpolationContextEvent`, `SectionFieldResolveEvent`, `JobConfigSchemaEvent`, `PluginCallbackEvent`, etc.) are deferred. They will be added only when the matching core feature is touched. Do not preemptively add events the CMS does not dispatch yet.
+Old PHP-CMS hooks (`SecurityHeadersEvent`, `SensiblePagesEvent`, `CustomFieldRenderEvent`, `RequestPreHandleEvent`, `NavMenuRenderEvent`, `ProfilePageRenderEvent`, `AdminUserDetailRenderEvent`, `UserActivationEvent`, `SectionDebugDataEvent`, `InterpolationContextEvent`, `SectionFieldResolveEvent`, `JobConfigSchemaEvent`, `PluginCallbackEvent`, etc.) are deferred. They will be added only when the matching core feature is touched. Do not preemptively add events the CMS does not dispatch yet.
 
 ### Plugin version semantics
 

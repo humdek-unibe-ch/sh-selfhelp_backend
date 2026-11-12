@@ -39,6 +39,15 @@ use App\Repository\PageVersionRepository;
 class PageVersion
 {
     /**
+     * Page settings (pages_fields_translation) that are versioned with the
+     * sections: stored under `page.fields` as name => [language id => content]
+     * and served from the published version, so editing them waits for
+     * Publish. A version without `page.fields` has no settings: it serves
+     * none and reports the draft as changed until the next Publish.
+     */
+    public const VERSIONED_PAGE_FIELDS = ['title', 'description', 'open_in_modal', 'modal_width', 'modal_height'];
+
+    /**
      * Unique identifier for each page version record
      *
      * This is the primary key that uniquely identifies each version in the system.

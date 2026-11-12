@@ -120,6 +120,16 @@ class ACLService
             $userId = (int) $userId;
         }
 
+        // The admin role may open every page by its address (hasAccess), so the
+        // menus, the search and the page lists show every page too: one answer
+        // to "may this caller see the page?" (F89). For everyone else the
+        // groups decide, through the stored procedure.
+        if ($userId > 0 && $this->dataAccessSecurityService->userHasAdminRole($userId)) {
+            return $this->cache
+                ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+                ->getList("user_acl_admin_{$userId}", fn() => $this->aclRepository->getFullAccessToAllPages($userId));
+        }
+
         // Use the repository to get all ACLs (cached)
         return $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)

@@ -82,11 +82,11 @@
             "properties": {
               "filename": {
                 "type": "string",
-                "description": "Name of the attachment file"
+                "description": "Name of the attachment file (an asset is attached as its uuid plus the extension of its mime type)"
               },
               "path": {
                 "type": "string",
-                "description": "File system path to the attachment"
+                "description": "The attachment as an uploaded asset's delivery URL (/cms-api/v1/assets/<uuid>). Server file paths are never attached"
               },
               "url": {
                 "type": "string",

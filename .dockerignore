@@ -9,9 +9,12 @@ node_modules
 
 # Host-built dependencies / caches (re-created inside the image)
 vendor
-var/cache
-var/log
 build
+
+# All runtime state: caches, logs, plugins and the private uploads in
+# var/assets and var/form-files. The Dockerfile recreates var/cache and
+# var/log; instance data lives in mounted volumes, never in the image.
+var
 
 # Tests + local docker/dev assets are not part of the runtime image
 tests

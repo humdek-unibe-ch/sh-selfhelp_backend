@@ -29,7 +29,6 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\UserContextAwareService;
-use App\Service\Auth\UserContextService;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -41,11 +40,6 @@ use Symfony\Component\HttpFoundation\Response;
 class AdminPageService extends BaseService
 {
     use TranslationManagerTrait;
-
-    // ACL group name constants
-    private const GROUP_ADMIN = 'admin';
-    private const GROUP_SUBJECT = 'subject';
-    private const GROUP_THERAPIST = 'therapist';
 
     /**
      * Constructor
@@ -227,29 +221,21 @@ class AdminPageService extends BaseService
             $this->entityManager->persist($page);
             $this->entityManager->flush(); // To get the page ID
 
-            // Fetch groups by name
             $groupRepo = $this->entityManager->getRepository(Group::class);
-            $adminGroup = $groupRepo->findOneBy(['name' => self::GROUP_ADMIN]);
-            $subjectGroup = $groupRepo->findOneBy(['name' => self::GROUP_SUBJECT]);
-            $therapistGroup = $groupRepo->findOneBy(['name' => self::GROUP_THERAPIST]);
-            if (!$adminGroup || !$subjectGroup || !$therapistGroup) {
-                throw new ServiceException('One or more required groups not found.', Response::HTTP_INTERNAL_SERVER_ERROR);
-            }
 
-            // Admin always gets full access, regardless of surface. Track the
-            // group ids already granted so author-selected groups never create
-            // duplicate ACL rows.
+            // Track the group ids already granted so author-selected groups
+            // never create duplicate ACL rows.
             $grantedGroupIds = [];
-            $this->aclService->addGroupAcl($page, $adminGroup, true, true, true, true, $this->entityManager);
-            $grantedGroupIds[(int) $adminGroup->getId()] = true;
 
             if (!$isCmsSurface) {
-                // Public website pages keep the historical default reader ACL
-                // for the subject + therapist groups (select only).
-                $this->aclService->addGroupAcl($page, $subjectGroup, true, false, false, false, $this->entityManager);
-                $grantedGroupIds[(int) $subjectGroup->getId()] = true;
-                $this->aclService->addGroupAcl($page, $therapistGroup, true, false, false, false, $this->entityManager);
-                $grantedGroupIds[(int) $therapistGroup->getId()] = true;
+                // Public website pages are readable (select only) by every
+                // group flagged `add_to_new_pages`. No flagged group means
+                // nothing is added, and that is not an error. Admins need no
+                // group: the admin role bypasses page ACLs (ACLService::hasAccess).
+                foreach ($groupRepo->findBy(['addToNewPages' => true]) as $defaultGroup) {
+                    $this->aclService->addGroupAcl($page, $defaultGroup, true, false, false, false, $this->entityManager);
+                    $grantedGroupIds[(int) $defaultGroup->getId()] = true;
+                }
             }
             // CMS application pages stay admin/editor-only: no default reader
             // groups are added; the author grants editor groups explicitly.
@@ -628,6 +614,9 @@ class AdminPageService extends BaseService
             )
                 ->setParameter('pageId', $page->getId())
                 ->execute();
+            // The returned copy is serialized after commit, when its version
+            // rows are already cascade-deleted.
+            $deleted_page->setPublishedVersion(null);
 
             // Remember CMS app membership before the page row is removed so hubs
             // can be rebuilt after delete (ON DELETE SET NULL clears the FK).
@@ -780,64 +769,6 @@ class AdminPageService extends BaseService
     }
 
     /**
-     * Get all pages for admin purposes without ACL filtering
-     * Returns pages in the same format as PageService for compatibility
-     *
-     * @return list<array<string, mixed>> Array of pages in hierarchical structure
-     */
-    public function getAllPagesForAdmin(): array
-    {
-        // Get current user for caching. This endpoint is admin-only (the
-        // firewall requires authentication), so the guest branch is never
-        // reached in practice; we use the shared sentinel for consistency.
-        $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID;
-
-        // Cache key for admin pages (no ACL filtering)
-        $cacheKey = "admin_pages";
-
-        $pages = $this->cache
-            ->withCategory(CacheService::CATEGORY_PAGES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getList($cacheKey, function () {
-                // Get all pages from repository
-                $pages = $this->pageRepository->findAll();
-
-                $pageIds = array_values(array_filter(array_map(
-                    static fn (Page $page): ?int => $page->getId(),
-                    $pages,
-                )));
-                $membershipByPage = $this->navigationAssignmentService->getMembershipBadgesForPageIds($pageIds);
-
-                // Convert entities to array manually for better control and performance
-                $allPages = [];
-                foreach ($pages as $page) {
-                    $pageId = (int) $page->getId();
-                    $allPages[] = [
-                        'id_pages' => $pageId,
-                        'id_parent_page' => $page->getParentPage() ? $page->getParentPage()->getId() : null,
-                        'keyword' => $page->getKeyword(),
-                        'url' => $page->getUrl(),
-                        'is_headless' => $page->isHeadless() ? 1 : 0,
-                        'is_open_access' => $page->isOpenAccess() ? 1 : 0,
-                        'is_system' => $page->isSystem() ? 1 : 0,
-                        'id_page_access_types' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
-                        'id_page_types' => $page->getPageType() ? $page->getPageType()->getId() : null,
-                        'page_surface' => $page->getPageSurfaceCode(),
-                        'cms_app_id' => $page->getCmsApp()?->getId(),
-                        'cms_app_slug' => $page->getCmsApp()?->getSlug(),
-                        'cms_app_role' => $page->getCmsAppRole(),
-                        'navigationMembership' => $membershipByPage[$pageId] ?? [],
-                    ];
-                }
-
-                return $allPages;
-            });
-
-        return $pages;
-    }
-
-    /**
      * Get filtered pages with permission-based access control
      * Includes proper caching with user scope
      * Uses RoleDataAccessRepository optimized methods
@@ -924,7 +855,37 @@ class AdminPageService extends BaseService
             });
         }
 
-        return $this->attachNavigationMembership($this->attachPageTitles(array_values($pages)));
+        return $this->attachMenuEligibility(
+            $this->attachNavigationMembership($this->attachPageTitles(array_values($pages)))
+        );
+    }
+
+    /**
+     * Flag whether each page may EVER be added to a public menu.
+     *
+     * Page type only — it is the one permanently unfixable exclusion, so a menu
+     * picker can filter on it without hardcoding page-type ids. Headless (a
+     * checkbox an admin can untick) and per-visitor accessibility are
+     * deliberately NOT folded in: those pages stay eligible and are surfaced as
+     * tags instead, via NavigationMenuService::evaluatePagePublicVisibility().
+     *
+     * @param list<array<string, mixed>> $pages
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function attachMenuEligibility(array $pages): array
+    {
+        // Resolved by NAME (see PageType::PUBLIC_NAVIGABLE_PAGE_TYPES).
+        $publicNavigableTypeIds = $this->pageTypeRepository->findPublicNavigableIds();
+
+        foreach ($pages as &$page) {
+            $pageTypeId = $page['id_page_types'] ?? null;
+            $page['menu_eligible'] = !is_numeric($pageTypeId)
+                || in_array((int) $pageTypeId, $publicNavigableTypeIds, true);
+        }
+        unset($page);
+
+        return $pages;
     }
 
     /**

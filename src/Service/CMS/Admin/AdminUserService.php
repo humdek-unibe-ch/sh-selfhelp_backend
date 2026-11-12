@@ -24,6 +24,7 @@ use App\Service\Auth\UserValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use App\Service\Auth\JWTService;
+use App\Service\Core\UserDataCleanerService;
 use App\Service\Mercure\MercureTopicResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -43,6 +44,40 @@ class AdminUserService extends BaseService
     private const MAX_PAGE_SIZE = 100;
     private const DEFAULT_PAGE_SIZE = 20;
 
+    /**
+     * Status buckets exposed by getUserStats() and accepted by the `status`
+     * filter on the user list / export.
+     *
+     * PRECEDENCE: `blocked` wins over every status. A blocked user is counted
+     * as `blocked` regardless of their status lookup, so the buckets are
+     * mutually exclusive — a blocked+invited user appears under `blocked`
+     * only, never under `invited`. The buckets describe "what should the admin
+     * do about this user", and for a blocked+invited user the answer is
+     * "unblock them first".
+     *
+     * NOT EXHAUSTIVE: the `userStatus` lookup group also seeds `interested`
+     * and `auto_created` (legacy codes with no writer in this codebase). Users
+     * holding those statuses are counted in `total` but in no bucket, so
+     * `active + invited + imported + blocked <= total`. Do not present the
+     * tiles as a breakdown that must sum. There is no `locked` status: the
+     * constant LookupService::USER_STATUS_LOCKED has no seeded lookup row and
+     * no writer, so it is deliberately not a bucket.
+     */
+    private const STATUS_BUCKETS = [
+        LookupService::USER_STATUS_ACTIVE,
+        LookupService::USER_STATUS_INVITED,
+        LookupService::USER_STATUS_IMPORTED,
+    ];
+
+    /** Bucket that is derived from the `blocked` column rather than a status lookup. */
+    private const STATUS_BUCKET_BLOCKED = RoleDataAccessRepository::STATUS_BUCKET_BLOCKED;
+
+    /** CSV header for the user export/import contract. */
+    private const EXPORT_COLUMNS = ['id', 'email', 'name', 'user_name', 'status', 'blocked', 'groups', 'roles', 'last_login'];
+
+    /** Required CSV header for user import. */
+    private const IMPORT_COLUMNS = ['email', 'name', 'user_name', 'groups'];
+
     public function __construct(
         private readonly UserRepository $userRepository,
         private readonly LookupService $lookupService,
@@ -57,6 +92,7 @@ class AdminUserService extends BaseService
         private readonly HubInterface $mercureHub,
         private readonly MercureTopicResolver $mercureTopics,
         private readonly LoggerInterface $logger,
+        private readonly UserDataCleanerService $userDataCleaner,
     ) {
     }
 
@@ -68,20 +104,380 @@ class AdminUserService extends BaseService
      *
      * @return array<string, mixed>
      */
-    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = self::DEFAULT_PAGE_SIZE, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = self::DEFAULT_PAGE_SIZE, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', ?string $status = null, ?int $groupId = null, ?int $roleId = null): array
     {
         [$page, $pageSize, $sortDirection] = $this->validatePaginationParams($page, $pageSize, $sortDirection);
+        $status = $this->validateStatusBucket($status);
 
         // Create cache key based on user and parameters
-        $cacheKey = $this->buildCacheKey('filtered_users', $userId, $page, $pageSize, $search, $sort, $sortDirection);
+        $cacheKey = $this->buildCacheKey('filtered_users', $userId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId, $roleId);
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList(
                 $cacheKey,
-                fn() => $this->fetchFilteredUsersFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection)
+                fn() => $this->fetchFilteredUsersFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId, $roleId)
             );
+    }
+
+    /**
+     * Population counts for the admin Users page tiles.
+     *
+     * Scoped to the caller's VISIBLE user set (same `intern = false`,
+     * `id_status > 0` and group-access rules as the list) so the tiles always
+     * reconcile with the table underneath them: `total` equals the unfiltered
+     * list's `totalCount` for the same admin. Deliberately ignores the current
+     * search/status/group filters — the tiles describe the population the admin
+     * can see, not the current page.
+     *
+     * See self::STATUS_BUCKETS for the precedence rule and why the buckets do
+     * not necessarily sum to `total`.
+     *
+     * @return array<string, int>
+     */
+    public function getUserStats(int $userId): array
+    {
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getList(
+                $this->buildCacheKey('user_stats', $userId, 0),
+                fn() => $this->roleDataAccessRepository->countVisibleUsersByStatusBucket(
+                    $this->resolveAccessibleGroupIds($userId),
+                    self::STATUS_BUCKETS
+                )
+            );
+    }
+
+    /**
+     * Delete several users, collecting per-user failures instead of aborting.
+     *
+     * Partial success is the contract: a single bad id must not fail the whole
+     * request, so the admin's other selections still apply. Also used for the
+     * single-delete case (a one-element array) so bulk and single behave
+     * identically.
+     *
+     * @param array<mixed> $userIds
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    public function bulkDeleteUsers(int $currentUserId, array $userIds): array
+    {
+        return $this->processBulk(
+            $userIds,
+            function (int $userId) use ($currentUserId): void {
+                // Guard the caller's own account: deleting yourself mid-session
+                // is unrecoverable and never intentional in a bulk selection.
+                if ($userId === $currentUserId) {
+                    throw new ServiceException('Cannot delete your own account', Response::HTTP_FORBIDDEN);
+                }
+
+                $this->deleteUser($currentUserId, $userId);
+            }
+        );
+    }
+
+    /**
+     * Add every listed user to every listed group.
+     *
+     * Idempotent — an existing membership is a success, not a failure, and
+     * creates no duplicate row (assignGroupsToUser skips existing links).
+     * Unknown group IDs fail the whole request: that is a caller bug, not a
+     * per-user outcome.
+     *
+     * @param array<mixed> $userIds
+     * @param array<mixed> $groupIds
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    public function bulkAddUsersToGroups(int $currentUserId, array $userIds, array $groupIds): array
+    {
+        $normalizedGroupIds = $this->normalizeIdList($groupIds);
+        $this->assertGroupsExist($normalizedGroupIds);
+        // The group side is the same for every user, so it fails the whole
+        // request up front; the user side is checked per user by addGroupsToUser().
+        $this->assertMayChangeGroupMembership($currentUserId, $normalizedGroupIds);
+
+        return $this->processBulk(
+            $userIds,
+            function (int $userId) use ($currentUserId, $normalizedGroupIds): void {
+                $this->addGroupsToUser($currentUserId, $userId, $normalizedGroupIds);
+            }
+        );
+    }
+
+    /**
+     * Remove every listed user from every listed group.
+     *
+     * Mirror of bulkAddUsersToGroups(): same request shape, same
+     * partial-success contract, opposite verb. Idempotent — a user who is not
+     * in the group is a success, not a failure (removeGroupsFromUser() simply
+     * finds no relationship to delete). Unknown group IDs fail the whole
+     * request: that is a caller bug, not a per-user outcome.
+     *
+     * NO self-lockout guard, deliberately: admin access comes from the `admin`
+     * ROLE (rel_roles_users), not from group membership — see
+     * DataAccessSecurityService::userHasAdminRole(), which joins u.roles and
+     * short-circuits hasPermission() before any group is consulted. So an
+     * admin removing themselves from every group keeps full admin access and
+     * can re-add themselves. Unlike bulk-delete (irreversible), this is
+     * recoverable, so a guard would block a legitimate action for no safety
+     * gain. If admin ever becomes group-derived, this needs revisiting.
+     *
+     * @param array<mixed> $userIds
+     * @param array<mixed> $groupIds
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    public function bulkRemoveUsersFromGroups(int $currentUserId, array $userIds, array $groupIds): array
+    {
+        $normalizedGroupIds = $this->normalizeIdList($groupIds);
+        $this->assertGroupsExist($normalizedGroupIds);
+        // Same as the bulk add: the group side fails the whole request up front.
+        $this->assertMayChangeGroupMembership($currentUserId, $normalizedGroupIds);
+
+        return $this->processBulk(
+            $userIds,
+            function (int $userId) use ($currentUserId, $normalizedGroupIds): void {
+                $this->removeGroupsFromUser($currentUserId, $userId, $normalizedGroupIds);
+            }
+        );
+    }
+
+    /**
+     * Send the activation mail to several users.
+     *
+     * Reuses sendActivationMail() so bulk and single-user sends share one mail
+     * path. An already-active user is reported as a failure with a readable
+     * reason so the admin understands why the success count is lower than
+     * their selection.
+     *
+     * @param array<mixed> $userIds
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    public function bulkSendActivationMail(int $currentUserId, array $userIds): array
+    {
+        return $this->processBulk(
+            $userIds,
+            function (int $userId) use ($currentUserId): void {
+                if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+                    throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
+                }
+
+                $user = $this->findUserOrThrow($userId);
+                if ($user->getStatus()?->getLookupCode() === LookupService::USER_STATUS_ACTIVE) {
+                    throw new ServiceException('User is already active', Response::HTTP_BAD_REQUEST);
+                }
+
+                $this->sendActivationMail($userId);
+            }
+        );
+    }
+
+    /**
+     * Rows for the CSV export, honouring the same filters as the list.
+     *
+     * Exports the full filtered set (no pagination) for the caller's visible
+     * users.
+     *
+     * @return list<array<string, string>>
+     */
+    public function exportUsers(int $currentUserId, ?string $search = null, ?string $status = null, ?int $groupId = null, ?int $roleId = null): array
+    {
+        $status = $this->validateStatusBucket($status);
+
+        $users = $this->roleDataAccessRepository->findVisibleUsersForExport(
+            $this->resolveAccessibleGroupIds($currentUserId),
+            $search,
+            $status,
+            $groupId,
+            $roleId
+        );
+
+        return array_map(fn(User $user): array => $this->formatUserForExport($user), $users);
+    }
+
+    /**
+     * Import users from a parsed CSV.
+     *
+     * NOT atomic by design: valid rows import even when others fail, so a
+     * single typo does not discard a large file. Imported users are created
+     * WITHOUT an activation email (`enable_validation = false`) — a 200-row
+     * import must not fire 200 unrecallable emails; the admin invites them
+     * deliberately via the bulk send-activation action.
+     *
+     * Same group rule as a single create: every group named on a row needs
+     * CREATE access for the caller, otherwise that row fails.
+     *
+     * @param list<array<string, string>> $rows       parsed data rows (header excluded)
+     * @param int                         $rowOffset  file line number of the first data row
+     * @return array{imported: int, skipped: int, errors: list<array{row: int, message: string}>}
+     */
+    public function importUsers(int $currentUserId, array $rows, int $rowOffset = 2): array
+    {
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+
+        foreach ($rows as $index => $row) {
+            // Report the row number as the admin sees it in their spreadsheet
+            // (1-based, header included) so they can find the bad line.
+            $rowNumber = $rowOffset + $index;
+
+            try {
+                $email = trim($row['email'] ?? '');
+                if ($email === '') {
+                    throw new ServiceException('Email is required', Response::HTTP_BAD_REQUEST);
+                }
+
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    throw new ServiceException('Invalid email address', Response::HTTP_BAD_REQUEST);
+                }
+
+                // An existing email is a skip, not an error: re-importing a
+                // superset of an earlier file is a normal admin workflow.
+                if ($this->userRepository->findOneByEmail($email) !== null) {
+                    $skipped++;
+                    continue;
+                }
+
+                // createUser() enforces the CREATE right on every group named on the row.
+                $groupIds = $this->resolveGroupNames($row['groups'] ?? null);
+
+                $this->createUser($currentUserId, [
+                    'email' => $email,
+                    'name' => $this->nullIfBlank($row['name'] ?? null),
+                    'user_name' => $this->nullIfBlank($row['user_name'] ?? null),
+                    'group_ids' => $groupIds,
+                    'enable_validation' => false,
+                    // Mark CSV-created users as `imported` (duplicates are skipped above).
+                    'status_code' => LookupService::USER_STATUS_IMPORTED,
+                ]);
+
+                $imported++;
+            } catch (\Exception $e) {
+                $errors[] = ['row' => $rowNumber, 'message' => $this->describeFailure($e)];
+            }
+        }
+
+        return ['imported' => $imported, 'skipped' => $skipped, 'errors' => $errors];
+    }
+
+    /**
+     * Groups say who sees, so changing who is in a group needs the right to
+     * update THAT group, on top of the right to update the user. A grant on one
+     * group never lets a caller move people in or out of another group. The
+     * admin role passes (hasPermission() short-circuits for it).
+     *
+     * @param list<int> $groupIds groups a user is added to or removed from
+     */
+    private function assertMayChangeGroupMembership(int $currentUserId, array $groupIds): void
+    {
+        foreach (array_values(array_unique($groupIds)) as $groupId) {
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $groupId,
+                DataAccessSecurityService::PERMISSION_UPDATE
+            )) {
+                throw new ServiceException(
+                    'Access denied: cannot change the membership of group ' . $groupId,
+                    Response::HTTP_FORBIDDEN
+                );
+            }
+        }
+    }
+
+    /**
+     * A new user in a group needs the CREATE right on that group.
+     *
+     * @param list<int> $groupIds
+     */
+    private function assertMayCreateUsersInGroups(int $currentUserId, array $groupIds): void
+    {
+        foreach (array_values(array_unique($groupIds)) as $groupId) {
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $groupId,
+                DataAccessSecurityService::PERMISSION_CREATE
+            )) {
+                throw new ServiceException(
+                    'Access denied: cannot create users in group ' . $groupId,
+                    Response::HTTP_FORBIDDEN
+                );
+            }
+        }
+    }
+
+    /**
+     * Roles edit, so handing out a role hands out its rights. A non-admin may
+     * add or remove only roles it holds itself; the admin role may assign any.
+     * This stops a scoped admin from granting more than it has (and from
+     * granting `admin`) by way of the user endpoints.
+     *
+     * @param list<int> $roleIds roles that are added to or removed from a user
+     */
+    private function assertMayAssignRoles(int $currentUserId, array $roleIds): void
+    {
+        if ($roleIds === [] || $this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
+            return;
+        }
+
+        $ownRoleIds = [];
+        $actor = $this->userRepository->find($currentUserId);
+        if ($actor !== null) {
+            foreach ($actor->getUserRoles() as $role) {
+                $ownRoleIds[(int) $role->getId()] = true;
+            }
+        }
+
+        foreach (array_values(array_unique($roleIds)) as $roleId) {
+            if (!isset($ownRoleIds[$roleId])) {
+                throw new ServiceException(
+                    'Access denied: you can only assign roles you hold yourself (role ' . $roleId . ')',
+                    Response::HTTP_FORBIDDEN
+                );
+            }
+        }
+    }
+
+    /**
+     * The caller must be allowed to update this user (UPDATE on any of the
+     * user's groups, or the admin role).
+     */
+    private function assertMayUpdateUser(int $currentUserId, int $userId): void
+    {
+        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+            throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
+        }
+    }
+
+    /**
+     * `group_ids` and `role_ids` on an update replace the whole set, so what
+     * the caller needs a right for is the difference: the groups and roles that
+     * are added or dropped. Entries that stay as they are need no right, which
+     * lets a scoped admin edit a user who also holds things outside their reach.
+     *
+     * @param array<string, mixed> $userData
+     */
+    private function assertRelationshipChangesAllowed(int $currentUserId, User $user, array $userData): void
+    {
+        if (isset($userData['group_ids']) && is_array($userData['group_ids'])) {
+            $wanted = $this->normalizeIdList($userData['group_ids']);
+            $current = array_map(static fn(Group $group): int => (int) $group->getId(), $user->getGroups()->toArray());
+            $this->assertMayChangeGroupMembership(
+                $currentUserId,
+                array_merge(array_diff($wanted, $current), array_diff($current, $wanted))
+            );
+        }
+
+        if (isset($userData['role_ids']) && is_array($userData['role_ids'])) {
+            $wanted = $this->normalizeIdList($userData['role_ids']);
+            $current = array_map(static fn(Role $role): int => (int) $role->getId(), $user->getUserRoles()->toArray());
+            $this->assertMayAssignRoles(
+                $currentUserId,
+                array_merge(array_diff($wanted, $current), array_diff($current, $wanted))
+            );
+        }
     }
 
     /**
@@ -125,7 +521,7 @@ class AdminUserService extends BaseService
      *
      * @return array<string, mixed>
      */
-    private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
+    private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection, ?string $status = null, ?int $groupId = null, ?int $roleId = null): array
     {
         // Get resource type ID for groups (users are filtered via group access)
         $resourceTypeId = $this->lookupService->getLookupIdByCode(
@@ -149,11 +545,225 @@ class AdminUserService extends BaseService
 
         // Check if user is admin - use repository method for all users
         if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
-            return $this->roleDataAccessRepository->getAllUsersForAdmin($page, $pageSize, $search, $sort, $sortDirection);
+            return $this->roleDataAccessRepository->getAllUsersForAdmin($page, $pageSize, $search, $sort, $sortDirection, $status, $groupId, $roleId);
         } else {
             // Use repository method for accessible users (via group permissions)
-            return $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection);
+            return $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection, $status, $groupId, $roleId);
         }
+    }
+
+    /**
+     * Resolve the group scope for a caller: null for an admin (sees every
+     * non-intern user), otherwise the groups they have access to. Mirrors the
+     * branch in fetchFilteredUsersFromRepository() so stats/export and the
+     * list agree on who is visible.
+     *
+     * @return list<int>|null
+     */
+    private function resolveAccessibleGroupIds(int $userId): ?array
+    {
+        if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
+            return null;
+        }
+
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(
+            LookupService::RESOURCE_TYPES,
+            LookupService::RESOURCE_TYPES_GROUP
+        );
+
+        if (!$resourceTypeId) {
+            return [];
+        }
+
+        return $this->roleDataAccessRepository->getAccessibleGroupIdsForUser($userId, $resourceTypeId);
+    }
+
+    /**
+     * Validate a `status` filter value against the supported buckets.
+     *
+     * Unknown values are a caller error (400) rather than a silently ignored
+     * filter, which would show the admin an unfiltered list that contradicts
+     * their selection.
+     */
+    private function validateStatusBucket(?string $status): ?string
+    {
+        if ($status === null || $status === '') {
+            return null;
+        }
+
+        $allowed = array_merge(self::STATUS_BUCKETS, [self::STATUS_BUCKET_BLOCKED]);
+        if (!in_array($status, $allowed, true)) {
+            throw new ServiceException(
+                'Invalid status filter. Allowed values: ' . implode(', ', $allowed),
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        return $status;
+    }
+
+    /**
+     * Run a per-id operation, collecting successes and readable failures.
+     *
+     * Shared by the bulk endpoints so they report partial success identically.
+     *
+     * @param array<mixed>        $ids
+     * @param callable(int): void $operation
+     * @return array{succeeded: list<int>, failed: list<array{id: int, reason: string}>}
+     */
+    private function processBulk(array $ids, callable $operation): array
+    {
+        $succeeded = [];
+        $failed = [];
+
+        foreach ($this->normalizeIdList($ids) as $id) {
+            try {
+                $operation($id);
+                $succeeded[] = $id;
+            } catch (\Exception $e) {
+                $failed[] = ['id' => $id, 'reason' => $this->describeFailure($e)];
+            }
+        }
+
+        return ['succeeded' => $succeeded, 'failed' => $failed];
+    }
+
+    /**
+     * Turn an exception into a message an admin can act on.
+     *
+     * ServiceException messages are already written for humans and are shown
+     * verbatim. Anything else is an unexpected fault, so we log it and return
+     * a generic line rather than leaking an exception class or stack detail
+     * into the admin UI.
+     */
+    private function describeFailure(\Exception $e): string
+    {
+        if ($e instanceof ServiceException) {
+            return $e->getMessage();
+        }
+
+        $this->logger->error('Unexpected failure during bulk user operation', [
+            'exception' => $e->getMessage(),
+        ]);
+
+        return 'Unexpected error. Please try again or check the logs.';
+    }
+
+    /**
+     * Fail the request when any group ID does not exist.
+     *
+     * @param list<int> $groupIds
+     */
+    private function assertGroupsExist(array $groupIds): void
+    {
+        if (empty($groupIds)) {
+            throw new ServiceException('group_ids must not be empty', Response::HTTP_BAD_REQUEST);
+        }
+
+        $found = $this->batchLoadGroups($groupIds);
+        $missing = array_values(array_diff($groupIds, array_keys($found)));
+
+        if (!empty($missing)) {
+            throw new ServiceException(
+                'Unknown group_ids: ' . implode(', ', $missing),
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+    }
+
+    /**
+     * Resolve `;`-separated group names from a CSV cell to group IDs.
+     *
+     * An unknown name errors the row: silently creating groups from a CSV
+     * would let a typo spawn a permanent group.
+     *
+     * @return list<int>
+     */
+    private function resolveGroupNames(?string $groupNames): array
+    {
+        $names = array_values(array_filter(array_map('trim', explode(';', $groupNames ?? ''))));
+        if (empty($names)) {
+            return [];
+        }
+
+        /** @var list<Group> $groups */
+        $groups = $this->entityManager->getRepository(Group::class)
+            ->createQueryBuilder('g')
+            ->where('g.name IN (:names)')
+            ->setParameter('names', $names)
+            ->getQuery()
+            ->getResult();
+
+        $idsByName = [];
+        foreach ($groups as $group) {
+            $idsByName[(string) $group->getName()] = (int) $group->getId();
+        }
+
+        $missing = array_values(array_diff($names, array_keys($idsByName)));
+        if (!empty($missing)) {
+            throw new ServiceException(
+                'Unknown group name(s): ' . implode(', ', $missing),
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        return array_values($idsByName);
+    }
+
+    /**
+     * Format one user as a CSV export row.
+     *
+     * Group/role names are `;`-separated because `,` is the CSV delimiter.
+     * `last_login` is ISO 8601 (empty when never), unlike the list view's
+     * human-readable "N days ago" string, so the column stays machine-readable.
+     *
+     * @return array<string, string>
+     */
+    private function formatUserForExport(User $user): array
+    {
+        $groups = array_map(fn(Group $g): string => (string) $g->getName(), $user->getGroups()->toArray());
+        $roles = array_map(fn(Role $r): string => (string) $r->getName(), $user->getUserRoles()->toArray());
+
+        return [
+            'id' => (string) $user->getId(),
+            'email' => (string) $user->getEmail(),
+            'name' => (string) $user->getName(),
+            'user_name' => (string) $user->getUserName(),
+            'status' => (string) $user->getStatus()?->getLookupCode(),
+            'blocked' => $user->isBlocked() ? 'true' : 'false',
+            'groups' => implode('; ', $groups),
+            'roles' => implode('; ', $roles),
+            'last_login' => $user->getLastLogin()?->format(\DateTimeInterface::ATOM) ?? '',
+        ];
+    }
+
+    /**
+     * Normalize an optional CSV cell to a trimmed string or null.
+     */
+    private function nullIfBlank(?string $value): ?string
+    {
+        $trimmed = trim($value ?? '');
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    /**
+     * The CSV columns for export, in contract order.
+     *
+     * @return list<string>
+     */
+    public static function exportColumns(): array
+    {
+        return self::EXPORT_COLUMNS;
+    }
+
+    /**
+     * The CSV columns required for import.
+     *
+     * @return list<string>
+     */
+    public static function importColumns(): array
+    {
+        return self::IMPORT_COLUMNS;
     }
 
     /**
@@ -176,11 +786,21 @@ class AdminUserService extends BaseService
      * Create new user
      * Every user created will automatically require validation unless specified otherwise
      *
+     * The caller needs the CREATE right on every group the new user is put in,
+     * and (unless admin) may only hand out roles it holds itself.
+     *
      * @param array<string, mixed> $userData
      * @return array<string, mixed>
      */
-    public function createUser(array $userData): array
+    public function createUser(int $currentUserId, array $userData): array
     {
+        if (isset($userData['group_ids']) && is_array($userData['group_ids'])) {
+            $this->assertMayCreateUsersInGroups($currentUserId, $this->normalizeIdList($userData['group_ids']));
+        }
+        if (isset($userData['role_ids']) && is_array($userData['role_ids'])) {
+            $this->assertMayAssignRoles($currentUserId, $this->normalizeIdList($userData['role_ids']));
+        }
+
         $created = $this->executeInTransaction(function () use ($userData) {
             $this->validateUserData($userData, true);
 
@@ -255,9 +875,12 @@ class AdminUserService extends BaseService
     public function updateUser(int $currentUserId, int $userId, array $userData): array
     {
         // Check permission before any operations
-        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
-            throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
-        }
+        $this->assertMayUpdateUser($currentUserId, $userId);
+
+        // Changed groups and roles need a right of their own, not just the
+        // right to update the user. Checked before the transaction opens so a
+        // refusal is audited and not rolled back with it.
+        $this->assertRelationshipChangesAllowed($currentUserId, $this->findUserOrThrow($userId), $userData);
 
         return $this->executeInTransaction(function () use ($userId, $userData) {
             $user = $this->findUserOrThrow($userId);
@@ -307,7 +930,7 @@ class AdminUserService extends BaseService
             throw new ServiceException('Insufficient permissions to delete user', Response::HTTP_FORBIDDEN);
         }
 
-        return $this->executeInTransaction(function () use ($userId) {
+        $outcome = $this->executeInTransaction(function () use ($userId) {
             $user = $this->findUserOrThrow($userId);
 
             // Prevent deletion of system users
@@ -322,14 +945,32 @@ class AdminUserService extends BaseService
                 'User deleted: ' . $user->getEmail()
             );
 
+            // Removing a user removes their data (F24): the same cleaner the
+            // "clean data" action uses, inside this transaction so a failure
+            // below rolls the erasure back too. Audit rows stay, detached. It
+            // runs AFTER the log above so that, if an admin deletes their own
+            // account, the log row is cut loose from them like the others.
+            $cleanup = $this->userDataCleaner->removeData($userId);
+
+            // Group lists show member counts, so they change with the user.
+            $groupIds = [];
+            foreach ($user->getGroups() as $group) {
+                $groupIds[] = (int) $group->getId();
+            }
+
             $this->entityManager->remove($user);
             $this->entityManager->flush();
 
-            // Invalidate caches
-            $this->invalidateUserCaches($userId);
-
-            return true;
+            return ['cleanup' => $cleanup, 'groupIds' => $groupIds];
         });
+
+        // After the commit: files cannot roll back and caches must not be
+        // cleared before the data is really gone.
+        $this->userDataCleaner->finishAfterCommit($userId, $outcome['cleanup']);
+        $this->invalidateUserCaches($userId);
+        $this->invalidateUserGroupCaches($userId, $outcome['groupIds']);
+
+        return true;
     }
 
     /**
@@ -395,15 +1036,20 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Add groups to user
-     */
-    /**
+     * Add groups to user.
+     *
+     * Needs the right to update the user AND to update each group being added
+     * (the admin role passes). The checks run before the transaction opens, so
+     * a refusal is audited and not rolled back with it.
+     *
      * @param array<mixed> $groupIds
      * @return list<array<string, mixed>>
      */
-    public function addGroupsToUser(int $userId, array $groupIds): array
+    public function addGroupsToUser(int $currentUserId, int $userId, array $groupIds): array
     {
         $groupIds = $this->normalizeIdList($groupIds);
+        $this->assertMayUpdateUser($currentUserId, $userId);
+        $this->assertMayChangeGroupMembership($currentUserId, $groupIds);
 
         return $this->executeInTransaction(function () use ($userId, $groupIds) {
             $user = $this->findUserOrThrow($userId);
@@ -430,15 +1076,18 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Remove groups from user
-     */
-    /**
+     * Remove groups from user.
+     *
+     * Same rights as adding: update on the user and on each group.
+     *
      * @param array<mixed> $groupIds
      * @return list<array<string, mixed>>
      */
-    public function removeGroupsFromUser(int $userId, array $groupIds): array
+    public function removeGroupsFromUser(int $currentUserId, int $userId, array $groupIds): array
     {
         $groupIds = $this->normalizeIdList($groupIds);
+        $this->assertMayUpdateUser($currentUserId, $userId);
+        $this->assertMayChangeGroupMembership($currentUserId, $groupIds);
 
         return $this->executeInTransaction(function () use ($userId, $groupIds) {
             $user = $this->findUserOrThrow($userId);
@@ -468,15 +1117,19 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Add roles to user
-     */
-    /**
+     * Add roles to user.
+     *
+     * Needs the right to update the user, and (unless admin) the caller must
+     * hold every role they add.
+     *
      * @param array<mixed> $roleIds
      * @return list<array<string, mixed>>
      */
-    public function addRolesToUser(int $userId, array $roleIds): array
+    public function addRolesToUser(int $currentUserId, int $userId, array $roleIds): array
     {
         $roleIds = $this->normalizeIdList($roleIds);
+        $this->assertMayUpdateUser($currentUserId, $userId);
+        $this->assertMayAssignRoles($currentUserId, $roleIds);
 
         return $this->executeInTransaction(function () use ($userId, $roleIds) {
             $user = $this->findUserOrThrow($userId);
@@ -502,15 +1155,19 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Remove roles from user
-     */
-    /**
+     * Remove roles from user.
+     *
+     * Same rights as adding: update on the user, and (unless admin) the caller
+     * must hold every role they remove.
+     *
      * @param array<mixed> $roleIds
      * @return list<array<string, mixed>>
      */
-    public function removeRolesFromUser(int $userId, array $roleIds): array
+    public function removeRolesFromUser(int $currentUserId, int $userId, array $roleIds): array
     {
         $roleIds = $this->normalizeIdList($roleIds);
+        $this->assertMayUpdateUser($currentUserId, $userId);
+        $this->assertMayAssignRoles($currentUserId, $roleIds);
 
         return $this->executeInTransaction(function () use ($userId, $roleIds) {
             $user = $this->findUserOrThrow($userId);
@@ -580,13 +1237,88 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Clean user data (placeholder)
+     * Erase the content a user produced while keeping the account itself.
+     *
+     * This is the GDPR "erase what I produced, keep the (inactive) account"
+     * path — deliberately not deleteUser(). Restores the behaviour of the
+     * SelfHelp v1 UserModel::clean_user_data().
+     *
+     * The erasure itself is {@see UserDataCleanerService} (the same function
+     * deleteUser() and the self-service account deletion call). Scope decisions:
+     * - Transactions and data-access audits are KEPT as the audit trail: the
+     *   rows stay and only the link to the user is cleared, so the admin Users
+     *   list "Activity" column drops to 0 while the history of what changed
+     *   survives. (`transactions.id_users` holds the ACTING user, so this cuts
+     *   loose what the user DID; admin actions performed ON them stay
+     *   attributed to that admin.) This operation writes its own transaction
+     *   entry AFTER the wipe so the erasure itself stays audited.
+     * - The user's API request log rows ARE erased (URLs and parameters can
+     *   carry personal data).
+     * - Session/auth state (RefreshToken, Users2faCode, ValidationCode,
+     *   UserNavigationState) is out of scope — it is not user-produced content
+     *   and dies with the account or expires on its own.
+     * - PageView/PageViewReferrer hold no id_users (pseudonymous daily
+     *   aggregates), so there is nothing per-user to erase there.
+     * - Form files the user uploaded (`var/form-files/user_<id>/`) ARE erased,
+     *   after the DB transaction commits (`removed.form_files`).
+     * - Tables a plugin owns itself are cleaned by the plugin, which listens to
+     *   {@see \App\Plugin\Event\UserDataCleanupEvent} (F83); `removed` counts
+     *   core rows only.
+     *
+     * @return array{cleaned: bool, removed: array<string, int>}
      */
-    public function cleanUserData(int $userId): bool
+    public function cleanUserData(int $currentUserId, int $userId): array
     {
-        $user = $this->findUserOrThrow($userId);
-        // TODO: Implement data cleaning logic
-        return true;
+        // The ROUTE permission stays `admin.user.update` (see the api_routes
+        // row) and must not be raised — the frontend's client-side gate is
+        // pinned to it, so moving the route to `admin.user.delete` would lock
+        // out admins the UI still offers the action to. This is an ADDITIONAL
+        // resource-side check on top of it: erasure is irreversible, so the
+        // caller must also have delete-level access to this particular user.
+        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_DELETE)) {
+            throw new ServiceException('Insufficient permissions to clean user data', Response::HTTP_FORBIDDEN);
+        }
+
+        $outcome = $this->executeInTransaction(function () use ($userId) {
+            $user = $this->findUserOrThrow($userId);
+
+            if (in_array($user->getName(), self::SYSTEM_USERS, true)) {
+                throw new ServiceException('Cannot clean data of system users', Response::HTTP_FORBIDDEN);
+            }
+
+            // Phase 1 of the shared erasure, inside this transaction: jobs,
+            // data rows and cells, request log; audit rows are detached.
+            $cleanup = $this->userDataCleaner->removeData($userId);
+            $removed = $cleanup->removed;
+
+            // Written AFTER the wipe and inside the same DB transaction, so a
+            // failure here rolls the whole erasure back rather than leaving it
+            // unlogged. It is attributed to the ACTING admin, not the user.
+            $this->logUserTransaction(
+                LookupService::TRANSACTION_TYPES_DELETE,
+                $user,
+                'User data cleaned: ' . $user->getEmail() . ' (' . implode(', ', array_map(
+                    static fn(string $key, int $count): string => $key . '=' . $count,
+                    array_keys($removed),
+                    array_values($removed)
+                )) . ')'
+            );
+
+            $this->entityManager->flush();
+
+            return ['cleanup' => $cleanup];
+        });
+
+        // Phase 2, after the commit: files cannot roll back, so they go only
+        // once the rows are gone; the data-table caches are cleared with them.
+        $removed = $outcome['cleanup']->removed;
+        $removed['form_files'] = $this->userDataCleaner->finishAfterCommit($userId, $outcome['cleanup']);
+
+        // The Users list caches the activity count, so the list caches must
+        // go too (invalidateUserCaches covers both list + entity).
+        $this->invalidateUserCaches($userId);
+
+        return ['cleaned' => true, 'removed' => $removed];
     }
 
     /**
@@ -850,6 +1582,18 @@ class AdminUserService extends BaseService
 
         if (isset($userData['receives_emails'])) {
             $user->setReceivesEmails((bool) $userData['receives_emails']);
+        }
+
+        // Optional explicit initial status (CSV import sets `imported`).
+        if (isset($userData['status_code'])) {
+            $status = $this->lookupService->findByTypeAndCode(
+                LookupService::USER_STATUS,
+                $this->asString($userData['status_code'])
+            );
+            if (!$status) {
+                throw new ServiceException('Invalid user status', Response::HTTP_BAD_REQUEST);
+            }
+            $user->setStatus($status);
         }
 
         $this->setUserRelatedEntities($user, $userData);
@@ -1549,6 +2293,10 @@ class AdminUserService extends BaseService
      */
     private function invalidateUserGroupCaches(int $userId, array $groupIds): void
     {
+        // Groups decide which pages the user sees, so a membership change must
+        // also rotate the user's acl_version for the frontend navigation cache.
+        $this->bumpAclVersion($userId);
+
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)

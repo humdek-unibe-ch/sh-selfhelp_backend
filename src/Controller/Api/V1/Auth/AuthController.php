@@ -13,6 +13,7 @@ use App\Entity\User;
 use App\Exception\RequestValidationException;
 use App\Repository\AuthRepository;
 use App\Service\Auth\JWTService;
+use App\Service\Auth\AuthThrottleService;
 use App\Service\Auth\LoginService;
 use App\Service\Auth\PasswordResetService;
 use App\Service\Auth\RegistrationService;
@@ -26,6 +27,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\RateLimiter\RateLimit;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 
@@ -54,7 +56,26 @@ class AuthController extends AbstractController
         private readonly UserValidationService $userValidationService,
         private readonly RegistrationService $registrationService,
         private readonly PasswordResetService $passwordResetService,
+        private readonly AuthThrottleService $authThrottle,
     ) {
+    }
+
+    /**
+     * 429 when the window of an account, of an email asking for recovery, or
+     * of the visitor address is full, with the remaining wait in
+     * `data.retry_after` + `Retry-After`.
+     */
+    private function tooManyAttempts(RateLimit $limit, string $message = 'Too many failed attempts. Please try again later.'): JsonResponse
+    {
+        $retryAfter = max(1, $limit->getRetryAfter()->getTimestamp() - time());
+        $response = $this->responseFormatter->formatError(
+            $message,
+            Response::HTTP_TOO_MANY_REQUESTS,
+            ['retry_after' => $retryAfter]
+        );
+        $response->headers->set('Retry-After', (string) $retryAfter);
+
+        return $response;
     }
 
     private function logDebugException(string $context, \Throwable $exception): void
@@ -86,14 +107,22 @@ class AuthController extends AbstractController
             $userInput = $this->asStringField($data, 'email'); // Schema ensures 'email' exists if valid
             $password = $this->asStringField($data, 'password'); // Schema ensures 'password' exists if valid
 
+            $attempt = $this->authThrottle->login($request, $userInput);
+            $blocked = $attempt->blockedBy();
+            if ($blocked !== null) {
+                return $this->tooManyAttempts($blocked);
+            }
+
             $user = $this->loginService->validateUser($userInput, $password);
 
             if (!$user) {
+                $attempt->failed();
                 return $this->responseFormatter->formatError(
                     'Invalid credentials',
                     Response::HTTP_UNAUTHORIZED
                 );
             }
+            $attempt->succeeded();
 
             // If the user is found check if 2FA is required
             if ($user->isTwoFactorRequired()) {
@@ -111,6 +140,7 @@ class AuthController extends AbstractController
                 ], 'responses/auth/2fa_required', Response::HTTP_OK, true);
             }
 
+            $this->loginService->recordLogin($user);
             $token = $this->jwtService->createToken($user);
             $refreshToken = $this->jwtService->createRefreshToken($user);
 
@@ -161,14 +191,22 @@ class AuthController extends AbstractController
             $code = $this->asStringField($data, 'code'); // Schema ensures 'code' exists
             $userId = $this->asIntField($data, 'id_users'); // Schema ensures 'id_users' exists
 
+            $attempt = $this->authThrottle->twoFactor($request, $userId);
+            $blocked = $attempt->blockedBy();
+            if ($blocked !== null) {
+                return $this->tooManyAttempts($blocked);
+            }
+
             $verified = $this->authRepository->verify2faCode($userId, $code);
 
             if (!$verified) {
+                $attempt->failed();
                 return $this->responseFormatter->formatError(
                     'Invalid or expired verification code',
                     Response::HTTP_UNAUTHORIZED
                 );
             }
+            $attempt->succeeded();
 
             $user = $this->entityManager->getRepository(User::class)->find($userId);
 
@@ -399,6 +437,13 @@ class AuthController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/auth/forgot_password', $this->jsonSchemaValidationService);
             $email = $this->asStringField($data, 'email');
+
+            // Counted whether or not an account exists, so the 429 reveals
+            // nothing about which emails are registered.
+            $blocked = $this->authThrottle->recoveryBlockedBy($request, $email);
+            if ($blocked !== null) {
+                return $this->tooManyAttempts($blocked, 'Too many reset requests. Please try again later.');
+            }
 
             $this->passwordResetService->requestReset($email);
 

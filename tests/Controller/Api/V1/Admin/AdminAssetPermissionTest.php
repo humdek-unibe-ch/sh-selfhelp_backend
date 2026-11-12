@@ -34,4 +34,70 @@ final class AdminAssetPermissionTest extends QaWebTestCase
     {
         $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/assets/2147483600');
     }
+
+    public function testAssetEditIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/2147483600');
+    }
+
+    public function testAssetBulkGroupsIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-groups');
+    }
+
+    public function testAssetBulkMoveIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-folder');
+    }
+
+    public function testAssetBulkDeleteIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/bulk-delete');
+    }
+
+    public function testAssetFoldersListEnforcesAdminOnlyMatrix(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', '/cms-api/v1/admin/asset-folders');
+    }
+
+    public function testAssetFolderWritesAreForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/asset-folders');
+        $this->assertForbiddenForNonAdmins('PUT', '/cms-api/v1/admin/asset-folders/2147483600');
+        $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/asset-folders/2147483600');
+    }
+
+    /**
+     * A10: applying access to a folder needs `admin.asset.update`: the admin
+     * role gets 200, editor, user and guest personas 403, anonymous 401.
+     */
+    public function testAssetFolderAccessEnforcesTheUpdatePermission(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/asset-folders/2147483600/access', ['group_ids' => []]);
+
+        $admin = $this->loginAsQaAdmin();
+        $created = $this->jsonRequest('POST', '/cms-api/v1/admin/asset-folders', ['name' => 'qa-permission-folder'], $admin);
+        $folderId = null;
+        foreach ($this->asList($created['data'] ?? null) as $row) {
+            $row = $this->asArray($row);
+            if ($row['name'] === 'qa-permission-folder') {
+                $folderId = $this->asInt($row['id']);
+            }
+        }
+        self::assertNotNull($folderId);
+
+        $result = $this->jsonRequest('POST', '/cms-api/v1/admin/asset-folders/' . $folderId . '/access', ['group_ids' => []], $admin);
+        self::assertSame(['updated' => 0], $this->assertEnvelopeSuccess($result));
+    }
+
+    /**
+     * Export returns a ZIP and import takes a multipart upload, so only the
+     * negative half is asserted here; the admin round trip is covered by
+     * AdminAssetControllerTest.
+     */
+    public function testAssetBundleExportAndImportAreForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/export', []);
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/assets/import');
+    }
 }

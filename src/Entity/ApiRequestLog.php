@@ -12,6 +12,11 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'api_request_logs')]
+// Removing a user (UserDataCleanerService) deletes their log rows by id_users.
+// Without this index that DELETE scans the whole table and, under REPEATABLE
+// READ, locks every row it passes until the transaction ends, which stalls the
+// logging of every other request.
+#[ORM\Index(name: 'idx_api_request_logs_id_users', columns: ['id_users'])]
 class ApiRequestLog
 {
     #[ORM\Id]

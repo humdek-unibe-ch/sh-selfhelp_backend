@@ -2,728 +2,365 @@
 
 Audience: Developers and integrators.
 Status: active.
-Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
-Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
+Applies to: SelfHelp2 Symfony backend, core 0.1.43 and later.
+Last verified: 2026-11-12.
+Source of truth: `AdminAssetController`, `AssetController`, `AdminAssetService`, `AssetAccessService`, `AssetFileTypes`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/` (`*asset*`), and migrations `Version20261103112133` and `Version20261112103337`.
 
-## Overview
+## Core concepts
 
-The Admin Assets APIs provide comprehensive file management functionality for the SelfHelp CMS. Assets include images, documents, videos, and other media files that can be uploaded, organized, and managed through the admin interface.
+- **Identity.** Every asset has a stable `uuid`, and the uuid **is** its file
+  name: the file is stored on disk under it with no extension, so two uploads
+  never collide and there is no overwrite. `name` is an editable label without
+  extension (the uploaded file name by default). The checked `extension` is
+  stored next to it and gives the MIME type and the download name
+  `<name>-<uuid>.<extension>` (`file_name`).
+- **Replace keeps the uuid.** Editing an asset can replace its file; the uuid,
+  and therefore the URL every page already uses, stays the same.
+- **Viewing is per asset, by group.** An asset with **no groups is public**,
+  including to visitors who are not logged in. With groups, only members of
+  any of them can view it. The admin role views every asset.
+- **Managing is per asset, by role.** Which roles may list, edit, delete and
+  export an asset in the CMS is a `role_data_access` grant (resource type
+  `asset`). An upload is granted to the uploader's roles **that hold
+  `admin.asset.create`** (a role that can only read assets does not get to edit
+  what its member uploads). The admin role manages every asset **without a
+  grant**: it is never listed under `roles`, and sending its id in `role_ids`
+  stores nothing. Route permissions
+  (`admin.asset.read|create|update|delete`) still gate each action; the grant
+  decides which assets it applies to. Every grant written or removed is logged
+  as a `role_data_access` transaction, like on the role screens.
+- **Folders organise.** Nestable folders (20 levels at most) have no access
+  meaning; "set access" on a folder applies once to the assets in it and stores
+  nothing on the folder.
+- **Default alt.** An image section whose own `alt` is empty gets the asset's
+  alt in the page payload, read when the page is served; a section's own alt
+  always wins.
+- **File and row change together.** A replace, an upload or a delete never
+  leaves a row without its file or a file that disagrees with its row, even when
+  the database commit fails.
 
-## Core Concepts
+## Asset object
 
-- **Assets**: Files uploaded to the system (images, documents, videos, etc.)
-- **Folders**: Organizational structure for assets
-- **File Types**: Supported MIME types with validation
-- **File Naming**: Automatic naming or custom naming options
-- **Overwriting**: Control over whether to replace existing files
+Returned by every admin endpoint (`responses/admin/assets/asset.json`):
 
-## Get All Assets
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | int | |
+| `uuid` | string | Stable public id; survives file replacement |
+| `asset_type` | string | `Asset` or `CSS` |
+| `name` | string\|null | Editable label, no extension |
+| `url` | string | `/cms-api/v1/assets/<uuid>`, the only way to fetch the bytes |
+| `mime_type` | string\|null | Recorded at upload: the canonical type of the extension (a CSV is `text/csv`) |
+| `extension` | string\|null | The checked extension, lower case, no dot. `null` for assets uploaded before it was stored |
+| `file_name` | string | The download name `<name>-<uuid>.<extension>` (name sanitised, at most 100 characters; `<uuid>.<extension>` without a name) |
+| `size` | int\|null | Bytes |
+| `alt` | string\|null | Default alt text |
+| `folder_id` | int\|null | Folder; null = top level |
+| `roles` | `{id, name}[]` | Roles that may manage it. The admin role is never listed: it manages every asset |
+| `groups` | `{id, name}[]` | Groups that may view it; empty = public |
+| `can_view` | bool | The **caller** may open the file: public asset, admin, or a member of one of its groups. When `false` the delivery URL answers `403`, so a client draws a lock instead of a preview |
+| `can_update` | bool | The **caller** may edit it: the `update` bit of a grant on this asset (admin: always). When `false` an edit answers `403` |
+| `can_delete` | bool | The **caller** may delete it: the `delete` bit of a grant on this asset (admin: always). When `false` a delete answers `403` |
+| `created_at`, `updated_at` | string | ISO 8601 |
 
-Retrieve a paginated list of all assets with optional filtering.
+The three `can_*` flags are computed for each request, after the cached list is
+read, so no shared cache holds an access answer. A client shows or hides an
+action from them and never works the rule out itself; the server still checks
+every request.
 
-**Endpoint:** `GET /cms-api/v1/admin/assets`
+## List assets
 
-**Authentication:** Required (JWT Bearer token)
+`GET /cms-api/v1/admin/assets` - permission `admin.asset.read`
 
-**Query Parameters:**
-- `page`: Page number (default: 1)
-- `pageSize`: Items per page (default: 100, max: 1000)
-- `search`: Search term for filename filtering
-- `folder`: Filter by folder path
+Query parameters: `page` (default 1), `pageSize` (default 100, max 1000),
+`search` (matches name, uuid, alt, MIME type and asset type), `group_id`,
+`folder_id` (the assets directly in that folder; `0` = only assets in no
+folder; omitted = every folder).
 
-**Response:**
+Only assets the caller may manage are listed. Response `data`:
+`{ assets: Asset[], pagination: { page, pageSize, total, totalPages } }`.
+
+## Get one asset
+
+`GET /cms-api/v1/admin/assets/{assetId}` - permission `admin.asset.read`
+
+`404` when the asset does not exist, `403` when the caller may not manage it.
+
+## Upload
+
+`POST /cms-api/v1/admin/assets` - permission `admin.asset.create`,
+`multipart/form-data`, validated by `requests/admin/create_assets.json`.
+
+| Field | Notes |
+| --- | --- |
+| `file` or `files[]` | One file, or up to 50 |
+| `name` | Label (single upload; max 255). Default: the uploaded file name without extension |
+| `alt` | Default alt text (max 500) |
+| `group_ids` | Comma-separated ids of the groups that may view it. **Omitted or empty = public** |
+| `role_ids` | Comma-separated ids of the roles that may manage it. **Omitted = the uploader's roles that hold `admin.asset.create`**; sent empty = only the admin role, which only an admin may ask for (`400` for anyone else) |
+| `folder_id` | Folder id; empty = top level |
+
+Id lists are strings because multipart cannot express an empty list.
+
+Responses: `201` with the asset (single file), or `201`/`206` with
+`{ uploaded, errors, total_files, successful_uploads, failed_uploads }`
+(several files; `206` when any failed). `400` for a disallowed file type, a
+file whose content does not fit its extension, a missing file, or an empty
+`role_ids` from a caller who is not admin (checked once, before any file is
+stored).
+
+Allowed extensions: images (jpg, jpeg, png, gif, webp, svg), pdf, video (mp4,
+avi, mov, wmv, flv, webm), audio (mp3, wav, ogg), css, js, archives (zip, rar,
+7z, gz, tar), json, txt, csv, tsv, rtf, Microsoft Office (doc, docx, xls, xlsx,
+ppt, pptx) and OpenDocument (odt, ods, odp). The bytes are sniffed and must fit
+the extension: a PHP or HTML file named `x.png` is refused with `400 The file
+content does not match its extension`, and nothing is stored.
+
+**Duplicates.** The asset in the response (each one of `uploaded` for several
+files) also carries `duplicates`: up to 5 other assets with exactly the same
+bytes that the **caller may manage**, as `{ id, name, folder_id }`. Nothing is
+refused; both assets exist. An asset the caller may not manage is never listed.
+`duplicates` is only in upload responses, not in the list or the single asset.
+
+## Edit and replace
+
+`POST /cms-api/v1/admin/assets/{assetId}` - permission `admin.asset.update`
+(and an `update` grant on the asset), `multipart/form-data`, validated by
+`requests/admin/update_asset.json`. Only the fields sent change:
+
+| Field | Notes |
+| --- | --- |
+| `file` | Optional. Replaces the bytes under the **same** uuid (the same type checks as an upload; the extension, MIME type and hash are updated) |
+| `name` | New label (empty keeps the current one) |
+| `alt` | New default alt (empty clears it) |
+| `group_ids` | **Replaces** the viewing groups (empty = public) |
+| `role_ids` | **Replaces** the managing roles. Empty leaves the asset to the admin role alone: only an admin may send it, otherwise `400` and nothing changes |
+| `folder_id` | Moves it (empty = top level) |
+
+It is a `POST` because PHP does not parse multipart bodies on `PUT`. Page
+payloads read an asset's alt when they are served, so a changed alt shows on
+every page at once; no cache has to be flushed.
+
+A replacement file is put in place only after the row, the grants and the log
+entry are written, as the last step before the commit; if the commit fails the
+old bytes come back and the request is a `500`. The old file is never
+half-written, and no hidden work file is left behind.
+
+## Bulk actions
+
+`POST /cms-api/v1/admin/assets/bulk-groups` - permission `admin.asset.update`
+
 ```json
-{
-  "status": 200,
-  "message": "OK",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2025-01-23T10:30:00Z"
-  },
-  "data": {
-    "assets": [
-      {
-        "id": 1,
-        "file_name": "logo.png",
-        "original_name": "company-logo.png",
-        "mime_type": "image/png",
-        "file_size": 245760,
-        "folder": "images",
-        "file_path": "/uploads/assets/images/logo.png",
-        "url": "/assets/images/logo.png",
-        "created_at": "2024-01-15T10:30:00Z",
-        "updated_at": "2024-01-15T10:30:00Z"
-      },
-      {
-        "id": 2,
-        "file_name": "document.pdf",
-        "original_name": "user-manual.pdf",
-        "mime_type": "application/pdf",
-        "file_size": 2097152,
-        "folder": "documents",
-        "file_path": "/uploads/assets/documents/document.pdf",
-        "url": "/assets/documents/document.pdf",
-        "created_at": "2024-01-16T14:20:00Z",
-        "updated_at": "2024-01-16T14:20:00Z"
-      }
-    ],
-    "total": 150,
-    "page": 1,
-    "pageSize": 100,
-    "totalPages": 2
-  }
-}
+{ "asset_ids": [12, 13], "group_ids": [5], "mode": "add" }
 ```
 
-**Permissions:** `admin.asset.read`
+`mode` is `add` or `remove`. Response `data`: `{ "updated": 2 }`. `404` if any
+asset id does not exist, `403` if the caller may not update one of them. All of
+the bulk actions are **all-or-nothing**: every id is loaded and the caller's
+right is checked on each asset before the first one changes, so a refusal or an
+unknown id changes nothing.
 
-## Get Single Asset
+`POST /cms-api/v1/admin/assets/bulk-folder` - permission `admin.asset.update`
 
-Retrieve detailed information about a specific asset.
-
-**Endpoint:** `GET /cms-api/v1/admin/assets/{assetId}`
-
-**Authentication:** Required (JWT Bearer token)
-
-**Path Parameters:**
-- `assetId`: Asset ID
-
-**Response:**
 ```json
-{
-  "status": 200,
-  "message": "OK",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2025-01-23T10:30:00Z"
-  },
-  "data": {
-    "asset": {
-      "id": 1,
-      "file_name": "logo.png",
-      "original_name": "company-logo.png",
-      "mime_type": "image/png",
-      "file_size": 245760,
-      "folder": "images",
-      "file_path": "/uploads/assets/images/logo.png",
-      "url": "/assets/images/logo.png",
-      "dimensions": {
-        "width": 800,
-        "height": 600
-      },
-      "created_at": "2024-01-15T10:30:00Z",
-      "updated_at": "2024-01-15T10:30:00Z"
-    }
-  }
-}
+{ "asset_ids": [12, 13], "folder_id": 4 }
 ```
 
-**Permissions:** `admin.asset.read`
+`folder_id` `null` moves them to the top level. Response `data`:
+`{ "moved": 2 }`. `400` for an unknown folder, `404` if any asset id does not
+exist, `403` if the caller may not update one of them.
 
-## Upload Single Asset
+`POST /cms-api/v1/admin/assets/bulk-delete` - permission `admin.asset.delete`
 
-Upload a single file to the asset library.
-
-**Endpoint:** `POST /cms-api/v1/admin/assets`
-
-**Authentication:** Required (JWT Bearer token)
-
-**Content-Type:** `multipart/form-data`
-
-**Form Data:**
-- `file`: The file to upload (required)
-- `folder`: Target folder path (optional)
-- `file_name`: Custom filename (optional)
-- `overwrite`: Whether to overwrite existing file (default: false)
-
-[View JSON Schema](../../../config/schemas/api/v1/requests/admin/create_assets.json)
-
-**Response:**
 ```json
-{
-  "status": 201,
-  "message": "Created",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2025-01-23T10:30:00Z"
-  },
-  "data": {
-    "asset": {
-      "id": 3,
-      "file_name": "banner.jpg",
-      "original_name": "website-banner.jpg",
-      "mime_type": "image/jpeg",
-      "file_size": 512000,
-      "folder": "images/banners",
-      "file_path": "/uploads/assets/images/banners/banner.jpg",
-      "url": "/assets/images/banners/banner.jpg",
-      "dimensions": {
-        "width": 1200,
-        "height": 400
-      },
-      "created_at": "2025-01-23T10:30:00Z",
-      "updated_at": "2025-01-23T10:30:00Z"
-    }
-  }
-}
+{ "asset_ids": [12, 13] }
 ```
 
-**Permissions:** `admin.asset.create`
+Response `data`: `{ "deleted": 2 }`. `404` if any asset id does not exist, `403`
+if the caller may not delete one of them (then nothing is deleted).
 
-## Upload Multiple Assets
+## Delete
 
-Upload multiple files simultaneously.
+`DELETE /cms-api/v1/admin/assets/{assetId}` - permission `admin.asset.delete`
 
-**Endpoint:** `POST /cms-api/v1/admin/assets`
+Removes the row, its grants and the stored file. The rows, grants and log
+entries go in one transaction and the files are removed after it committed, so a
+failed commit leaves the asset exactly as it was. Pages still referencing the
+URL get `404`.
 
-**Authentication:** Required (JWT Bearer token)
+## Folders
 
-**Content-Type:** `multipart/form-data`
+Organisation only; returned as a flat list, clients build the tree from
+`parent_id`. Every write returns the full list.
 
-**Form Data:**
-- `files`: Array of files to upload (required)
-- `folder`: Target folder path (optional)
-- `file_names`: Array of custom filenames (optional)
-- `overwrite`: Whether to overwrite existing files (default: false)
+| Route | Permission | Body |
+| --- | --- | --- |
+| `GET /cms-api/v1/admin/asset-folders` | `admin.asset.read` | - |
+| `POST /cms-api/v1/admin/asset-folders` | `admin.asset.create` | `{ "name": "Team", "parent_id": null }` |
+| `PUT /cms-api/v1/admin/asset-folders/{folderId}` | `admin.asset.update` | same (rename and/or move) |
+| `DELETE /cms-api/v1/admin/asset-folders/{folderId}` | `admin.asset.delete` | - |
+| `POST /cms-api/v1/admin/asset-folders/{folderId}/access` | `admin.asset.update` | `{ "group_ids"?: int[], "role_ids"?: int[] }` |
 
-**Response:**
-```json
-{
-  "status": 201,
-  "message": "Created",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2025-01-23T10:30:00Z"
-  },
-  "data": {
-    "uploaded": [
-      {
-        "id": 4,
-        "file_name": "image1.jpg",
-        "original_name": "photo1.jpg",
-        "mime_type": "image/jpeg",
-        "file_size": 256000,
-        "folder": "gallery",
-        "url": "/assets/gallery/image1.jpg"
-      },
-      {
-        "id": 5,
-        "file_name": "image2.png",
-        "original_name": "photo2.png",
-        "mime_type": "image/png",
-        "file_size": 128000,
-        "folder": "gallery",
-        "url": "/assets/gallery/image2.png"
-      }
-    ],
-    "failed_uploads": 0,
-    "total_uploaded": 2,
-    "errors": []
-  }
-}
-```
+Response `data`: `[{ id, name, parent_id, asset_count, subtree_asset_count }]`;
+`asset_count` is the number of assets directly in the folder and
+`subtree_asset_count` the number in it and in every folder below it, both only
+of assets the caller may manage.
 
-**Response (with failures):**
-```json
-{
-  "status": 206,
-  "message": "Partial Content",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2025-01-23T10:30:00Z"
-  },
-  "data": {
-    "uploaded": [
-      {
-        "id": 6,
-        "file_name": "valid-file.jpg",
-        "original_name": "good-photo.jpg",
-        "mime_type": "image/jpeg",
-        "file_size": 256000,
-        "folder": "uploads",
-        "url": "/assets/uploads/valid-file.jpg"
-      }
-    ],
-    "failed_uploads": 1,
-    "total_uploaded": 1,
-    "errors": [
-      {
-        "file": "corrupted-file.jpg",
-        "error": "File is corrupted or invalid"
-      }
-    ]
-  }
-}
-```
+Rules:
 
-**Permissions:** `admin.asset.create`
+- `400` for an empty name, when a folder would move into itself or one of its
+  subfolders, and when it would sit deeper than 20 levels (counting the
+  subfolders it takes along).
+- `409` when a sibling under the same parent already has the name, compared
+  case-insensitively (`A folder named 'X' already exists here`). The same name
+  under another parent is fine.
+- Only an **empty** folder is deleted: `409 The folder is not empty` when it has
+  a subfolder or any asset, including assets the caller cannot see. Nothing
+  changes then.
 
-## Delete Asset
+### Set access on a folder
 
-Remove an asset from the system.
+`POST /cms-api/v1/admin/asset-folders/{folderId}/access` applies who sees and/or
+who manages to **every asset in the folder and all its subfolders, once**.
+Nothing is stored on the folder: assets added later are not affected.
 
-**Endpoint:** `DELETE /cms-api/v1/admin/assets/{assetId}`
+- At least one key is required (`400` otherwise). A present key **replaces**
+  that set on each asset; an absent key leaves it. `group_ids: []` makes the
+  assets public. `role_ids: []` (or only the admin role) leaves them to the admin
+  role alone: only an admin may send it, anyone else gets `400`.
+- `404` for an unknown folder. `403` and **nothing changed** when the subtree
+  holds an asset the caller may not update, whether the caller can see it or
+  not (all or nothing).
+- `200`, `data: { "updated": n }` with the number of assets changed (`0` for a
+  folder without assets).
 
-**Authentication:** Required (JWT Bearer token)
+## Export
 
-**Path Parameters:**
-- `assetId`: ID of the asset to delete
+`POST /cms-api/v1/admin/assets/export` - permission `admin.asset.read`
 
-**Response:**
-```json
-{
-  "status": 200,
-  "message": "OK",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2025-01-23T10:30:00Z"
-  },
-  "data": {
-    "deleted": true
-  }
-}
-```
-
-**Permissions:** `admin.asset.delete`
-
-## File Upload Specifications
-
-### Supported File Types
-
-The system supports various file types with appropriate validation:
-
-**Images:**
-- JPEG/JPG (`image/jpeg`)
-- PNG (`image/png`)
-- GIF (`image/gif`)
-- WebP (`image/webp`)
-- SVG (`image/svg+xml`)
-
-**Documents:**
-- PDF (`application/pdf`)
-- Microsoft Office (DOC, DOCX, XLS, XLSX, PPT, PPTX)
-- OpenDocument (ODT, ODS, ODP)
-- Text files (`text/plain`, `text/csv`)
-
-**Videos:**
-- MP4 (`video/mp4`)
-- WebM (`video/webm`)
-- AVI (`video/avi`)
-
-**Audio:**
-- MP3 (`audio/mpeg`)
-- WAV (`audio/wav`)
-- OGG (`audio/ogg`)
-
-### File Size Limits
-
-- **Images**: 10MB per file
-- **Documents**: 25MB per file
-- **Videos**: 100MB per file
-- **Audio**: 50MB per file
-- **Total upload**: 500MB per request
-
-### Folder Structure
-
-Assets can be organized in folders:
+Body `{ "asset_ids": [12, 13] }`; empty or omitted exports every asset the
+caller may manage. Returns `application/zip`, bundle `selfhelp/asset-bundle`
+version `2.0`:
 
 ```
-/assets/
-├── images/
-│   ├── logos/
-│   ├── banners/
-│   └── gallery/
-├── documents/
-│   ├── manuals/
-│   └── templates/
-├── videos/
-└── audio/
+manifest.json    { bundle_type, bundle_version, exported_at, assets: [
+                   { uuid, name, alt, mime_type, extension, asset_type,
+                     groups: [names], folder_path: [names], bundle_path } ] }
+files/<name>-<uuid>.<ext>   the bytes, named like a download
 ```
 
-## Frontend Integration Examples
+A bundle without `extension` (made before it existed) is imported with the
+extension of its `mime_type`.
 
-### Asset Manager Component
+Groups and folders travel by **name** because ids differ between instances;
+`folder_path` lists the asset's folders from the top level down (`[]` = the top
+level). The managing roles do not travel. The archive is sent from disk and
+deleted afterwards.
 
-```javascript
-const AssetManager = () => {
-  const [assets, setAssets] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [selectedFolder, setSelectedFolder] = useState('');
+An export is limited to what an import accepts (2000 assets, 4 GB of files in
+total): a larger selection is refused with `400` before an archive is started,
+and the caller exports fewer assets at a time. Assets whose file is missing on
+disk are left out of the manifest.
 
-  useEffect(() => {
-    loadAssets();
-  }, [selectedFolder]);
+## Import
 
-  const loadAssets = async (page = 1, search = '') => {
-    try {
-      const params = new URLSearchParams({
-        page,
-        pageSize: 50,
-        search,
-        folder: selectedFolder
-      });
+`POST /cms-api/v1/admin/assets/import` - permission `admin.asset.create`,
+multipart field `file` (the zip).
 
-      const response = await apiRequest(`/admin/assets?${params}`);
-      setAssets(response.data.assets);
-    } catch (error) {
-      console.error('Failed to load assets:', error);
-    }
-  };
+Import never overwrites: an entry whose uuid already exists is **skipped**.
+Otherwise the asset is created with the same uuid, managed by the importer's
+roles that hold `admin.asset.create`, and put into its `folder_path`: missing
+folders are created by name, existing ones are reused, and a bundle without
+`folder_path` (or with `[]`) imports into the top level. A `folder_path` that is
+not a list of at most 20 non-empty names refuses that entry (`Invalid folder
+path`). An asset that names a group which does not exist on this instance is
+**not imported**: it is reported in `errors` (`Unknown group name(s): ...`),
+because dropping the group would silently make a restricted asset public. Create
+the group, or edit the manifest, and import again; the other assets of the same
+bundle are imported normally. This is the same rule as the users CSV import.
 
-  const uploadFiles = async (files, folder = '') => {
-    setUploading(true);
+An uploaded bundle is untrusted. Files are read one entry at a time (a file the
+manifest does not name is never written; a `bundle_path` must be exactly
+`files/<name>`, otherwise the entry is reported as `Invalid bundle path`), the
+bytes are counted as they are read rather than taken from the archive's
+declared sizes, and the import stops at these limits:
 
-    try {
-      const formData = new FormData();
+| Limit | Value | When exceeded |
+| --- | --- | --- |
+| assets (manifest entries; the archive may hold at most this + 1 entries) | 2000 | `400`, no asset is imported |
+| `manifest.json` | 8 MB | `400` |
+| one file | 512 MB | that entry is reported in `errors`, the others still import |
+| files in total | 4 GB | the import stops there and keeps what came before; the entry is reported in `errors` |
 
-      if (files.length === 1) {
-        // Single file upload
-        formData.append('file', files[0]);
-      } else {
-        // Multiple file upload
-        files.forEach(file => {
-          formData.append('files[]', file);
-        });
-      }
+A bundle that is not a zip, has no manifest, has another `bundle_type` or
+`bundle_version`, or whose manifest is not valid JSON is refused with `400`.
 
-      if (folder) {
-        formData.append('folder', folder);
-      }
+Response `data`: `{ imported, skipped, errors: [{ file, error }] }`.
 
-      formData.append('overwrite', 'false');
+## Asset delivery
 
-      const response = await apiRequest('/admin/assets', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          // Don't set Content-Type, let browser set it with boundary
-        }
-      });
+`GET /cms-api/v1/assets/{uuid}` is the **only** way asset bytes reach a client.
+Files live outside the document root (`var/assets/`), so the web server cannot
+serve them directly and every request is authorized against the asset's groups.
 
-      if (response.data.uploaded) {
-        // Refresh asset list
-        loadAssets();
-        showSuccess(`Uploaded ${response.data.total_uploaded} file(s)`);
-      }
+| Caller | Asset with groups | Asset without groups |
+| --- | --- | --- |
+| Anonymous | `403` | `200` |
+| Logged in, in one of its groups | `200` | `200` |
+| Logged in, in none of its groups | `403` | `200` |
+| Admin role | `200` | `200` |
 
-      if (response.data.failed_uploads > 0) {
-        showWarning(`${response.data.failed_uploads} file(s) failed to upload`);
-      }
-    } catch (error) {
-      showError('Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
+The route carries **no permission link** in `api_routes` (like `health`),
+because access is resource-side: a route-level permission would reject
+anonymous readers of public assets.
 
-  const deleteAsset = async (assetId, fileName) => {
-    if (!confirm(`Delete "${fileName}"?`)) return;
+**Responses:** `200` with the file. `Content-Type` comes from the stored
+MIME type, `Content-Disposition` names the file `<name>-<uuid>.<extension>` and
+is `inline` for images, audio, video, PDF and plain text and `attachment` for
+everything else, and `X-Content-Type-Options: nosniff` is
+always set. SVG, HTML and XML get a sandboxing `Content-Security-Policy` so an
+uploaded file cannot run script on the app's origin. `ETag`/`Last-Modified` are
+emitted, conditional requests return `304`, and responses are
+`Cache-Control: private` so a shared proxy can never serve one user's asset to
+another. `403` when the caller may not view it, `404` for an unknown uuid or a
+missing file.
 
-    try {
-      await apiRequest(`/admin/assets/${assetId}`, {
-        method: 'DELETE'
-      });
+**No content negotiation:** the response is always the file bytes, whatever the
+request's `Accept` header says. Do not add `Accept`-based branching.
 
-      setAssets(assets.filter(asset => asset.id !== assetId));
-      showSuccess('Asset deleted');
-    } catch (error) {
-      showError('Failed to delete asset');
-    }
-  };
+### Identity must reach this route
 
-  return (
-    <div className="asset-manager">
-      <div className="asset-controls">
-        <div className="folder-selector">
-          <select
-            value={selectedFolder}
-            onChange={(e) => setSelectedFolder(e.target.value)}
-          >
-            <option value="">All Folders</option>
-            <option value="images">Images</option>
-            <option value="documents">Documents</option>
-            <option value="videos">Videos</option>
-          </select>
-        </div>
+A browser cannot attach an `Authorization` header to an `<img>`, and the JWT
+lives in an httpOnly cookie, so the frontend proxies asset requests server-side
+(`/api/assets/...`) and attaches `Authorization: Bearer <token>` there, omitting
+it when there is no session so anonymous reads of public assets still work. Do
+not add a reverse-proxy rule that forwards `/cms-api/v1/assets/*` while
+stripping identity.
 
-        <FileUpload
-          onUpload={uploadFiles}
-          multiple={true}
-          disabled={uploading}
-        />
-      </div>
+### Deployment requirement
 
-      {uploading && <div className="upload-progress">Uploading...</div>}
+`var/assets/` must **not** be served by the web server and must be writable by
+PHP.
 
-      <div className="assets-grid">
-        {assets.map(asset => (
-          <AssetItem
-            key={asset.id}
-            asset={asset}
-            onDelete={() => deleteAsset(asset.id, asset.file_name)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-};
-```
+## Where assets are referenced
 
-### File Upload Component
+- Page content stores the delivery URL (image/video fields, `select-image` /
+  `select-video` options, labelled `name.<extension>`). Those URLs keep working
+  across edits and replaces.
+- Action email attachments store the delivery URL; the mailer resolves it to
+  the stored file and attaches it as `<name>-<uuid>.<extension>`. Only assets can be
+  attached: saving an action whose attachment is a server path, an external URL
+  or an unknown asset is a `400`, and attaching an asset the person saving the
+  action may not view is a `403` (see
+  [`14-admin-actions.md`](14-admin-actions.md)).
+- The navigation logo stores the delivery URL.
 
-```javascript
-const FileUpload = ({ onUpload, multiple = false, disabled = false }) => {
-  const fileInputRef = useRef(null);
+## Migration (core 0.1.43)
 
-  const handleFileSelect = (event) => {
-    const files = Array.from(event.target.files);
-
-    if (files.length > 0) {
-      // Validate file types and sizes
-      const validFiles = files.filter(file => {
-        // Check file size (10MB limit)
-        if (file.size > 10 * 1024 * 1024) {
-          showError(`${file.name} is too large (max 10MB)`);
-          return false;
-        }
-
-        // Check file type
-        const allowedTypes = [
-          'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-          'application/pdf', 'video/mp4', 'audio/mpeg'
-        ];
-
-        if (!allowedTypes.includes(file.type)) {
-          showError(`${file.name} has unsupported file type`);
-          return false;
-        }
-
-        return true;
-      });
-
-      if (validFiles.length > 0) {
-        onUpload(validFiles);
-      }
-    }
-
-    // Clear input
-    event.target.value = '';
-  };
-
-  const handleDrop = (event) => {
-    event.preventDefault();
-
-    const files = Array.from(event.dataTransfer.files);
-    if (files.length > 0) {
-      onUpload(files);
-    }
-  };
-
-  const handleDragOver = (event) => {
-    event.preventDefault();
-  };
-
-  return (
-    <div
-      className={`file-upload ${disabled ? 'disabled' : ''}`}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-    >
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple={multiple}
-        onChange={handleFileSelect}
-        accept="image/*,application/pdf,video/*,audio/*"
-        style={{ display: 'none' }}
-      />
-
-      <button
-        type="button"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={disabled}
-      >
-        {multiple ? 'Upload Files' : 'Upload File'}
-      </button>
-
-      <div className="upload-info">
-        <small>Drop files here or click to browse</small>
-        <small>Supported: Images, PDFs, Videos, Audio (max 10MB each)</small>
-      </div>
-    </div>
-  );
-};
-```
-
-### Asset Preview Component
-
-```javascript
-const AssetItem = ({ asset, onDelete }) => {
-  const [previewUrl, setPreviewUrl] = useState(null);
-
-  useEffect(() => {
-    // Generate preview for images
-    if (asset.mime_type.startsWith('image/')) {
-      setPreviewUrl(asset.url);
-    }
-  }, [asset]);
-
-  const getFileIcon = (mimeType) => {
-    if (mimeType.startsWith('image/')) return '🖼️';
-    if (mimeType === 'application/pdf') return '📄';
-    if (mimeType.startsWith('video/')) return '🎥';
-    if (mimeType.startsWith('audio/')) return '🎵';
-    return '📁';
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  return (
-    <div className="asset-item">
-      <div className="asset-preview">
-        {previewUrl ? (
-          <img src={previewUrl} alt={asset.file_name} />
-        ) : (
-          <div className="file-icon">
-            {getFileIcon(asset.mime_type)}
-          </div>
-        )}
-      </div>
-
-      <div className="asset-info">
-        <div className="asset-name" title={asset.original_name}>
-          {asset.file_name}
-        </div>
-        <div className="asset-meta">
-          <span className="file-size">{formatFileSize(asset.file_size)}</span>
-          <span className="file-type">{asset.mime_type}</span>
-        </div>
-        {asset.folder && (
-          <div className="asset-folder">📁 {asset.folder}</div>
-        )}
-      </div>
-
-      <div className="asset-actions">
-        <button
-          onClick={() => window.open(asset.url, '_blank')}
-          title="View/Download"
-        >
-          👁️
-        </button>
-        <button
-          onClick={() => navigator.clipboard.writeText(asset.url)}
-          title="Copy URL"
-        >
-          📋
-        </button>
-        <button
-          onClick={onDelete}
-          title="Delete"
-          className="delete-btn"
-        >
-          🗑️
-        </button>
-      </div>
-    </div>
-  );
-};
-```
-
-## Error Handling
-
-```javascript
-const handleAssetOperation = async (operation, ...args) => {
-  try {
-    const response = await apiRequest(operation, ...args);
-
-    if (response.status === 200 || response.status === 201) {
-      return { success: true, data: response.data };
-    } else if (response.status === 206) {
-      // Partial success for multi-file uploads
-      return {
-        success: 'partial',
-        data: response.data,
-        message: `${response.data.total_uploaded} files uploaded, ${response.data.failed_uploads} failed`
-      };
-    }
-  } catch (error) {
-    const errorData = error.response?.data;
-
-    if (errorData?.status === 400) {
-      return {
-        success: false,
-        error: 'Validation failed',
-        details: errorData.error,
-        validation: errorData.validation
-      };
-    } else if (errorData?.status === 413) {
-      return {
-        success: false,
-        error: 'File too large',
-        action: 'reduce_file_size'
-      };
-    } else if (errorData?.status === 415) {
-      return {
-        success: false,
-        error: 'Unsupported file type',
-        action: 'change_file_type'
-      };
-    } else if (errorData?.status === 409) {
-      return {
-        success: false,
-        error: 'File already exists',
-        action: 'choose_different_name'
-      };
-    } else {
-      return {
-        success: false,
-        error: 'Upload failed'
-      };
-    }
-  }
-};
-```
-
-## Best Practices
-
-1. **File Validation**: Always validate file types and sizes before upload
-2. **Progress Feedback**: Show upload progress for large files
-3. **Error Recovery**: Provide clear error messages and recovery options
-4. **Batch Operations**: Use multi-file upload for efficiency
-5. **Caching**: Cache asset URLs and metadata for performance
-6. **Access Control**: Respect file permissions and user access levels
-7. **Storage Optimization**: Consider file compression and optimization
-8. **Backup**: Regular backup of uploaded assets
-
-## Integration with Content Management
-
-Assets are integrated throughout the CMS:
-
-- **Page Content**: Images and documents embedded in page sections
-- **Media Libraries**: Organized asset collections
-- **File References**: Assets linked to content sections
-- **Responsive Images**: Automatic image resizing and optimization
-- **CDN Integration**: Assets served via CDN for performance
-
----
-
-**Next:** [Admin Users](./07-admin-users.md) | **Previous:** [Admin Languages](./05-admin-languages.md) | **Back to:** [API Overview](../../README.md)
+See [`docs/developer/09-asset-management.md`](../../developer/09-asset-management.md#migration)
+for what `Version20261103112133` changes (including the removal of the `admin`
+and `therapist` groups: `subject` is the one built-in group). Folder-era asset
+URLs in content are not rewritten. `Version20261112103337` then adds the
+extension and content hash, makes folder deletion `RESTRICT`, adds the folder
+access route and removes the admin role's asset grants; existing assets keep a
+NULL extension and hash.

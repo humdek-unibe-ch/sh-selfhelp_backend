@@ -39,6 +39,9 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
     private const IMPORT_KEYWORD_PREFIX = 'qa2-';
     private const IMPORT_ROUTE_PREFIX = '/qa2';
 
+    /** The wizard scopes the entry variables by the base name (hyphens become underscores). */
+    private const ENTRY_SCOPE = 'qa_et_port';
+
     public function testEntryTableBindingAndLinksSurvivePrefixedRoundTrip(): void
     {
         $admin = $this->loginAsQaAdmin();
@@ -91,8 +94,8 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
             );
             $ownerName = substr($exportedBinding, strlen('@section:'));
 
-            $formHolder = $this->findBundleSectionByStyle($bundle['pages'] ?? [], 'form-record');
-            self::assertNotNull($formHolder, 'The exported bundle must carry the form-record holder.');
+            $formHolder = $this->findBundleSectionByStyle($bundle['pages'] ?? [], 'entry-record-form');
+            self::assertNotNull($formHolder, 'The exported bundle must carry the entry-record-form holder.');
             self::assertSame(
                 $formHolder['section_name'] ?? null,
                 $ownerName,
@@ -147,7 +150,7 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
             // section (table name == owner section id). The wizard reuses one
             // form section on two pages; the bundle format embeds sections per
             // page, so the import materializes one copy per page — the relink
-            // may bind to either copy. Collect every imported form-record
+            // may bind to either copy. Collect every imported entry-record-form
             // section id across the app's pages as valid owners.
             $importedFormSectionIds = [];
             foreach ($importedPageIds as $importedPageId) {
@@ -155,13 +158,13 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
                 $data = $this->assertEnvelopeSuccess($resp);
                 $formSectionId = $this->findSectionIdByStyle(
                     is_array($data['sections'] ?? null) ? $data['sections'] : [],
-                    'form-record'
+                    'entry-record-form'
                 );
                 if ($formSectionId !== null) {
                     $importedFormSectionIds[] = (string) $formSectionId;
                 }
             }
-            self::assertNotEmpty($importedFormSectionIds, 'The imported app must contain form-record sections.');
+            self::assertNotEmpty($importedFormSectionIds, 'The imported app must contain entry-record-form sections.');
             $newTableName = $this->dataTableNameById((int) $importedBinding, $admin);
             self::assertContains(
                 $newTableName,
@@ -185,9 +188,9 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
             );
             $cardLink = $this->sectionFieldValue($importedPublicListId, 'link', 'url', $admin);
             self::assertSame(
-                self::IMPORT_ROUTE_PREFIX . '/' . self::BASE . '/{{record_id}}',
+                self::IMPORT_ROUTE_PREFIX . '/' . self::BASE . '/{{' . self::ENTRY_SCOPE . '.record_id}}',
                 $cardLink,
-                'The public card "Open" link must follow the route prefix (keeping its {{record_id}} token).'
+                'The public card "Open" link must follow the route prefix (keeping its scoped {{scope.record_id}} token).'
             );
 
             // The source app is untouched: its links keep the unprefixed base.

@@ -87,6 +87,27 @@ final class AuthControllerTest extends QaWebTestCase
         self::assertTrue($envelope['logged_in'] ?? false, 'logged_in must be true on success');
     }
 
+    public function testLoginRecordsTheLastLoginTime(): void
+    {
+        // M3: last_login was only set after a 2FA code, so password logins showed "never".
+        $em = $this->service(EntityManagerInterface::class);
+        $admin = $em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
+        self::assertInstanceOf(User::class, $admin);
+        $admin->setLastLogin(null);
+        $em->flush();
+
+        $this->jsonRequest('POST', '/cms-api/v1/auth/login', [
+            'email' => QaBaselineFixture::QA_ADMIN_EMAIL,
+            'password' => QaBaselineFixture::QA_PASSWORD,
+        ]);
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+
+        $em->clear();
+        $reloaded = $em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
+        self::assertNotNull($reloaded?->getLastLogin(), 'A successful login must record last_login.');
+        self::assertLessThan(60, time() - $reloaded->getLastLogin()->getTimestamp());
+    }
+
     public function testLoginFailsForWrongPassword(): void
     {
         $envelope = $this->jsonRequest('POST', '/cms-api/v1/auth/login', [

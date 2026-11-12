@@ -618,7 +618,7 @@ class SectionRelationshipService extends BaseService
             if ($parentSection) {
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
-                    ->invalidateItem("section_fields_{$parentSection->getId()}");
+                    ->invalidateItem(SectionFieldService::fieldsCacheKey((int) $parentSection->getId()));
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
                     ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $parentSection->getId());
@@ -626,7 +626,7 @@ class SectionRelationshipService extends BaseService
             if ($childSection) {
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
-                    ->invalidateItem("section_fields_{$childSection->getId()}");
+                    ->invalidateItem(SectionFieldService::fieldsCacheKey((int) $childSection->getId()));
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
                     ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $childSection->getId());

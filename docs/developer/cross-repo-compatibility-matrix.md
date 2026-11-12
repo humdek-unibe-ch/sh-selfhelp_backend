@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-07-09.
+Last verified: 2026-11-09.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -95,7 +95,10 @@ the same change wave:
 - raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
   adopts it.
 
-> **Current floor (2026-06-23):** the **core 0.1.17** style-schema contract
+> **Current floor (2026-11-11):** **frontend `>=0.1.70` ⇄ core `>=0.1.43`** (the
+> core 0.1.43 wave below; 0.1.70 is the first tagged frontend of that wave).
+> Historical note, kept for context: the earlier floor
+> was the **core 0.1.17** style-schema contract
 > (built up across the 0.1.15 → 0.1.17 style waves; `selfhelp.cms_version` was
 > caught up from `0.1.15` to the changelog's latest `0.1.17` in this change) — the
 > mobile-rendering taxonomy (style `renderTarget`, a required field `scope` on
@@ -568,6 +571,44 @@ the same change wave:
 > `1.21.7`). Do not treat staged shared `2.x` /
 > `3.x` tags as this release line.
 
+> **Core 0.1.43 / frontend 0.1.70 (admin management, asset rework, private
+> uploads, rate limiting — breaking, pre-release):** one coordinated wave, fresh
+> installs only. Full contract in the backend `CHANGELOG.md` v0.1.43.
+> (0.1.69 was never tagged; the build ships as 0.1.70.)
+> - **Users**: `GET /admin/users` filters (`status` incl. `imported`,
+>   `id_groups`, `id_roles` — group/role members are listed here, there are no
+>   member routes), `GET /admin/users/stats`, bulk actions, CSV export/import,
+>   and a real `clean-data` (DB rows, then the user's form files).
+> - **Stats**: `GET /admin/registration-codes/stats`,
+>   `GET /admin/scheduled-jobs/stats`.
+> - **Assets**: uuid identity stored as `var/assets/<uuid>` (no `file_name` /
+>   `file_path`; clients fetch `url`), delivery via `GET /cms-api/v1/assets/{uuid}`
+>   (no groups = public, otherwise members + admin role; markup sandboxed),
+>   per-asset management through `role_data_access` (`admin.asset.update`),
+>   organisation-only folder tree, bulk actions, export/import bundle 2.0. The
+>   web frontend fetches assets through the BFF (`/api/assets/...`); the mobile
+>   app sends its bearer token on asset requests.
+> - **Groups**: one built-in group, `subject`; no `admin`, `therapist` or
+>   `researcher` seed (admin rights come from the admin role). The group-type
+>   concept is gone (`id_group_types` is no longer sent or accepted); a group
+>   flag `add_to_new_pages` decides which groups get `select` on every new
+>   public page.
+> - **Form uploads** are private (`var/form-files/`, served by
+>   `/forms/files/...`; `files_public` opt-in).
+> - **Rate limiting** on login, 2FA and password reset (`429` + `Retry-After`;
+>   CMS field `alert_rate_limited`), consumed by frontend and mobile through
+>   `@selfhelp/shared` 1.22.1 (`formatRateLimitMessage`,
+>   `getRateLimitRetryAfter`, `files_public`).
+> - **Navigation**: page types resolved by name, `public_visibility` on admin
+>   navigation items, `menu_eligible` on `GET /admin/pages`, search
+>   `field_policy`.
+>
+> Floors: backend `supports.frontend` `>=0.1.70`, frontend `supports.core`
+> `>=0.1.43`, backend `supports.manager` `>=1.7.0`. Deployments persist
+> `var/assets` and `var/form-files` (sh-manager `assets` / `form_files`
+> volumes); nothing is written under `public/`. `pluginApiVersion` unchanged
+> (`0.1.0`).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -575,18 +616,19 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.36` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.43` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.21.7` | npm (1.21.5 wave + resolve/prefill in 1.21.6 + `should_fallback` in 1.21.7). Do not use staged git tags `v2*` / `v3*` from this branch. |
-| `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.7` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.63 <0.2.0` | frontend adopts filter preview UI + column/fields-map editors |
-| `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
-| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding; pair via `supports.core` (package SemVer may stay `0.1.33`) |
+| `@selfhelp/shared` | `1.22.1` | npm (1.21.x wave + rate-limit helpers / `alert_rate_limited` in 1.22.0 + `files_public` in 1.22.1). Do not use staged git tags `v2*` / `v3*` from this branch. |
+| `sh-selfhelp_frontend` | `0.1.70` | admin users/groups/roles management, uuid asset UI, private form uploads, rate-limit messages, public-visibility badges, login `X-Forwarded-For` |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.22.1` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` + rate-limit helpers + `files_public` |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.43 <0.2.0` | core 0.1.43 wave (users management, uuid assets, private uploads, rate limiting, `public_visibility` / `menu_eligible`) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.70 <0.2.0` | frontend 0.1.70 adopts the core 0.1.43 wave |
+| `sh-selfhelp_backend` → manager (`release-manifest.json` `supports.manager`) | `>=1.7.0` | manager that backs up form_files/assets/plugin volumes (registry `requiresManager` raised at publish) |
+| `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.34` | restricted asset token, no on-device condition eval; floor-neutral for manager |
+| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.43 <0.2.0` | asset bearer token + private uploads; pair via `supports.core` |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
-| `sh-selfhelp_mobile` | `0.1.33` | collapsible drawer with active-trail auto-expand, tab `item_limit` slice, shared active-state helpers; entry-table renderer rename |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `1.21.7` | strict menu payload + active-trail helpers + entry-table style types + `buildPagesResolveUrl` (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
+| `sh-selfhelp_mobile` | `0.1.34` | restricted assets with bearer token; conditions no longer evaluated on device |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `1.22.1` | strict menu payload + active-trail helpers + entry-table style types + `buildPagesResolveUrl` (pinned via `overrides`; SurveyJS mobile peer raised to `^1.22.1`) |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |

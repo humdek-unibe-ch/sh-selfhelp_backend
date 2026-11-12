@@ -22,6 +22,9 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 class NavigationSearchIndexService extends BaseService
 {
+    /** Search field policy limiting matches to indexed title + description. */
+    public const FIELD_POLICY_PAGE_METADATA_ONLY = 'page_metadata_only';
+
     /** Field names excluded from body indexing (submissions, secrets, raw config). */
     private const EXCLUDED_FIELD_NAMES = [
         'data_config',
@@ -89,8 +92,13 @@ class NavigationSearchIndexService extends BaseService
      *
      * @return list<array{page_id: int, keyword: string, url: string|null, weight: int, snippet_source: string, snippet_text: string}>
      */
-    public function searchIndexedContent(int $languageId, string $query, int $limit, array $accessiblePageIds): array
-    {
+    public function searchIndexedContent(
+        int $languageId,
+        string $query,
+        int $limit,
+        array $accessiblePageIds,
+        string $fieldPolicy = 'all_display_text',
+    ): array {
         if ($accessiblePageIds === [] || !$this->searchIndexTableExists()) {
             return [];
         }
@@ -98,6 +106,11 @@ class NavigationSearchIndexService extends BaseService
         $needle = mb_strtolower($query);
         $like = '%' . addcslashes($needle, '%_') . '%';
         $pageIdList = array_keys($accessiblePageIds);
+
+        // `page_metadata_only` restricts matching to title + description;
+        // `all_display_text` also matches the indexed body text.
+        $matchBody = $fieldPolicy !== self::FIELD_POLICY_PAGE_METADATA_ONLY;
+        $bodyClause = $matchBody ? "OR LOWER(COALESCE(psi.body_text, '')) LIKE ?" : '';
 
         $connection = $this->entityManager->getConnection();
         $placeholders = implode(',', array_fill(0, count($pageIdList), '?'));
@@ -114,16 +127,20 @@ class NavigationSearchIndexService extends BaseService
               AND (
                 LOWER(COALESCE(psi.title_text, '')) LIKE ?
                 OR LOWER(COALESCE(psi.description_text, '')) LIKE ?
-                OR LOWER(COALESCE(psi.body_text, '')) LIKE ?
+                {$bodyClause}
               )
             ORDER BY (psi.id_languages = ?) DESC
             LIMIT ?
             SQL;
 
-        $params = array_merge($pageIdList, [$like, $like, $like, $languageId, $limit * 4]);
+        $likeParams = $matchBody ? [$like, $like, $like] : [$like, $like];
+        $likeTypes = array_fill(0, count($likeParams), ParameterType::STRING);
+
+        $params = array_merge($pageIdList, $likeParams, [$languageId, $limit * 4]);
         $types = array_merge(
             array_fill(0, count($pageIdList), ParameterType::INTEGER),
-            [ParameterType::STRING, ParameterType::STRING, ParameterType::STRING, ParameterType::INTEGER, ParameterType::INTEGER],
+            $likeTypes,
+            [ParameterType::INTEGER, ParameterType::INTEGER],
         );
 
         /** @var list<array<string, mixed>> $rows */
@@ -157,7 +174,7 @@ class NavigationSearchIndexService extends BaseService
                 $weight = 20;
                 $snippetSource = 'description';
                 $snippetText = $description;
-            } elseif ($body !== '' && str_contains(mb_strtolower($body), $needle)) {
+            } elseif ($matchBody && $body !== '' && str_contains(mb_strtolower($body), $needle)) {
                 $weight = 10;
                 $snippetSource = 'content';
                 $snippetText = $this->extractSnippet($body, $query);

@@ -44,8 +44,9 @@ The detail page loads exactly one row: set **Data table** on the `entry-record`
 section and **Load record from route parameter** to the route param name (usually
 `record_id`) — the **same field** as on `entry-record-form`. The backend reads
 that param from the matched URL and loads the row; there is no author SQL
-**Filter** on `entry-record`. Without `load_record_from` (or when the param is
-missing) the section stays empty (fail-closed).
+**Filter** on `entry-record`. A blank `load_record_from` takes the style default,
+`record_id`; when the matched URL has no parameter of that name the section
+stays empty (fail-closed).
 With `create_form` the form page **owns the data table** (via the
 `entry-record-form` section); list and detail holders bind through their **Data
 table** property field — **not** through Data configuration → *Table*.

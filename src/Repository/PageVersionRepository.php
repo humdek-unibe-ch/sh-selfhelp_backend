@@ -31,6 +31,53 @@ class PageVersionRepository extends ServiceEntityRepository
     }
 
     /**
+     * The versioned page settings (`page.fields`) of each page's published
+     * version. Pages without a published version, or whose version holds no
+     * settings, are absent. Reads only that JSON path, not the whole
+     * snapshot.
+     *
+     * @param list<int> $pageIds
+     * @return array<int, array<string, array<int, string>>> page id => field name => [language id => content]
+     */
+    public function fetchPublishedPageFields(array $pageIds): array
+    {
+        if (empty($pageIds)) {
+            return [];
+        }
+
+        $rows = $this->getEntityManager()->getConnection()->fetchAllAssociative(
+            "SELECT p.id AS page_id, JSON_EXTRACT(pv.page_json, '$.page.fields') AS fields
+               FROM pages p
+               INNER JOIN page_versions pv ON pv.id = p.id_published_page_versions
+              WHERE p.id IN (:ids)",
+            ['ids' => $pageIds],
+            ['ids' => \Doctrine\DBAL\ArrayParameterType::INTEGER]
+        );
+
+        $result = [];
+        foreach ($rows as $row) {
+            $decoded = is_string($row['fields']) ? json_decode($row['fields'], true) : null;
+            if (!is_array($decoded) || !is_numeric($row['page_id'])) {
+                continue;
+            }
+            $fields = [];
+            foreach ($decoded as $name => $byLanguage) {
+                if (!is_string($name) || !is_array($byLanguage)) {
+                    continue;
+                }
+                foreach ($byLanguage as $languageId => $content) {
+                    if (is_scalar($content)) {
+                        $fields[$name][(int) $languageId] = (string) $content;
+                    }
+                }
+            }
+            $result[(int) $row['page_id']] = $fields;
+        }
+
+        return $result;
+    }
+
+    /**
      * Get all versions for a specific page ordered by version number descending
      * 
      * @param int $pageId The page ID

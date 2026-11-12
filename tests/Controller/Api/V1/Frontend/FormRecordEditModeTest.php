@@ -23,6 +23,7 @@ use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Tests\Support\Factories\GroupFactory;
 use App\Tests\Support\Factories\PageSectionFactory;
 use App\Tests\Support\Factories\RoleDataAccessFactory;
 use App\Tests\Support\Factories\UserFactory;
@@ -161,10 +162,17 @@ final class FormRecordEditModeTest extends QaWebTestCase
     public function testAdminRoleOverrideAllowsForeignUpdateOnSharedSection(): void
     {
         [$page, $section] = $this->setUpFormPage('qa_editmode_shared_admin', ownEntriesOnly: false);
-        // qa.admin is in the seeded admin group; grant that group page ACL too.
+        // qa.admin holds the admin role but no group (a fresh install seeds only
+        // `subject`, and admin rights come from the role). Put it in a custom
+        // group that sees the page, so the test isolates the admin role's
+        // override on the data table.
+        $adminGroup = (new GroupFactory($this->em))->createGroup('qa_editmode_admin_group');
+        $admin = $this->em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
+        self::assertInstanceOf(User::class, $admin);
+        $this->users->addToGroup($admin, $adminGroup);
         $this->pages->grantGroupAcl(
             $page,
-            $this->groupByName('admin'),
+            $adminGroup,
             select: true,
             insert: true,
             update: true,

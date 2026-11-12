@@ -12,6 +12,7 @@ use App\Entity\DataRow;
 use App\Entity\DataTable;
 use App\Entity\Lookup;
 use App\Entity\ScheduledJob;
+use App\Repository\AssetRepository;
 use App\Repository\ScheduledJobRepository;
 use App\Entity\ScheduledJobRecipient;
 use App\Entity\ScheduledJobReminder;
@@ -22,6 +23,7 @@ use App\Plugin\ScheduledJob\PluginScheduledJobRegistry;
 use App\Service\Auth\MailHtmlRenderer;
 use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\Admin\AssetStorageService;
 use App\Service\CMS\CmsPreferenceService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -52,7 +54,33 @@ class JobSchedulerService extends BaseService
         private readonly PluginScheduledJobDeliveryGate $pluginDeliveryGate,
         private readonly ScheduledJobRepository $scheduledJobRepository,
         private readonly MailHtmlRenderer $mailHtmlRenderer,
+        private readonly AssetRepository $assetRepository,
+        private readonly AssetStorageService $assetStorage,
     ) {
+    }
+
+    /**
+     * Resolve an email attachment, given as the asset's delivery URL, to the
+     * stored file and the name to attach it under. Null when it is not an
+     * uploaded asset or its file is gone.
+     *
+     * Only assets can be attached. A server file path is never read: an action
+     * author must not be able to mail out `.env` or another asset's bytes by
+     * naming a path. Which assets an author may attach is checked when the
+     * action is saved (see ActionAttachmentValidator).
+     *
+     * @return array{0: string, 1: string}|null
+     */
+    private function resolveAssetAttachment(string $reference): ?array
+    {
+        $uuid = $this->assetStorage->uuidFromReference($reference);
+        $asset = $uuid !== null ? $this->assetRepository->findOneByUuid($uuid) : null;
+        $path = $asset !== null ? $this->assetStorage->resolveForDelivery($asset->getUuid()) : null;
+        if ($asset === null || $path === null) {
+            return null;
+        }
+
+        return [$path, $this->assetStorage->downloadName($asset)];
     }
 
     /**
@@ -940,14 +968,18 @@ class JobSchedulerService extends BaseService
             $isHtml ? $email->html($this->mailHtmlRenderer->render($body)) : $email->text($body);
 
             foreach ($attachments as $attachment) {
-                if (!is_array($attachment)) {
+                // Action configs store the asset delivery URL (assets live
+                // outside the docroot under a uuid, so it is never a file path).
+                $reference = is_array($attachment) ? ($attachment['path'] ?? null) : null;
+                $resolved = is_string($reference) && $reference !== '' ? $this->resolveAssetAttachment($reference) : null;
+                if ($resolved === null) {
+                    $this->logger->warning('Email attachment skipped: it is not an available asset', [
+                        'jobId' => $job->getId(),
+                        'attachment' => is_string($reference) ? $reference : null,
+                    ]);
                     continue;
                 }
-                $path = $attachment['path'] ?? '';
-                if (is_string($path) && $path !== '' && is_file($path)) {
-                    $filename = $attachment['filename'] ?? null;
-                    $email->attachFromPath($path, is_string($filename) ? $filename : null);
-                }
+                $email->attachFromPath($resolved[0], $resolved[1]);
             }
 
             $this->mailer->send($email);

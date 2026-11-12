@@ -29,6 +29,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * The env hard switch (`SELFHELP_MAINTENANCE_MODE`) still wins: `--disable`
  * cannot clear an env-forced maintenance state (the command reports that).
+ *
+ * `--format=json` prints exactly one JSON line of {@see MaintenanceModeService::getState()}
+ * after the action (or status probe), for the manager's machine-readable probe.
+ * Text format (default) keeps the human sentences unchanged.
  */
 #[AsCommand(
     name: 'selfhelp:maintenance',
@@ -48,28 +52,47 @@ final class MaintenanceModeCommand extends Command
         $this->addOption('disable', null, InputOption::VALUE_NONE, 'Disable maintenance mode (removes the lock file).');
         $this->addOption('message', null, InputOption::VALUE_REQUIRED, 'Operator-facing maintenance message.', 'Scheduled maintenance in progress.');
         $this->addOption('actor', null, InputOption::VALUE_REQUIRED, 'Who toggled maintenance (audit field).', 'sh-manager');
+        $this->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: text (default) or json.', 'text');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
+        $formatOption = $input->getOption('format');
+        $format = is_string($formatOption) ? $formatOption : 'text';
+        if ($format !== 'text' && $format !== 'json') {
+            fwrite(\STDERR, "Unknown format \"{$format}\". Use text or json.\n");
+
+            return Command::INVALID;
+        }
+        $json = $format === 'json';
+
         $enable = (bool) $input->getOption('enable');
         $disable = (bool) $input->getOption('disable');
 
+        if ($enable && $disable) {
+            if ($json) {
+                fwrite(\STDERR, "Pass only one of --enable / --disable.\n");
+            } else {
+                (new SymfonyStyle($input, $output))->error('Pass only one of --enable / --disable.');
+            }
+
+            return Command::FAILURE;
+        }
+
         if (!$enable && !$disable) {
             $state = $this->maintenanceMode->getState();
-            $io->info(sprintf(
+            if ($json) {
+                $output->writeln(json_encode($state, \JSON_THROW_ON_ERROR));
+
+                return Command::SUCCESS;
+            }
+            (new SymfonyStyle($input, $output))->info(sprintf(
                 'Maintenance mode is currently %s%s.',
                 $state['enabled'] ? 'ENABLED' : 'disabled',
                 $state['forced_by_env'] ? ' (forced by SELFHELP_MAINTENANCE_MODE)' : '',
             ));
 
             return Command::SUCCESS;
-        }
-        if ($enable && $disable) {
-            $io->error('Pass only one of --enable / --disable.');
-
-            return Command::FAILURE;
         }
 
         $messageOption = $input->getOption('message');
@@ -78,13 +101,24 @@ final class MaintenanceModeCommand extends Command
         $actor = is_string($actorOption) ? $actorOption : 'sh-manager';
 
         if ($enable) {
-            $this->maintenanceMode->enable($message, $actor);
-            $io->success('Maintenance mode enabled. Normal /cms-api traffic now receives a 503.');
+            $state = $this->maintenanceMode->enable($message, $actor);
+            if ($json) {
+                $output->writeln(json_encode($state, \JSON_THROW_ON_ERROR));
+
+                return Command::SUCCESS;
+            }
+            (new SymfonyStyle($input, $output))->success('Maintenance mode enabled. Normal /cms-api traffic now receives a 503.');
 
             return Command::SUCCESS;
         }
 
         $state = $this->maintenanceMode->disable();
+        if ($json) {
+            $output->writeln(json_encode($state, \JSON_THROW_ON_ERROR));
+
+            return Command::SUCCESS;
+        }
+        $io = new SymfonyStyle($input, $output);
         if ($state['forced_by_env']) {
             $io->warning('Maintenance lock removed, but SELFHELP_MAINTENANCE_MODE still forces maintenance on. Clear it in the instance .env.');
 

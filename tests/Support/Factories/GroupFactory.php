@@ -14,8 +14,8 @@ use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Builds `qa_`-prefixed {@see Group} rows so tests can model membership-driven
- * ACL scenarios without touching the three seeded production groups (`admin`,
- * `therapist`, `subject`). Reuses an existing qa group by name when re-run so the
+ * ACL scenarios without touching the one seeded production group (`subject`,
+ * the default group of new public pages). Reuses an existing qa group by name when re-run so the
  * deterministic keyword never collides (the DAMA transaction rolls each row back
  * at tearDown).
  */
@@ -30,6 +30,7 @@ final class GroupFactory
         string $name = 'qa_group',
         string $description = 'QA test group',
         bool $requires2fa = false,
+        bool $addToNewPages = false,
     ): Group {
         $existing = $this->em->getRepository(Group::class)->findOneBy(['name' => $name]);
         if ($existing instanceof Group) {
@@ -40,6 +41,7 @@ final class GroupFactory
         $group->setName($name);
         $group->setDescription($description);
         $group->setRequires2fa($requires2fa);
+        $group->setAddToNewPages($addToNewPages);
         $this->em->persist($group);
         $this->em->flush();
 

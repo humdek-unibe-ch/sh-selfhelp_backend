@@ -80,7 +80,6 @@ class JWTService
         // using the JWT_TOKEN_TTL environment variable
         
         // Create token with minimal payload
-        $user->setUserName($user->getEmail());
         return $this->jwtManager->createFromPayload($user, $payload);
     }
 
@@ -375,7 +374,6 @@ class JWTService
             'exp'           => time() + $ttl,
         ];
 
-        $targetUser->setUserName($targetUser->getEmail());
         $token = $this->jwtManager->createFromPayload($targetUser, $payload);
 
         $this->logger->info('[JWTService] Impersonation token created.', [
@@ -439,7 +437,6 @@ class JWTService
             'exp'            => time() + $ttl,
         ];
 
-        $user->setUserName($user->getEmail());
         $token = $this->jwtManager->createFromPayload($user, $payload);
 
         $this->logger->info('[JWTService] Mobile preview token created.', [

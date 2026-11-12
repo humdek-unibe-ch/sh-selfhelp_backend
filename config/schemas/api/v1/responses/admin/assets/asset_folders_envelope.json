@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Asset Folders Response Envelope",
+  "description": "All asset folders as a flat list; build the tree from parent_id",
+  "allOf": [
+    {
+      "$ref": "../../common/_response_envelope.json"
+    }
+  ],
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "asset_count": {
+            "type": "integer",
+            "description": "Assets directly in this folder that the caller may manage"
+          },
+          "subtree_asset_count": {
+            "type": "integer",
+            "description": "Assets in this folder and in all folders below it that the caller may manage"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "parent_id",
+          "asset_count",
+          "subtree_asset_count"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "data"
+  ]
+}

@@ -30,6 +30,7 @@ class AdminActionService extends BaseService
         private readonly LookupRepository $lookupRepository,
         private readonly AdminActionTranslationService $adminActionTranslationService,
         private readonly CacheService $cache,
+        private readonly ActionAttachmentValidator $attachmentValidator,
     ) {
     }
 
@@ -129,6 +130,7 @@ class AdminActionService extends BaseService
             if (array_key_exists('config', $data)) {
                 // Store as JSON text (validated at controller level against schema)
                 $config = $data['config'];
+                $this->assertAttachmentsAllowed($config);
                 $configJson = is_string($config) ? $config : json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 $action->setConfig($configJson === false ? null : $configJson);
             }
@@ -213,6 +215,7 @@ class AdminActionService extends BaseService
 
             if (array_key_exists('config', $data)) {
                 $config = $data['config'];
+                $this->assertAttachmentsAllowed($config);
                 $configJson = is_string($config) ? $config : json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 $action->setConfig($configJson === false ? null : $configJson);
             }
@@ -310,6 +313,18 @@ class AdminActionService extends BaseService
                 Response::HTTP_INTERNAL_SERVER_ERROR,
                 ['previous_exception' => $e->getMessage()]
             );
+        }
+    }
+
+    /**
+     * The files an action mails out must be assets the person saving it may
+     * view; the config arrives as an array or as JSON text.
+     */
+    private function assertAttachmentsAllowed(mixed $config): void
+    {
+        $decoded = is_string($config) ? json_decode($config, true) : $config;
+        if (is_array($decoded)) {
+            $this->attachmentValidator->assertAllowed($decoded);
         }
     }
 

@@ -36,6 +36,15 @@ class SectionFieldService extends BaseService
     use TranslationManagerTrait;
     use FieldValidatorTrait;
 
+    /**
+     * Field types whose option list is read from the database when the field is
+     * drawn: groups, data tables, page keywords, and the assets the CALLER may
+     * manage. These lists change on their own and (for assets) differ per
+     * caller, so they are never part of the cached section payload; see
+     * {@see withPickerOptions()}.
+     */
+    private const PICKER_FIELD_TYPES = ['select-group', 'select-data_table', 'select-page-keyword', 'select-image', 'select-video'];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly DataTableService $dataTableService,
@@ -44,29 +53,69 @@ class SectionFieldService extends BaseService
         private readonly AdminAssetService $adminAssetService,
         private readonly SectionRepository $sectionRepository,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly AssetAccessService $assetAccessService,
     ) {
     }
 
     /**
-     * Get section fields with translations
-     * 
+     * Cache key of one section's fields. Every place that invalidates it uses
+     * this method. The `v2` marks the payload that holds no picker option
+     * lists: entries cached before that change held per-caller option lists.
+     */
+    public static function fieldsCacheKey(int $sectionId): string
+    {
+        return "section_fields_v2_{$sectionId}";
+    }
+
+    /**
+     * Get section fields with translations.
+     *
+     * The result is cached and the same for every caller, so a field whose
+     * options are read from the database (a picker with no config of its own)
+     * has `config: null` here. Add its options with {@see withPickerOptions()}
+     * after every cache read, whether this one or a cache that holds this
+     * result.
+     *
      * @param Section $section The section entity
      * @return list<array<string, mixed>> The formatted fields with translations
      */
     public function getSectionFields(Section $section): array
     {
-        // Try to get from cache first
-        $cacheKey = "section_fields_{$section->getId()}";
-
         return $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId())
             ->getItem(
-                $cacheKey,
+                self::fieldsCacheKey((int) $section->getId()),
                 function () use ($section) {
                     return $this->fetchSectionFieldsFromDatabase($section);
                 }
             );
+    }
+
+    /**
+     * Fill in the option lists of the pickers in fields read from a cache.
+     *
+     * A picker whose config is `null` takes its options from the database now:
+     * groups, data tables and page keywords from their own caches (so a new
+     * group shows at once), and the assets the CALLER may manage (an editor
+     * with a narrower grant must not see, or be served, another editor's list).
+     * A field that carries its own config in the database keeps it.
+     *
+     * @param array<mixed> $fields fields as returned by {@see getSectionFields()}
+     * @return list<array<string, mixed>>
+     */
+    public function withPickerOptions(array $fields): array
+    {
+        $result = [];
+        foreach ($fields as $field) {
+            $field = $this->asAssocArray($field);
+            if (array_key_exists('config', $field) && $field['config'] === null) {
+                $field['config'] = $this->getFieldConfig($this->asString($field['type'] ?? ''));
+            }
+            $result[] = $field;
+        }
+
+        return $result;
     }
 
     /**
@@ -143,7 +192,11 @@ class SectionFieldService extends BaseService
                 'disabled' => $stylesField->isDisabled(),
                 'hidden' => $stylesField->getHidden(),
                 'display' => $field->isDisplay(),
-                'config' => $field->getConfig() ?? $this->getFieldConfig($this->asString($fieldTypeName)),
+                // null = a picker whose options are added per read (withPickerOptions);
+                // a field's own config from the database always wins.
+                'config' => $field->getConfig() ?? (in_array($fieldTypeName, self::PICKER_FIELD_TYPES, true)
+                    ? null
+                    : $this->getFieldConfig($this->asString($fieldTypeName))),
                 'translations' => [],
             ];
 
@@ -338,7 +391,7 @@ class SectionFieldService extends BaseService
      */
     private function getImages(): array
     {
-        $cacheKey = "images_list";
+        $cacheKey = "images_list_" . $this->assetScopeKey();
         return $this->cache
             ->withCategory(CacheService::CATEGORY_ASSETS)
             ->getList(
@@ -349,19 +402,68 @@ class SectionFieldService extends BaseService
                     /** @var list<array<string, mixed>> $assetList */
                     $assetList = is_array($allAssets['assets'] ?? null) ? $allAssets['assets'] : [];
 
-                    $images = array_filter($assetList, function (array $asset): bool {
-                        $extension = strtolower(pathinfo($this->asString($asset['file_name'] ?? ''), PATHINFO_EXTENSION));
-                        return in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
-                    });
+                    $images = array_filter(
+                        $assetList,
+                        fn (array $asset): bool => $this->assetIsOfKind($asset, 'image/', ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'])
+                    );
 
                     return array_map(function (array $image): array {
                         return [
-                            'value' => $image['file_path'] ?? null, // Use relative path as value
-                            'text' => $image['file_name'] ?? null
+                            // The ACL-enforced delivery URL, not the raw storage
+                            // path: assets no longer live under the document root.
+                            'value' => $image['url'] ?? null,
+                            'text' => $this->assetPickerLabel($image)
                         ];
                     }, array_values($images));
                 }
             );
+    }
+
+    /**
+     * Pickers list only the assets the caller may manage, so their cache is
+     * per access scope.
+     */
+    private function assetScopeKey(): string
+    {
+        $ids = $this->assetAccessService->manageableAssetIdsOrNull();
+
+        return $ids === null ? 'all' : md5(implode(',', $ids));
+    }
+
+    /**
+     * Picker label: the asset's name (or uuid) plus the extension of its
+     * MIME type, e.g. `team-photo.png`.
+     *
+     * @param array<string, mixed> $asset
+     */
+    private function assetPickerLabel(array $asset): string
+    {
+        $base = $this->asString($asset['name'] ?? '');
+
+        return AssetStorageService::withExtension(
+            $base !== '' ? $base : $this->asString($asset['uuid'] ?? ''),
+            $this->asStringOrNull($asset['mime_type'] ?? null)
+        );
+    }
+
+    /**
+     * Whether an asset (API shape) is of a media kind: by its recorded MIME
+     * type, else by its name's extension (folder-era rows have no MIME type;
+     * uuid-stored files have no extension on disk).
+     *
+     * @param array<string, mixed> $asset
+     * @param list<string> $extensions
+     */
+    private function assetIsOfKind(array $asset, string $mimePrefix, array $extensions): bool
+    {
+        $mimeType = $this->asString($asset['mime_type'] ?? '');
+        if ($mimeType !== '' && $mimeType !== 'application/octet-stream') {
+            return str_starts_with($mimeType, $mimePrefix);
+        }
+
+        $extension = strtolower(pathinfo($this->asString($asset['name'] ?? ''), PATHINFO_EXTENSION));
+
+        return in_array($extension, $extensions, true);
     }
 
     /**
@@ -371,7 +473,7 @@ class SectionFieldService extends BaseService
      */
     private function getVideos(): array
     {
-        $cacheKey = "videos_list";
+        $cacheKey = "videos_list_" . $this->assetScopeKey();
         return $this->cache
             ->withCategory(CacheService::CATEGORY_ASSETS)
             ->getList(
@@ -382,15 +484,17 @@ class SectionFieldService extends BaseService
                     /** @var list<array<string, mixed>> $assetList */
                     $assetList = is_array($allAssets['assets'] ?? null) ? $allAssets['assets'] : [];
 
-                    $videos = array_filter($assetList, function (array $asset): bool {
-                        $extension = strtolower(pathinfo($this->asString($asset['file_name'] ?? ''), PATHINFO_EXTENSION));
-                        return in_array($extension, ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm']);
-                    });
+                    $videos = array_filter(
+                        $assetList,
+                        fn (array $asset): bool => $this->assetIsOfKind($asset, 'video/', ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm'])
+                    );
 
                     return array_map(function (array $video): array {
                         return [
-                            'value' => $video['file_path'] ?? null, // Use relative path as value
-                            'text' => $video['file_name'] ?? null
+                            // The ACL-enforced delivery URL, not the raw storage
+                            // path: assets no longer live under the document root.
+                            'value' => $video['url'] ?? null,
+                            'text' => $this->assetPickerLabel($video)
                         ];
                     }, array_values($videos));
                 }

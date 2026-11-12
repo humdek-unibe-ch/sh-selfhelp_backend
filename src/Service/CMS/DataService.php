@@ -354,7 +354,7 @@ class DataService extends BaseService
             $fieldValue = $dataCell->getValue();
 
             // Check if this field contains file information
-            if ($this->formFileUploadService->isFileInputField($fieldName, (int) $dataRow->getDataTable()?->getId())) {
+            if ($this->formFileUploadService->isFileInputField($fieldName, (string) $dataRow->getDataTable()?->getName())) {
                 try {
                     // Try to decode as JSON (for multiple files)
                     $decoded = json_decode((string) $fieldValue, true);

@@ -60,9 +60,10 @@ final class UserDataControllerTest extends QaWebTestCase
             self::assertArrayHasKey($key, $data['language']);
         }
 
-        // qa.admin holds the production admin role + admin group + real perms.
+        // qa.admin holds the production admin role + real perms; admin rights
+        // come from the role, there is no admin group.
         self::assertContains('admin', $this->names($data['roles']), 'qa.admin must carry the admin role.');
-        self::assertContains('admin', $this->names($data['groups']), 'qa.admin must be in the admin group.');
+        self::assertIsArray($data['groups']);
         self::assertIsArray($data['permissions']);
         self::assertNotEmpty($data['permissions'], 'qa.admin must have a non-empty permission set.');
         self::assertContainsOnlyString($data['permissions']);

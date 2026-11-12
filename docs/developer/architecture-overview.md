@@ -1710,9 +1710,10 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 ### Asset
 - `id`: int (PK)
 - `id_asset_types`: int (FK to lookups, `type_code='assetTypes'`)
-- `folder`: string (nullable)
-- `file_name`: string (nullable)
-- `file_path`: string
+- `uuid`: string (unique; the stored file is `var/assets/<uuid>`)
+- `name`, `mime_type`, `size`, `alt`: nullable
+- `id_assets_folders`: int (nullable FK to `assets_folders`)
+- `created_at`, `updated_at`: datetime
 
 ### CallbackLog
 - `id`: int (PK)
@@ -1810,8 +1811,8 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id`: int (PK)
 - `name`: string
 - `description`: string
-- `id_group_types`: int (nullable, FK to Lookup)
 - `requires_2fa`: bool
+- `add_to_new_pages`: bool (a new public page gives this group `select`)
 
 ### Hook
 - `id`: int (PK)
@@ -2207,8 +2208,8 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id`: int (PK)
 - `name`: string (length 100)
 - `description`: string (length 250)
-- `id_group_types`: int (nullable)
 - `requires_2fa`: bool (default 0)
+- `add_to_new_pages`: bool (default 0; a new public page gives this group `select`)
 
 ### hooks
 - `id`: int (PK)

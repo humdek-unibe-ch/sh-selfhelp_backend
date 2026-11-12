@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin Data Table Columns Response",
+  "description": "Columns of one data table: the always-present standard columns first, then the table's own columns. Each column says what it holds, so a client never has to guess it from a cell's value.",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": ["integer", "null"],
+                "description": "data_cols.id; null for a standard column (not an editable column)."
+              },
+              "fieldKey": {
+                "type": ["string", "null"],
+                "description": "Immutable storage key. For a core form it is section_<id of the input section>."
+              },
+              "displayName": {
+                "type": ["string", "null"],
+                "description": "Mutable human label; null when never set."
+              },
+              "locked": {
+                "type": "boolean",
+                "description": "True when the label cannot be changed by a submission: a standard column, or one an admin renamed by hand."
+              },
+              "standard": {
+                "type": "boolean",
+                "description": "True for the projection columns every row carries (record_id, entry_date, ...); read-only in the Data browser."
+              },
+              "isFile": {
+                "type": "boolean",
+                "description": "True when the column holds uploaded files: a column of a core form that belongs to a file-input section. Always false for a standard column and for tables that are not core forms."
+              }
+            },
+            "required": ["id", "fieldKey", "displayName", "locked", "standard", "isFile"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["columns"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["data"]
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Export Assets Request",
+  "description": "Request schema for exporting assets as a ZIP bundle",
+  "properties": {
+    "asset_ids": {
+      "type": "array",
+      "description": "Assets to include in the bundle. Empty or omitted exports every asset the caller may read.",
+      "items": { "type": "integer", "minimum": 1 }
+    }
+  },
+  "additionalProperties": false
+}

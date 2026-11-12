@@ -144,9 +144,9 @@ final class SectionAuthoringRenderingWorkflowTest extends QaWebTestCase
             'Update response must echo the new section name.'
         );
 
-        // 5. The admin page-create flow already grants the subject group ACL
-        //    select (admin full; subject + therapist select). The qa.user is a
-        //    subject member, so it can read the page — we only drop the
+        // 5. The admin page-create flow already grants every group flagged
+        //    `add_to_new_pages` (the seeded `subject`) ACL select. The qa.user
+        //    is a subject member, so it can read the page — we only drop the
         //    page-scoped caches so the public render observes THIS run's ACL +
         //    hierarchy (DAMA reuses the deterministic keyword across runs while
         //    Redis persists).

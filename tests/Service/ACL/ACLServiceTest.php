@@ -107,6 +107,49 @@ final class ACLServiceTest extends QaKernelTestCase
         );
     }
 
+    public function testAdminRoleIsListedEveryPageAndEveryoneElseOnlyWhatTheirGroupsShow(): void
+    {
+        // F89: opening a page and being listed it are one question. A closed
+        // page that no group sees is listed for the admin role (which has no
+        // group on a fresh install and may open it by address) with full
+        // rights, and for nobody else.
+        $closed = $this->pages->createPage('qa_acl_admin_list_closed', openAccess: false);
+        $shared = $this->pages->createPage('qa_acl_admin_list_shared', openAccess: false);
+        $this->pages->grantGroupAcl($shared, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $adminRows = $this->acl->getAllUserAcls($this->userId(QaBaselineFixture::QA_ADMIN_EMAIL));
+        $closedRow = $this->rowForPage($adminRows, (int) $closed->getId());
+        self::assertNotNull($closedRow, 'The admin role is listed a page no group sees');
+        foreach (['acl_select', 'acl_insert', 'acl_update', 'acl_delete'] as $bit) {
+            self::assertEquals(1, $closedRow[$bit], $bit);
+        }
+        self::assertSame('qa_acl_admin_list_closed', $closedRow['keyword']);
+        self::assertNotNull($this->rowForPage($adminRows, (int) $shared->getId()));
+
+        $memberRows = $this->acl->getAllUserAcls($this->userId(QaBaselineFixture::QA_USER_EMAIL));
+        self::assertNull($this->rowForPage($memberRows, (int) $closed->getId()), 'A group member is not listed a page no group sees');
+        self::assertNotNull($this->rowForPage($memberRows, (int) $shared->getId()));
+
+        $guestRows = $this->acl->getAllUserAcls(null);
+        self::assertNull($this->rowForPage($guestRows, (int) $closed->getId()));
+        self::assertNull($this->rowForPage($guestRows, (int) $shared->getId()), 'An anonymous visitor is not listed a group page');
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @return array<string, mixed>|null
+     */
+    private function rowForPage(array $rows, int $pageId): ?array
+    {
+        foreach ($rows as $row) {
+            if (is_numeric($row['id_pages']) && (int) $row['id_pages'] === $pageId) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
     private function subjectGroup(): Group
     {
         $group = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);

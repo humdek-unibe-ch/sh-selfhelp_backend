@@ -118,7 +118,7 @@ class AdminGroupController extends AbstractController
 
     /**
      * Create new group
-     * 
+     *
      * @route /admin/groups
      * @method POST
      */
@@ -241,12 +241,12 @@ class AdminGroupController extends AbstractController
             $data = $this->validateRequest($request, 'requests/admin/update_group_acls', $this->jsonSchemaValidationService);
             
             $acls = $this->adminGroupService->updateGroupAcls($groupId, $this->asListOfArrays($data['acls'] ?? null));
-            
+
             // Permissions cache is automatically invalidated by the service
-            
+
             return $this->responseFormatter->formatSuccess(['acls' => $acls]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
     }
-} 
+}
