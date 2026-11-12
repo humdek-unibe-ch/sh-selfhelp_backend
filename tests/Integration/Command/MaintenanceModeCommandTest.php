@@ -91,6 +91,7 @@ final class MaintenanceModeCommandTest extends KernelTestCase
 
         self::assertSame(Command::SUCCESS, $tester->getStatusCode());
         $on = json_decode(trim($tester->getDisplay()), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($on);
         self::assertTrue($on['enabled']);
         self::assertSame('Backup in progress', $on['message']);
         self::assertSame('qa-test', $on['updated_by']);
@@ -99,6 +100,7 @@ final class MaintenanceModeCommandTest extends KernelTestCase
         $tester = $this->runConsole(['--disable' => true, '--format' => 'json']);
         self::assertSame(Command::SUCCESS, $tester->getStatusCode());
         $off = json_decode(trim($tester->getDisplay()), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($off);
         self::assertFalse($off['enabled']);
     }
 
