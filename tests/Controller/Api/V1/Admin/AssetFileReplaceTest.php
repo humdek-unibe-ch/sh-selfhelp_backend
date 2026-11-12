@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Tests\Controller\Api\V1\Admin;
 
 use App\Service\CMS\Admin\AssetStorageService;
+use App\Tests\Support\AssetFixtures;
 use App\Tests\Support\QaWebTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
@@ -54,8 +55,8 @@ final class AssetFileReplaceTest extends QaWebTestCase
         $replaced = $this->assertEnvelopeSuccess($this->decode($this->client->getResponse()));
 
         self::assertSame($uuid, $replaced['uuid'], 'The uuid, and so every URL in use, stays');
-        self::assertSame(strlen('new-bytes-that-are-longer'), $replaced['size'], 'The row describes the new file');
-        self::assertSame('new-bytes-that-are-longer', $this->delivered($uuid));
+        self::assertSame(strlen(AssetFixtures::png('new-bytes-that-are-longer')), $replaced['size'], 'The row describes the new file');
+        self::assertSame(AssetFixtures::png('new-bytes-that-are-longer'), $this->delivered($uuid));
         self::assertSame($this->hiddenBefore, $this->temporaryFiles(), 'No staged or backup file is left');
     }
 
@@ -68,11 +69,11 @@ final class AssetFileReplaceTest extends QaWebTestCase
         $this->edit($this->asInt($asset['id']), ['role_ids' => '2147483600'], $this->file('new-bytes', 'qa-keep.png'));
 
         self::assertSame(400, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
-        self::assertSame('old-bytes', $this->delivered($uuid), 'The edit failed, so the file is as it was');
+        self::assertSame(AssetFixtures::png('old-bytes'), $this->delivered($uuid), 'The edit failed, so the file is as it was');
         self::assertSame($this->hiddenBefore, $this->temporaryFiles(), 'The staged file is removed again');
 
         $row = $this->assertEnvelopeSuccess($this->jsonRequest('GET', '/cms-api/v1/admin/assets/' . $this->asInt($asset['id']), null, $this->loginAsQaAdmin()));
-        self::assertSame(strlen('old-bytes'), $row['size'], 'The row still describes the old file');
+        self::assertSame(strlen(AssetFixtures::png('old-bytes')), $row['size'], 'The row still describes the old file');
     }
 
     public function testDeletingRemovesTheRowAndTheFile(): void
@@ -99,12 +100,10 @@ final class AssetFileReplaceTest extends QaWebTestCase
         return ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->loginAsQaAdmin()];
     }
 
-    private function file(string $bytes, string $name): UploadedFile
+    /** A real PNG made unique by `$salt` (an upload must fit its extension). */
+    private function file(string $salt, string $name): UploadedFile
     {
-        $path = (string) tempnam(sys_get_temp_dir(), 'qa_asset');
-        file_put_contents($path, $bytes);
-
-        return new UploadedFile($path, $name, null, null, true);
+        return AssetFixtures::upload($name, AssetFixtures::png($salt));
     }
 
     /**

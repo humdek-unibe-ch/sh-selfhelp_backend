@@ -13,7 +13,9 @@ use Doctrine\ORM\Mapping as ORM;
 /**
  * A folder in the asset library: organisation only, nestable. Access is never
  * decided by folders (see {@see \App\Service\CMS\Admin\AssetAccessService}).
- * Deleting a folder deletes its subfolders; their assets move to the top level.
+ * Folders are rows only, never directories on disk. Only an empty folder can
+ * be deleted (`id_parent` is RESTRICT, and the service refuses a folder that
+ * still holds an asset).
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'assets_folders')]
@@ -29,7 +31,7 @@ class AssetFolder
     private string $name;
 
     #[ORM\ManyToOne(targetEntity: self::class)]
-    #[ORM\JoinColumn(name: 'id_parent', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_parent', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     private ?AssetFolder $parent = null;
 
     public function getId(): ?int

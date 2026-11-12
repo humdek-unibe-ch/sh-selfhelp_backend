@@ -9,6 +9,7 @@
 namespace App\Tests\Controller\Api\V1;
 
 use App\Service\CMS\Admin\AssetStorageService;
+use App\Tests\Support\AssetFixtures;
 use App\Tests\Support\Factories\GroupFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -52,9 +53,10 @@ class AdminAssetControllerTest extends BaseControllerTest
     }
 
     /**
-     * The uuid replaces the uploaded name on disk (no extension) and in the
-     * delivered file's name; the uploaded name stays only as the editable
-     * `name` label.
+     * The uuid is the name on disk (no extension). The extension is stored
+     * next to it, and the delivered file is named `<name>-<uuid>.<ext>`: the
+     * label, the uuid that makes it unique, and the extension that gives it
+     * the right program.
      */
     public function testUploadStoresUnderTheUuidKeepsTheNameAsLabelIsPublicAndManagedByTheUploader(): void
     {
@@ -62,19 +64,20 @@ class AdminAssetControllerTest extends BaseControllerTest
         $uuid = $this->asString($asset['uuid']);
 
         $this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', $uuid);
-        $this->assertArrayNotHasKey('file_name', $asset);
+        $this->assertSame('png', $asset['extension']);
+        $this->assertSame('image/png', $asset['mime_type']);
+        $this->assertSame('qa-upload-' . $uuid . '.png', $asset['file_name']);
         $this->assertSame('qa-upload', $asset['name'], 'The default name drops the extension');
         $this->assertArrayNotHasKey('file_path', $asset);
         $this->assertSame([], $this->groupNames($asset), 'A new upload has no groups, so it is public');
-        $this->assertContains('admin', array_map(
+        $this->assertNotContains('admin', array_map(
             fn (mixed $role): mixed => $this->asArray($role)['name'],
             $this->asList($asset['roles'])
-        ), "The uploader's roles manage it");
+        ), 'The admin role manages every asset without a grant, so it is never listed');
 
         $this->deliveredBody($asset);
         $disposition = (string) $this->client->getResponse()->headers->get('Content-Disposition');
-        $this->assertStringContainsString($uuid, $disposition);
-        $this->assertStringNotContainsString('qa-upload', $disposition);
+        $this->assertStringContainsString('qa-upload-' . $uuid . '.png', $disposition);
     }
 
     /**
@@ -88,8 +91,8 @@ class AdminAssetControllerTest extends BaseControllerTest
 
         $this->assertNotSame($first['id'], $second['id']);
         $this->assertNotSame($first['uuid'], $second['uuid']);
-        $this->assertSame('first-bytes', $this->deliveredBody($first));
-        $this->assertSame('first-bytes', $this->deliveredBody($second));
+        $this->assertSame(AssetFixtures::png('first-bytes'), $this->deliveredBody($first));
+        $this->assertSame(AssetFixtures::png('first-bytes'), $this->deliveredBody($second));
     }
 
     public function testUploadWithExplicitGroupsAndWithNoGroups(): void
@@ -174,7 +177,7 @@ class AdminAssetControllerTest extends BaseControllerTest
         $replaced = $this->asArray($this->decodeArray()['data']);
         $this->assertSame($asset['uuid'], $replaced['uuid']);
         $this->assertSame($asset['url'], $replaced['url']);
-        $this->assertSame('second-bytes', $this->deliveredBody($replaced));
+        $this->assertSame(AssetFixtures::png('second-bytes'), $this->deliveredBody($replaced));
     }
 
     public function testBulkAddAndRemoveAGroup(): void
@@ -255,7 +258,7 @@ class AdminAssetControllerTest extends BaseControllerTest
         $this->assertSame($asset['uuid'], $restored['uuid']);
         $this->assertSame('qa-bundle', $restored['name']);
         $this->assertSame([self::QA_GROUP], $this->groupNames($restored));
-        $this->assertSame('first-bytes', $this->deliveredBody($restored));
+        $this->assertSame(AssetFixtures::png('first-bytes'), $this->deliveredBody($restored));
     }
 
     /**
@@ -329,10 +332,11 @@ class AdminAssetControllerTest extends BaseControllerTest
 
     /**
      * Folders only organise: they nest, an asset can sit in one and be listed
-     * by it, a folder cannot move into its own subfolder, and deleting a folder
-     * deletes its subfolders while their assets move to the top level.
+     * by it, a folder cannot move into its own subfolder, and only an empty
+     * folder (no subfolder, no asset) can be deleted. More folder rules are in
+     * AssetFolderTreeTest.
      */
-    public function testFoldersNestFilterTheListAndLeaveTheirAssetsOnDelete(): void
+    public function testFoldersNestFilterTheListAndOnlyAnEmptyFolderIsDeleted(): void
     {
         $parent = $this->saveFolder(['name' => 'qa-folder-parent']);
         $child = $this->saveFolder(['name' => 'qa-folder-child', 'parent_id' => $parent]);
@@ -355,10 +359,19 @@ class AdminAssetControllerTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode(), 'A folder cannot move into its own subfolder');
 
         $this->client->request('DELETE', '/cms-api/v1/admin/asset-folders/' . $parent, [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_CONFLICT, $this->client->getResponse()->getStatusCode(), 'A folder with a subfolder is not deleted');
+        $this->client->request('DELETE', '/cms-api/v1/admin/asset-folders/' . $child, [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_CONFLICT, $this->client->getResponse()->getStatusCode(), 'A folder with an asset is not deleted');
+        $this->assertSame($child, $this->fetch($this->asInt($asset['id']))['folder_id'], 'The refused delete left the asset where it is');
+
+        $this->bulkMove(['asset_ids' => [$asset['id']], 'folder_id' => null]);
+        $this->client->request('DELETE', '/cms-api/v1/admin/asset-folders/' . $child, [], [], $this->adminHeaders());
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $this->client->request('DELETE', '/cms-api/v1/admin/asset-folders/' . $parent, [], [], $this->adminHeaders());
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
         $remaining = array_map(fn (mixed $row): mixed => $this->asArray($row)['id'], $this->asList($this->decodeArray()['data']));
-        $this->assertNotContains($child, $remaining, 'Subfolders go with their folder');
-        $this->assertNull($this->fetch($this->asInt($asset['id']))['folder_id'], 'Its assets move to the top level');
+        $this->assertNotContains($child, $remaining);
+        $this->assertNotContains($parent, $remaining);
     }
 
     /**
@@ -384,12 +397,16 @@ class AdminAssetControllerTest extends BaseControllerTest
         $this->client->request('GET', '/cms-api/v1/admin/asset-folders', [], [], $this->adminHeaders());
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
         $counts = [];
+        $subtreeCounts = [];
         foreach ($this->asList($this->decodeArray()['data']) as $row) {
             $row = $this->asArray($row);
             $counts[$this->asInt($row['id'])] = $row['asset_count'];
+            $subtreeCounts[$this->asInt($row['id'])] = $row['subtree_asset_count'];
         }
         $this->assertSame(1, $counts[$parent]);
         $this->assertSame(1, $counts[$child]);
+        $this->assertSame(2, $subtreeCounts[$parent], 'A folder counts its own assets and those below it');
+        $this->assertSame(1, $subtreeCounts[$child]);
     }
 
     /**
@@ -492,12 +509,13 @@ class AdminAssetControllerTest extends BaseControllerTest
         $manifestEntries = [];
         foreach ($entries as $entry) {
             $bundlePath = 'files/' . $entry['uuid'];
-            $zip->addFromString($bundlePath, 'first-bytes');
+            $zip->addFromString($bundlePath, AssetFixtures::png('first-bytes'));
             $manifestEntries[] = [
                 'uuid' => $entry['uuid'],
                 'name' => $entry['name'],
                 'alt' => null,
                 'mime_type' => 'image/png',
+                'extension' => 'png',
                 'asset_type' => 'Asset',
                 'groups' => $entry['groups'],
                 'bundle_path' => $bundlePath,
@@ -514,13 +532,10 @@ class AdminAssetControllerTest extends BaseControllerTest
         return $zipPath;
     }
 
-    private function tempUpload(string $clientName, string $body): UploadedFile
+    /** A real file of the type of `$clientName`, made unique by `$salt`. */
+    private function tempUpload(string $clientName, string $salt): UploadedFile
     {
-        $path = tempnam(sys_get_temp_dir(), 'qa_asset');
-        self::assertNotFalse($path);
-        file_put_contents($path, $body);
-
-        return new UploadedFile($path, $clientName, null, null, true);
+        return AssetFixtures::upload($clientName, null, $salt);
     }
 
     /**

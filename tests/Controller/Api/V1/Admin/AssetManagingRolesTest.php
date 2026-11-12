@@ -12,12 +12,16 @@ namespace App\Tests\Controller\Api\V1\Admin;
 use App\Entity\Asset;
 use App\Entity\DataAccessAudit;
 use App\Entity\Role;
+use App\Entity\RoleDataAccess;
 use App\Entity\Transaction;
 use App\Entity\User;
 use App\Service\CMS\Admin\AssetStorageService;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Service\Security\DataAccessSecurityService;
+use App\Tests\Support\AssetFixtures;
 use App\Tests\Support\Factories\GroupFactory;
+use App\Tests\Support\Factories\RoleDataAccessFactory;
 use App\Tests\Support\Factories\RoleFactory;
 use App\Tests\Support\Factories\UserFactory;
 use App\Tests\Support\QaWebTestCase;
@@ -128,6 +132,53 @@ final class AssetManagingRolesTest extends QaWebTestCase
         self::assertSame([], $this->roleNames($this->assetData($admin, $id)));
     }
 
+    /**
+     * A11: the admin role manages every asset without a grant, so it is never
+     * stored and never listed. A grant an older version stored for it is
+     * ignored and removed with the next change. The admin still reads, edits
+     * and deletes every asset.
+     */
+    public function testTheAdminRoleIsImplicitNeverStoredNeverListedAndStillManagesEverything(): void
+    {
+        $multi = $this->token(self::MULTI_EMAIL);
+        $admin = $this->loginAsQaAdmin();
+        $adminRoleId = $this->roleId('admin');
+        $creatorRoleId = $this->roleId(self::CREATOR_ROLE);
+
+        // Sending the admin role id stores nothing for it and lists nothing for it.
+        $asset = $this->upload($multi, 'qa-roles-implicit.png', ['role_ids' => $creatorRoleId . ',' . $adminRoleId]);
+        $id = $this->asInt($asset['id']);
+        self::assertSame([self::CREATOR_ROLE], $this->roleNames($asset));
+        self::assertSame(0, $this->grantsOfRole($id, $adminRoleId), 'No grant row for the admin role');
+        self::assertSame(1, $this->grantsOfRole($id, $creatorRoleId));
+
+        // A grant that an older version stored for the admin role is not listed ...
+        $role = $this->entityManager()->getRepository(Role::class)->find($adminRoleId);
+        self::assertInstanceOf(Role::class, $role);
+        (new RoleDataAccessFactory($this->entityManager(), $this->service(LookupService::class), $this->service(DataAccessSecurityService::class)))
+            ->grantAssetAccess($role, $id, DataAccessSecurityService::PERMISSION_READ);
+        self::assertSame(1, $this->grantsOfRole($id, $adminRoleId), 'The legacy grant is there');
+        self::assertSame([self::CREATOR_ROLE], $this->roleNames($this->assetData($admin, $id)), 'but not listed');
+        // ... and is dropped by the next change of the roles.
+        $this->postEdit($multi, $id, ['role_ids' => (string) $creatorRoleId]);
+        self::assertSame(0, $this->grantsOfRole($id, $adminRoleId));
+
+        // An asset only the admin role manages (an admin sent an empty list): no role is listed.
+        $adminOnly = $this->upload($admin, 'qa-roles-admin-only.png', ['role_ids' => '']);
+        self::assertSame([], $this->roleNames($adminOnly));
+        self::assertSame(0, $this->grantsOfRole($this->asInt($adminOnly['id']), $adminRoleId));
+
+        // The admin reads, edits and deletes the asset of another role and the admin-only one.
+        foreach ([$id, $this->asInt($adminOnly['id'])] as $assetId) {
+            self::assertSame($assetId, $this->assetData($admin, $assetId)['id']);
+            $this->postEdit($admin, $assetId, ['alt' => 'qa admin edited']);
+        }
+        $this->client->request('DELETE', '/cms-api/v1/admin/assets/' . $id, [], [], $this->bearer($admin));
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+        $this->client->request('DELETE', '/cms-api/v1/admin/assets/' . $this->asInt($adminOnly['id']), [], [], $this->bearer($admin));
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+    }
+
     public function testGrantChangesAreLoggedLikeAnyOtherGrantChange(): void
     {
         $multi = $this->token(self::MULTI_EMAIL);
@@ -226,7 +277,7 @@ final class AssetManagingRolesTest extends QaWebTestCase
     private function tempFile(string $name): UploadedFile
     {
         $path = (string) tempnam(sys_get_temp_dir(), 'qa_asset');
-        file_put_contents($path, 'qa-bytes');
+        file_put_contents($path, AssetFixtures::png('qa-bytes'));
 
         return new UploadedFile($path, $name, null, null, true);
     }
@@ -258,7 +309,7 @@ final class AssetManagingRolesTest extends QaWebTestCase
     private function upload(string $token, string $name, array $fields = []): array
     {
         $path = (string) tempnam(sys_get_temp_dir(), 'qa_asset');
-        file_put_contents($path, 'qa-bytes');
+        file_put_contents($path, AssetFixtures::png('qa-bytes'));
         $this->client->request('POST', '/cms-api/v1/admin/assets', $fields, ['file' => new UploadedFile($path, $name, null, null, true)], $this->bearer($token));
         self::assertSame(201, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
 
@@ -305,6 +356,15 @@ final class AssetManagingRolesTest extends QaWebTestCase
         sort($names);
 
         return $names;
+    }
+
+    /** How many grant rows `$roleId` has on this asset. */
+    private function grantsOfRole(int $assetId, int $roleId): int
+    {
+        $em = $this->entityManager();
+        $em->clear();
+
+        return $em->getRepository(RoleDataAccess::class)->count(['idRoles' => $roleId, 'resourceId' => $assetId]);
     }
 
     private function roleId(string $name): int

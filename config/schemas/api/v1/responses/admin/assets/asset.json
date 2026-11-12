@@ -32,7 +32,18 @@
         "string",
         "null"
       ],
-      "description": "MIME type recorded at upload"
+      "description": "MIME type recorded at upload: the canonical type of the extension (a CSV is text/csv)"
+    },
+    "extension": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The checked file extension, lower case, no dot (\"png\"). The stored file has none; this is what gives the right type and download name. null for assets uploaded before extensions were stored."
+    },
+    "file_name": {
+      "type": "string",
+      "description": "The download name: <name>-<uuid>.<extension> (the name with other characters than letters, digits, space, dot, underscore and hyphen replaced by an underscore, cut to 100 characters), or <uuid>.<extension> for an asset without a name. The delivery URL sends it in Content-Disposition."
     },
     "size": {
       "type": [
@@ -57,7 +68,7 @@
     },
     "roles": {
       "type": "array",
-      "description": "Roles that may manage the asset in the CMS (role_data_access, resource type asset)",
+      "description": "Roles that may manage the asset in the CMS (role_data_access, resource type asset). The admin role is never listed: it manages every asset without a grant.",
       "items": {
         "type": "object",
         "properties": {
@@ -107,6 +118,37 @@
       "type": "boolean",
       "description": "Whether the CALLER may delete this asset in the CMS: the DELETE bit of a role_data_access grant on this asset (the admin role always). When false a delete answers 403."
     },
+    "duplicates": {
+      "type": "array",
+      "maxItems": 5,
+      "description": "Only in an upload response: other assets with exactly the same bytes that the CALLER may manage (at most 5). Nothing is refused; the editor is only told. Never cached.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "folder_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "folder_id"
+        ],
+        "additionalProperties": false
+      }
+    },
     "created_at": {
       "type": "string",
       "format": "date-time"
@@ -123,6 +165,8 @@
     "name",
     "url",
     "mime_type",
+    "extension",
+    "file_name",
     "size",
     "alt",
     "folder_id",

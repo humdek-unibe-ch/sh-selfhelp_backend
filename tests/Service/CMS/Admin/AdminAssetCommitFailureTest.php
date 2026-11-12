@@ -78,7 +78,7 @@ final class AdminAssetCommitFailureTest extends QaKernelTestCase
         $this->failing->failNextCommit();
 
         try {
-            $this->assets->createAsset($this->upload('bytes', 'qa-commit-create.png'), ['name' => 'qa commit create']);
+            $this->assets->createAsset($this->upload('bytes', 'qa-commit-create.txt'), ['name' => 'qa commit create']);
             self::fail('The failed commit must reach the caller');
         } catch (\RuntimeException $e) {
             self::assertSame(FailingCommitEntityManager::MESSAGE, $e->getMessage());
@@ -91,7 +91,7 @@ final class AdminAssetCommitFailureTest extends QaKernelTestCase
 
     public function testAnEditWhoseCommitFailsPutsTheOldBytesAndTheOldRowBack(): void
     {
-        $created = $this->assets->createAsset($this->upload('old bytes', 'qa-commit-edit.png'), ['name' => 'qa commit edit', 'alt' => 'old alt']);
+        $created = $this->assets->createAsset($this->upload('old bytes', 'qa-commit-edit.txt'), ['name' => 'qa commit edit', 'alt' => 'old alt']);
         $uuid = $this->asString($created['uuid']);
         $this->createdFiles[] = $uuid;
         $id = $this->asInt($created['id']);
@@ -99,7 +99,7 @@ final class AdminAssetCommitFailureTest extends QaKernelTestCase
 
         $this->failing->failNextCommit();
         try {
-            $this->assets->updateAsset($id, ['alt' => 'new alt'], $this->upload('new bytes that are longer', 'qa-commit-edit.png'));
+            $this->assets->updateAsset($id, ['alt' => 'new alt'], $this->upload('new bytes that are longer', 'qa-commit-edit.txt'));
             self::fail('The failed commit must reach the caller');
         } catch (\RuntimeException $e) {
             self::assertSame(FailingCommitEntityManager::MESSAGE, $e->getMessage());
@@ -117,7 +117,7 @@ final class AdminAssetCommitFailureTest extends QaKernelTestCase
 
     public function testADeleteWhoseCommitFailsKeepsTheFile(): void
     {
-        $created = $this->assets->createAsset($this->upload('kept bytes', 'qa-commit-delete.png'), ['name' => 'qa commit delete']);
+        $created = $this->assets->createAsset($this->upload('kept bytes', 'qa-commit-delete.txt'), ['name' => 'qa commit delete']);
         $uuid = $this->asString($created['uuid']);
         $this->createdFiles[] = $uuid;
         $id = $this->asInt($created['id']);

@@ -11,7 +11,6 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Asset;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
-use Symfony\Component\Mime\MimeTypes;
 
 /**
  * Single source of truth for where asset bytes live on disk and how they are
@@ -33,6 +32,9 @@ class AssetStorageService
 
     /** Any uuid version. */
     private const UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
+
+    /** Longest asset name kept in a download name, in characters. */
+    private const DOWNLOAD_NAME_LENGTH = 100;
 
     public function __construct(
         private readonly string $storageDir,
@@ -200,13 +202,32 @@ class AssetStorageService
     }
 
     /**
-     * The name a downloaded or attached file gets: the uuid plus the extension
-     * of its mime type, so the recipient's system can open it. The stored file
-     * itself has no extension.
+     * The name a downloaded or attached file gets, `<name>-<uuid>.<extension>`
+     * (see {@see fileName()}). The stored file itself is only the uuid.
      */
     public function downloadName(Asset $asset): string
     {
-        return self::withExtension($asset->getUuid(), $asset->getMimeType());
+        return self::fileName(
+            $asset->getName(),
+            $asset->getUuid(),
+            $asset->getExtension() ?? AssetFileTypes::extensionForMimeType($asset->getMimeType())
+        );
+    }
+
+    /**
+     * `<name>-<uuid>.<extension>`: the asset's name with every character
+     * outside letters, digits, space, `.`, `_` and `-` replaced by `_` and cut
+     * to 100 characters, so it is safe in a header, a zip entry and a file
+     * system; the uuid keeps two assets of one name apart. An asset without a
+     * name is `<uuid>.<extension>`, and a missing extension is left out.
+     */
+    public static function fileName(?string $name, string $uuid, ?string $extension): string
+    {
+        $label = $name !== null && $name !== ''
+            ? mb_substr(preg_replace('/[^\p{L}\p{N} ._-]/u', '_', $name) ?? '', 0, self::DOWNLOAD_NAME_LENGTH)
+            : '';
+
+        return ($label !== '' ? $label . '-' : '') . $uuid . ($extension !== null && $extension !== '' ? '.' . $extension : '');
     }
 
     /**
@@ -215,7 +236,7 @@ class AssetStorageService
      */
     public static function withExtension(string $base, ?string $mimeType): string
     {
-        $extension = $mimeType !== null ? (MimeTypes::getDefault()->getExtensions($mimeType)[0] ?? null) : null;
+        $extension = AssetFileTypes::extensionForMimeType($mimeType);
 
         return $base . ($extension !== null ? '.' . $extension : '');
     }

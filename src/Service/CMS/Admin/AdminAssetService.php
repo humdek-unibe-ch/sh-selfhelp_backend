@@ -29,37 +29,11 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AdminAssetService extends BaseService
 {
-    private const ALLOWED_EXTENSIONS = [
-        'jpg',
-        'jpeg',
-        'png',
-        'gif',
-        'webp',
-        'svg', // Images
-        'pdf', // Documents
-        'mp4',
-        'avi',
-        'mov',
-        'wmv',
-        'flv',
-        'webm', // Videos
-        'mp3',
-        'wav',
-        'ogg', // Audio
-        'css',
-        'js', // Web files
-        'zip',
-        'rar',
-        '7z', // Archives
-        'json', // JSON files
-        'txt',
-        'doc',
-        'docx',
-        'xls',
-        'xlsx',
-        'ppt',
-        'pptx' // Office files
-    ];
+    /** Deepest a folder may sit, counting the top level as 1. */
+    public const MAX_FOLDER_DEPTH = 20;
+
+    /** Most identical assets an upload reports. */
+    private const MAX_DUPLICATES = 5;
 
     public function __construct(
         private readonly AssetRepository $assetRepository,
@@ -133,12 +107,18 @@ class AdminAssetService extends BaseService
      * `admin.asset.create`), and — for bundle
      * import only — `uuid`.
      *
+     * The result also carries `duplicates`: other assets with the same bytes
+     * that the caller may manage. They are looked up per caller after the
+     * commit and are never part of a cached payload; nothing is refused.
+     *
      * @param array<string, mixed> $data
      * @return array<string, mixed>
      */
     public function createAsset(UploadedFile $file, array $data): array
     {
         $this->assertManagingRolesNotEmptied($data);
+        // Refuses a type that is not allowed and a content that does not fit
+        // it, before a row or a file exists.
         $extension = $this->validateUpload($file);
 
         $uuid = $this->asStringOrNull($data['uuid'] ?? null) ?? $this->storage->generateUuid();
@@ -160,7 +140,7 @@ class AdminAssetService extends BaseService
         foreach ($groups as $group) {
             $asset->addGroup($group);
         }
-        $this->recordFile($file, $asset);
+        $this->recordFile($file, $asset, $extension);
 
         $staged = null;
         $swap = null;
@@ -195,7 +175,31 @@ class AdminAssetService extends BaseService
 
         $this->invalidateAssetLists();
 
-        return $this->toArray($asset);
+        return $this->toArray($asset) + ['duplicates' => $this->duplicatesOf($asset)];
+    }
+
+    /**
+     * Other assets with exactly the bytes of `$asset` that the caller may
+     * manage (at most {@see MAX_DUPLICATES}), so the editor can be told that
+     * the file is already in the library.
+     *
+     * @return list<array{id: int, name: string|null, folder_id: int|null}>
+     */
+    private function duplicatesOf(Asset $asset): array
+    {
+        $hash = $asset->getContentHash();
+        if ($hash === null) {
+            return [];
+        }
+
+        return array_map(
+            static fn (Asset $other): array => [
+                'id' => (int) $other->getId(),
+                'name' => $other->getName(),
+                'folder_id' => $other->getFolder()?->getId(),
+            ],
+            $this->assetRepository->findDuplicates($hash, (int) $asset->getId(), $this->accessService->manageableAssetIdsOrNull(), self::MAX_DUPLICATES)
+        );
     }
 
     /**
@@ -270,7 +274,7 @@ class AdminAssetService extends BaseService
             if ($file !== null) {
                 $extension = $this->validateUpload($file);
                 $asset->setAssetType($this->assetTypeFor($extension));
-                $this->recordFile($file, $asset);
+                $this->recordFile($file, $asset, $extension);
                 $staged = $this->storage->stage($file, $asset->getUuid());
             }
 
@@ -543,6 +547,8 @@ class AdminAssetService extends BaseService
             'name' => $asset->getName(),
             'url' => $this->storage->publicUrl($asset->getUuid()),
             'mime_type' => $asset->getMimeType(),
+            'extension' => $asset->getExtension(),
+            'file_name' => $this->storage->downloadName($asset),
             'size' => $asset->getSize(),
             'alt' => $asset->getAlt(),
             'folder_id' => $asset->getFolder()?->getId(),
@@ -559,34 +565,53 @@ class AdminAssetService extends BaseService
     /**
      * The asset folders as a flat list; clients build the tree from `parent_id`.
      * `asset_count` counts the assets directly in the folder that the caller
-     * may manage.
+     * may manage, `subtree_asset_count` those in the folder and below. Both
+     * come from one folder query and one grouped asset count.
      *
-     * @return list<array{id: int|null, name: string, parent_id: int|null, asset_count: int}>
+     * @return list<array{id: int|null, name: string, parent_id: int|null, asset_count: int, subtree_asset_count: int}>
      */
     public function getFolders(): array
     {
-        /** @var list<AssetFolder> $folders */
-        $folders = $this->entityManager->getRepository(AssetFolder::class)->findBy([], ['name' => 'ASC']);
+        $tree = $this->folderTree();
         $counts = $this->assetRepository->countByFolder($this->accessService->manageableAssetIdsOrNull());
+
+        $subtreeCounts = [];
+        foreach ($tree['roots'] as $rootId) {
+            $this->sumSubtree($rootId, $tree['children'], $counts, $subtreeCounts);
+        }
 
         return array_map(static fn (AssetFolder $folder): array => [
             'id' => $folder->getId(),
             'name' => $folder->getName(),
             'parent_id' => $folder->getParent()?->getId(),
             'asset_count' => $counts[(int) $folder->getId()] ?? 0,
-        ], $folders);
+            'subtree_asset_count' => $subtreeCounts[(int) $folder->getId()] ?? 0,
+        ], array_values($tree['folders']));
     }
 
     /**
      * Create (`$id` null) or rename/move a folder; returns the folder list.
      *
-     * @return list<array{id: int|null, name: string, parent_id: int|null, asset_count: int}>
+     * Refused: an empty name (400), a move into itself or one of its own
+     * subfolders (400), a result more than {@see MAX_FOLDER_DEPTH} levels deep
+     * counting the folder's own subfolders (400), and a sibling of the same
+     * name, compared case-insensitively (409).
+     *
+     * @return list<array{id: int|null, name: string, parent_id: int|null, asset_count: int, subtree_asset_count: int}>
      */
     public function saveFolder(?int $id, string $name, ?int $parentId): array
     {
-        $folder = $id === null ? new AssetFolder() : $this->folderOrNull($id);
-        if (!$folder instanceof AssetFolder) {
-            $this->throwNotFound('Folder not found');
+        $name = trim(mb_substr(trim($name), 0, 100));
+        if ($name === '') {
+            $this->throwBadRequest('A folder needs a name');
+        }
+
+        $folder = null;
+        if ($id !== null) {
+            $folder = $this->folderOrNull($id);
+            if (!$folder instanceof AssetFolder) {
+                $this->throwNotFound('Folder not found');
+            }
         }
         $parent = $this->folderOrNull($parentId);
         // A folder cannot move into itself or one of its own subfolders.
@@ -596,10 +621,43 @@ class AdminAssetService extends BaseService
             }
         }
 
-        $folder->setName(mb_substr(trim($name), 0, 100));
-        $folder->setParent($parent);
-        $this->entityManager->persist($folder);
-        $this->entityManager->flush();
+        // The deepest level the result reaches: the folder under its parent,
+        // plus its own subfolders when it already has some.
+        $levels = $this->folderLevel($parent) + 1;
+        if ($folder instanceof AssetFolder) {
+            $tree = $this->folderTree();
+            $levels += $this->subtreeHeight((int) $folder->getId(), $tree['children']);
+        }
+        if ($levels > self::MAX_FOLDER_DEPTH) {
+            $this->throwBadRequest(sprintf('Folders can be nested at most %d levels deep', self::MAX_FOLDER_DEPTH));
+        }
+
+        if ($this->siblingNamed($parent, $name, $id) instanceof AssetFolder) {
+            $this->throwConflict(sprintf("A folder named '%s' already exists here", $name));
+        }
+
+        $folder ??= new AssetFolder();
+        $this->entityManager->beginTransaction();
+        try {
+            $folder->setName($name);
+            $folder->setParent($parent);
+            $this->entityManager->persist($folder);
+            $this->entityManager->flush();
+
+            $this->transactionService->logTransaction(
+                $id === null ? LookupService::TRANSACTION_TYPES_INSERT : LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'assets_folders',
+                $folder->getId(),
+                false,
+                sprintf('Asset folder %s: %s', $id === null ? 'created' : 'saved', $name)
+            );
+
+            $this->entityManager->commit();
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
         $this->invalidateAssetLists();
 
         return $this->getFolders();
@@ -610,7 +668,8 @@ class AdminAssetService extends BaseService
      * where it does not exist yet; an empty path is the top level (null).
      * Bundle import uses it: a bundle carries the folder as names because ids
      * differ between instances. An existing folder of that name under the same
-     * parent is reused, never duplicated.
+     * parent is reused, never duplicated; names are compared case-insensitively,
+     * as in {@see saveFolder()}, so an import and the screen agree.
      *
      * @param list<string> $names folder names from the top level down
      */
@@ -618,12 +677,12 @@ class AdminAssetService extends BaseService
     {
         $parent = null;
         foreach ($names as $name) {
-            $name = mb_substr(trim($name), 0, 100);
+            $name = trim(mb_substr(trim($name), 0, 100));
             if ($name === '') {
                 $this->throwBadRequest('Invalid folder path');
             }
 
-            $folder = $this->entityManager->getRepository(AssetFolder::class)->findOneBy(['name' => $name, 'parent' => $parent], ['id' => 'ASC']);
+            $folder = $this->siblingNamed($parent, $name, null);
             if (!$folder instanceof AssetFolder) {
                 $folder = (new AssetFolder())->setName($name)->setParent($parent);
                 $this->entityManager->persist($folder);
@@ -636,9 +695,11 @@ class AdminAssetService extends BaseService
     }
 
     /**
-     * Delete a folder and its subfolders; their assets move to the top level.
+     * Delete an empty folder. A folder with a subfolder or with any asset in
+     * it, also one the caller may not manage, is refused (409) and nothing
+     * changes: the caller moves or deletes the content first.
      *
-     * @return list<array{id: int|null, name: string, parent_id: int|null, asset_count: int}>
+     * @return list<array{id: int|null, name: string, parent_id: int|null, asset_count: int, subtree_asset_count: int}>
      */
     public function deleteFolder(int $id): array
     {
@@ -646,11 +707,241 @@ class AdminAssetService extends BaseService
         if (!$folder instanceof AssetFolder) {
             $this->throwNotFound('Folder not found');
         }
-        $this->entityManager->remove($folder);
-        $this->entityManager->flush();
+        // Over all assets, not only the manageable ones: deleting would
+        // otherwise be decided by what this caller happens to see.
+        if ($this->entityManager->getRepository(AssetFolder::class)->count(['parent' => $folder]) > 0
+            || $this->assetRepository->countInFolder($id) > 0
+        ) {
+            $this->throwConflict('The folder is not empty');
+        }
+
+        $this->entityManager->beginTransaction();
+        try {
+            // Log before the delete: the entity is still readable.
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_DELETE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'assets_folders',
+                $id,
+                false,
+                'Asset folder deleted: ' . $folder->getName()
+            );
+            $this->entityManager->remove($folder);
+            $this->entityManager->flush();
+
+            $this->entityManager->commit();
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
         $this->invalidateAssetLists();
 
         return $this->getFolders();
+    }
+
+    /**
+     * Apply who sees and/or who manages to every asset in a folder and all
+     * its subfolders, once. Nothing is stored on the folder: a file added
+     * later keeps the access chosen at its upload.
+     *
+     * `$data` keys: `group_ids` (who may view; `[]` makes them public) and
+     * `role_ids` (who may manage; `[]` is for an admin only, F63). A present
+     * key replaces that set on each asset, an absent key leaves it. Every
+     * asset in the subtree, visible to the caller or not, must be updatable
+     * by the caller, otherwise nothing changes (403): like the bulk actions,
+     * all or nothing, decided before the transaction opens.
+     *
+     * @param list<int>|null $groupIds null leaves the groups as they are
+     * @param list<int>|null $roleIds null leaves the managing roles as they are
+     * @return array{updated: int}
+     */
+    public function setFolderAccess(int $folderId, ?array $groupIds, ?array $roleIds): array
+    {
+        if ($groupIds === null && $roleIds === null) {
+            $this->throwBadRequest('Send group_ids, role_ids or both');
+        }
+        if (!$this->entityManager->find(AssetFolder::class, $folderId) instanceof AssetFolder) {
+            $this->throwNotFound('Folder not found');
+        }
+        if ($roleIds !== null) {
+            $this->assertManagingRolesNotEmptied(['role_ids' => $roleIds]);
+        }
+
+        $tree = $this->folderTree();
+        $assets = $this->assetRepository->findInFolders($this->subtreeIds($folderId, $tree['children']));
+
+        // Every right is checked before anything changes (and before the
+        // transaction, so a refusal's audit row is kept, not rolled back).
+        foreach ($assets as $asset) {
+            $this->accessService->assertCanManage($asset, DataAccessSecurityService::PERMISSION_UPDATE);
+        }
+
+        $groups = $groupIds !== null ? $this->accessService->resolveGroups($groupIds) : null;
+
+        $this->entityManager->beginTransaction();
+        try {
+            foreach ($assets as $asset) {
+                if ($groups !== null) {
+                    $this->replaceGroups($asset, $groups);
+                }
+                if ($roleIds !== null) {
+                    $this->accessService->setManagingRoles($asset, $roleIds);
+                }
+                $asset->touch();
+            }
+            $this->entityManager->flush();
+
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'assets_folders',
+                $folderId,
+                false,
+                sprintf(
+                    'Access applied to %d assets in folder %d and below (groups: %s, roles: %s)',
+                    count($assets),
+                    $folderId,
+                    $groups === null ? 'unchanged' : '[' . implode(',', array_map(static fn (Group $group): int => (int) $group->getId(), $groups)) . ']',
+                    $roleIds === null ? 'unchanged' : '[' . implode(',', $this->accessService->withoutAdminRole($roleIds)) . ']'
+                )
+            );
+
+            $this->entityManager->commit();
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
+
+        foreach ($assets as $asset) {
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ASSET, (int) $asset->getId());
+        }
+        $this->invalidateAssetLists();
+
+        return ['updated' => count($assets)];
+    }
+
+    /**
+     * Every folder, once, with the tree facts the folder rules need: the
+     * folders by id (ordered by name), the child ids per parent id, and the
+     * ids of the top-level folders.
+     *
+     * @return array{folders: array<int, AssetFolder>, children: array<int, list<int>>, roots: list<int>}
+     */
+    private function folderTree(): array
+    {
+        /** @var list<AssetFolder> $all */
+        $all = $this->entityManager->getRepository(AssetFolder::class)->findBy([], ['name' => 'ASC']);
+
+        $folders = [];
+        $children = [];
+        $roots = [];
+        foreach ($all as $folder) {
+            $folderId = (int) $folder->getId();
+            $folders[$folderId] = $folder;
+            $parentId = $folder->getParent()?->getId();
+            if ($parentId === null) {
+                $roots[] = $folderId;
+            } else {
+                $children[$parentId][] = $folderId;
+            }
+        }
+
+        return ['folders' => $folders, 'children' => $children, 'roots' => $roots];
+    }
+
+    /**
+     * Fill `$subtreeCounts` with the number of assets in each folder under
+     * `$folderId` and in the folder itself, and return that number.
+     *
+     * @param array<int, list<int>> $children
+     * @param array<int, int> $counts assets directly in each folder
+     * @param array<int, int> $subtreeCounts
+     */
+    private function sumSubtree(int $folderId, array $children, array $counts, array &$subtreeCounts): int
+    {
+        $total = $counts[$folderId] ?? 0;
+        foreach ($children[$folderId] ?? [] as $childId) {
+            $total += $this->sumSubtree($childId, $children, $counts, $subtreeCounts);
+        }
+
+        return $subtreeCounts[$folderId] = $total;
+    }
+
+    /**
+     * The folder's id and the ids of all folders below it.
+     *
+     * @param array<int, list<int>> $children
+     * @return list<int>
+     */
+    private function subtreeIds(int $folderId, array $children): array
+    {
+        $ids = [$folderId];
+        for ($i = 0; $i < count($ids); $i++) {
+            foreach ($children[$ids[$i]] ?? [] as $childId) {
+                $ids[] = $childId;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * How many levels lie below a folder: 0 for a folder without subfolders.
+     *
+     * @param array<int, list<int>> $children
+     */
+    private function subtreeHeight(int $folderId, array $children): int
+    {
+        $height = 0;
+        foreach ($children[$folderId] ?? [] as $childId) {
+            $height = max($height, 1 + $this->subtreeHeight($childId, $children));
+        }
+
+        return $height;
+    }
+
+    /**
+     * The level of a folder: 1 for a top-level folder, 0 for "no folder".
+     */
+    private function folderLevel(?AssetFolder $folder): int
+    {
+        $level = 0;
+        $seen = [];
+        for ($current = $folder; $current !== null && !isset($seen[spl_object_id($current)]); $current = $current->getParent()) {
+            $seen[spl_object_id($current)] = true;
+            $level++;
+        }
+
+        return $level;
+    }
+
+    /**
+     * A folder under `$parent` (null = the top level) with this name, compared
+     * case-insensitively, other than the folder `$exceptId`. MySQL does not
+     * enforce this with an index because NULL parents never collide, so the
+     * rule is checked here.
+     */
+    private function siblingNamed(?AssetFolder $parent, string $name, ?int $exceptId): ?AssetFolder
+    {
+        $qb = $this->entityManager->createQueryBuilder()
+            ->select('f')
+            ->from(AssetFolder::class, 'f')
+            ->where('LOWER(f.name) = :name')
+            ->setParameter('name', mb_strtolower($name))
+            ->orderBy('f.id', 'ASC')
+            ->setMaxResults(1);
+        if ($parent === null) {
+            $qb->andWhere('f.parent IS NULL');
+        } else {
+            $qb->andWhere('f.parent = :parent')->setParameter('parent', $parent);
+        }
+        if ($exceptId !== null) {
+            $qb->andWhere('f.id != :exceptId')->setParameter('exceptId', $exceptId);
+        }
+
+        $folder = $qb->getQuery()->getOneOrNullResult();
+
+        return $folder instanceof AssetFolder ? $folder : null;
     }
 
     private function folderOrNull(mixed $id): ?AssetFolder
@@ -681,6 +972,10 @@ class AdminAssetService extends BaseService
     }
 
     /**
+     * Refuse a file whose extension is not allowed or whose content does not
+     * fit its extension (an executable, HTML or PHP file renamed to `.png`).
+     * Nothing has been stored yet when this refuses.
+     *
      * @return string The lower-cased file extension
      */
     private function validateUpload(UploadedFile $file): string
@@ -690,25 +985,33 @@ class AdminAssetService extends BaseService
         }
 
         $extension = strtolower($file->getClientOriginalExtension());
-        if (!in_array($extension, self::ALLOWED_EXTENSIONS, true)) {
+        if (!AssetFileTypes::isAllowed($extension)) {
             throw new ServiceException(
-                'File type not allowed. Allowed types: ' . implode(', ', self::ALLOWED_EXTENSIONS),
+                'File type not allowed. Allowed types: ' . implode(', ', AssetFileTypes::ALLOWED_EXTENSIONS),
                 Response::HTTP_BAD_REQUEST
             );
+        }
+        if (!AssetFileTypes::contentMatches($extension, $file->getMimeType(), $file->getPathname())) {
+            throw new ServiceException('The file content does not match its extension', Response::HTTP_BAD_REQUEST);
         }
 
         return $extension;
     }
 
     /**
-     * Record the upload's mime type and size on the asset. Read before the
-     * file is staged (moved), while the temp file still exists.
+     * Record the upload's extension, MIME type, size and SHA-256 on the asset.
+     * Read before the file is staged (moved), while the temp file still
+     * exists. The MIME type is the canonical one of the extension, not what
+     * the sniff said (a CSV is `text/csv`, however it sniffed).
      */
-    private function recordFile(UploadedFile $file, Asset $asset): void
+    private function recordFile(UploadedFile $file, Asset $asset, string $extension): void
     {
-        $asset->setMimeType($file->getMimeType() ?? $file->getClientMimeType());
+        $asset->setExtension($extension);
+        $asset->setMimeType(AssetFileTypes::mimeTypeFor($extension, $file->getMimeType() ?? $file->getClientMimeType()));
         $size = $file->getSize();
         $asset->setSize($size === false ? null : $size);
+        $hash = hash_file('sha256', $file->getPathname());
+        $asset->setContentHash($hash === false ? null : $hash);
     }
 
     private function assetTypeFor(string $extension): \App\Entity\Lookup
@@ -783,7 +1086,9 @@ class AdminAssetService extends BaseService
      */
     private function assertManagingRolesNotEmptied(array $data): void
     {
-        if (array_key_exists('role_ids', $data) && $this->toIntList($data['role_ids']) === []) {
+        // The admin role is implicit and never stored, so a list that holds
+        // only it leaves the asset to the admin role as well.
+        if (array_key_exists('role_ids', $data) && $this->accessService->withoutAdminRole($this->toIntList($data['role_ids'])) === []) {
             $this->accessService->assertMayLeaveWithoutManagingRoles();
         }
     }

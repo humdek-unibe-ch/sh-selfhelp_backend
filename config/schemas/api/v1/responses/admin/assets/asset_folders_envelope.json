@@ -28,13 +28,18 @@
           "asset_count": {
             "type": "integer",
             "description": "Assets directly in this folder that the caller may manage"
+          },
+          "subtree_asset_count": {
+            "type": "integer",
+            "description": "Assets in this folder and in all folders below it that the caller may manage"
           }
         },
         "required": [
           "id",
           "name",
           "parent_id",
-          "asset_count"
+          "asset_count",
+          "subtree_asset_count"
         ],
         "additionalProperties": false
       }

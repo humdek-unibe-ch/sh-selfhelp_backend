@@ -40,6 +40,10 @@ class AssetAccessService extends BaseService
     /** Route permission that lets a role upload assets (and so manage its own uploads by default). */
     private const CREATE_PERMISSION = 'admin.asset.create';
 
+    /** The admin role's id, read once per request by {@see withoutAdminRole()}. */
+    private ?int $adminRoleId = null;
+    private bool $adminRoleIdLoaded = false;
+
     public function __construct(
         private readonly UserContextService $userContextService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
@@ -163,7 +167,9 @@ class AssetAccessService extends BaseService
     }
 
     /**
-     * The roles that manage each asset, keyed by asset id.
+     * The roles that manage each asset, keyed by asset id. The admin role is
+     * never listed: it manages every asset without a grant, so it is neither
+     * offered nor stored (see {@see withoutAdminRole()}).
      *
      * @param list<int> $assetIds
      * @return array<int, list<array{id: int, name: string}>>
@@ -182,8 +188,10 @@ class AssetAccessService extends BaseService
             ->where('rda.idResourceTypes = :type')
             ->andWhere('rda.resourceId IN (:ids)')
             ->andWhere('rda.crudPermissions > 0')
+            ->andWhere('r.name != :adminRole')
             ->setParameter('type', $this->resourceTypeId())
             ->setParameter('ids', $assetIds)
+            ->setParameter('adminRole', DataAccessSecurityService::ADMIN_ROLE_NAME)
             ->orderBy('r.name')
             ->getQuery()
             ->getArrayResult();
@@ -210,10 +218,36 @@ class AssetAccessService extends BaseService
     }
 
     /**
+     * The role ids without the admin role. The admin role manages every asset
+     * through the short-circuit in {@see isAdmin()}, so a grant for it would
+     * only be noise: it is not offered, not listed and never written. It is
+     * found by name, the way `DataAccessSecurityService::userHasAdminRole()`
+     * finds it (F10).
+     *
+     * @param list<int> $roleIds
+     * @return list<int>
+     */
+    public function withoutAdminRole(array $roleIds): array
+    {
+        if ($roleIds === []) {
+            return [];
+        }
+
+        if (!$this->adminRoleIdLoaded) {
+            $admin = $this->entityManager->getRepository(Role::class)->findOneBy(['name' => DataAccessSecurityService::ADMIN_ROLE_NAME]);
+            $this->adminRoleId = $admin instanceof Role ? $admin->getId() : null;
+            $this->adminRoleIdLoaded = true;
+        }
+
+        return array_values(array_filter($roleIds, fn (int $roleId): bool => $roleId !== $this->adminRoleId));
+    }
+
+    /**
      * Replace the roles that manage an asset (each gets full access). `null`
      * means the default for a new upload: the uploader's roles that hold
      * `admin.asset.create` (the same rule as the creator's grants on a new
-     * page; the admin role manages every asset anyway).
+     * page). The admin role is dropped from the list: it manages every asset
+     * anyway and never gets a grant ({@see withoutAdminRole()}).
      *
      * Grants are written through {@see AdminDataAccessService}, the one place
      * that writes `role_data_access`, so each change is logged and the touched
@@ -223,7 +257,7 @@ class AssetAccessService extends BaseService
      */
     public function setManagingRoles(Asset $asset, ?array $roleIds): void
     {
-        $roleIds = array_values(array_unique($roleIds ?? $this->defaultManagingRoleIds()));
+        $roleIds = $this->withoutAdminRole(array_values(array_unique($roleIds ?? $this->defaultManagingRoleIds())));
         foreach ($roleIds as $roleId) {
             if (!$this->entityManager->find(Role::class, $roleId) instanceof Role) {
                 $this->throwBadRequest('Unknown role id in asset roles');
@@ -320,8 +354,10 @@ class AssetAccessService extends BaseService
             ->innerJoin('r.permissions', 'p')
             ->where('u.id = :userId')
             ->andWhere('p.name = :permission')
+            ->andWhere('r.name != :adminRole')
             ->setParameter('userId', $userId)
             ->setParameter('permission', self::CREATE_PERMISSION)
+            ->setParameter('adminRole', DataAccessSecurityService::ADMIN_ROLE_NAME)
             ->getQuery()
             ->getArrayResult();
 

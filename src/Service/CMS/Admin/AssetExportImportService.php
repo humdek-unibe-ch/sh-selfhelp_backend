@@ -21,8 +21,10 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Bundle v2.0 layout:
  *   manifest.json   – bundle metadata + one entry per asset (uuid, display
- *                     name, alt, mime type, group names, folder path)
- *   files/<uuid>    – the physical asset bytes
+ *                     name, alt, mime type, extension, group names, folder
+ *                     path, `bundle_path`)
+ *   files/<name>-<uuid>.<ext> – the physical asset bytes, named like a
+ *                     download; the manifest's `bundle_path` names each one
  *
  * An entry's `folder_path` is the list of folder names from the top level down
  * (`["Courses", "Week 1"]`; empty or absent = top level). It is optional, so
@@ -57,8 +59,8 @@ class AssetExportImportService extends BaseService
     public const MAX_FILE_BYTES = 512 * 1024 * 1024;
     /** Most file bytes in one bundle, in total (export and import). */
     public const MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024;
-    /** Deepest folder path an entry may carry. */
-    public const MAX_FOLDER_DEPTH = 20;
+    /** Deepest folder path an entry may carry: the deepest a folder may sit. */
+    public const MAX_FOLDER_DEPTH = AdminAssetService::MAX_FOLDER_DEPTH;
 
     public function __construct(
         private readonly AssetRepository $assetRepository,
@@ -127,7 +129,10 @@ class AssetExportImportService extends BaseService
 
         $manifestEntries = [];
         foreach ($sources as [$asset, $sourcePath]) {
-            $entryPath = self::FILES_PREFIX . $asset->getUuid();
+            // The same name a download gets, `<name>-<uuid>.<extension>`, so an
+            // unpacked bundle opens in the right program. The manifest names
+            // it in `bundle_path`; the importer reads by that, never by guess.
+            $entryPath = self::FILES_PREFIX . $this->storage->downloadName($asset);
             $zip->addFile($sourcePath, $entryPath);
 
             $manifestEntries[] = [
@@ -135,6 +140,7 @@ class AssetExportImportService extends BaseService
                 'name' => $asset->getName(),
                 'alt' => $asset->getAlt(),
                 'mime_type' => $asset->getMimeType(),
+                'extension' => $asset->getExtension() ?? AssetFileTypes::extensionForMimeType($asset->getMimeType()),
                 'asset_type' => $asset->getAssetType()->getLookupValue(),
                 // Group and folder NAMES travel, not ids: ids differ between instances.
                 'groups' => array_values(array_filter(array_map(
@@ -227,9 +233,10 @@ class AssetExportImportService extends BaseService
             $entry = $this->asAssocArray($rawEntry);
             $bundlePath = $this->asString($entry['bundle_path'] ?? '');
             $uuid = $this->asString($entry['uuid'] ?? '');
-            // Stored files have no extension; the mime type gives the client
-            // name its extension so createAsset can validate the file type.
-            $fileName = AssetStorageService::withExtension(basename($bundlePath), $this->asStringOrNull($entry['mime_type'] ?? null));
+            // Stored files have no extension; the entry's `extension` (else
+            // the one of its mime type, for bundles made before it existed)
+            // gives the client name the extension createAsset validates.
+            $fileName = $uuid . self::extensionSuffix($entry);
             $label = $uuid !== '' ? $uuid : $bundlePath;
 
             // The path is only ever used as the name of an entry to read, but
@@ -326,6 +333,26 @@ class AssetExportImportService extends BaseService
             'skipped' => $skipped,
             'errors' => $errors,
         ];
+    }
+
+    /**
+     * `.<extension>` for a manifest entry: its `extension` when it is a plain
+     * extension, else the one of its `mime_type`, else nothing (createAsset
+     * then refuses the file as an unknown type).
+     *
+     * @param array<string, mixed> $entry
+     */
+    private static function extensionSuffix(array $entry): string
+    {
+        $extension = $entry['extension'] ?? null;
+        if (is_string($extension) && preg_match('/^[A-Za-z0-9]{1,20}$/', $extension) === 1) {
+            return '.' . $extension;
+        }
+
+        $mimeType = $entry['mime_type'] ?? null;
+        $fromMime = AssetFileTypes::extensionForMimeType(is_string($mimeType) ? $mimeType : null);
+
+        return $fromMime !== null ? '.' . $fromMime : '';
     }
 
     /**

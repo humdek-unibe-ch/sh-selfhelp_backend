@@ -209,7 +209,7 @@ final class JobSchedulerServiceTest extends QaKernelTestCase
 
             $attachments = $email->getAttachments();
             self::assertCount(1, $attachments, 'The asset URL must resolve to the stored file and be attached.');
-            self::assertSame($uuid . '.pdf', $attachments[0]->getFilename(), 'Attached as the uuid with the extension of its mime type.');
+            self::assertSame('qa-attachment.pdf-' . $uuid . '.pdf', $attachments[0]->getFilename(), 'Attached under the download name: the label, the uuid and the extension.');
             self::assertSame('qa attachment body', $attachments[0]->getBody());
         } finally {
             if (is_file($path)) {

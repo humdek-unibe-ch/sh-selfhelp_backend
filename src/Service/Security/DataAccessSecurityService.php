@@ -34,6 +34,9 @@ class DataAccessSecurityService
     public const PERMISSION_UPDATE = 4;  // 0100
     public const PERMISSION_DELETE = 8;  // 1000
 
+    /** The role that passes every check; found by name (F10). */
+    public const ADMIN_ROLE_NAME = 'admin';
+
     public function __construct(
         private RoleDataAccessRepository $roleDataAccessRepository,
         private UserRepository $userRepository,
@@ -257,7 +260,7 @@ class DataAccessSecurityService
                     ->where('u.id = :userId')
                     ->andWhere('r.name = :adminRole')
                     ->setParameter('userId', $userId)
-                    ->setParameter('adminRole', 'admin')
+                    ->setParameter('adminRole', self::ADMIN_ROLE_NAME)
                     ->getQuery()
                     ->getSingleScalarResult();
 

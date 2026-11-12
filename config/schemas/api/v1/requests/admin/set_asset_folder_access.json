@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Set Asset Folder Access Request",
+  "description": "Apply who sees and/or who manages to every asset in a folder and all its subfolders, once. A present key replaces that set on each asset; an absent key leaves it. Nothing is stored on the folder.",
+  "minProperties": 1,
+  "properties": {
+    "group_ids": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "Groups that may view the assets; an empty list makes them public"
+    },
+    "role_ids": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "Roles that manage the assets; an empty list (or only the admin role) is for an admin only. The admin role is implicit and never stored."
+    }
+  },
+  "additionalProperties": false
+}

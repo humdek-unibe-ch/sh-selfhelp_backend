@@ -13,6 +13,7 @@ namespace App\Controller\Api\V1;
 use App\Entity\Asset;
 use App\Repository\AssetRepository;
 use App\Service\CMS\Admin\AssetAccessService;
+use App\Service\CMS\Admin\AssetFileTypes;
 use App\Service\CMS\Admin\AssetStorageService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -82,7 +83,15 @@ final class AssetController extends AbstractController
         // (recorded at upload) rather than from the file name.
         $mimeType = $asset->getMimeType() ?? $response->getFile()->getMimeType() ?? 'application/octet-stream';
         $response->headers->set('Content-Type', $mimeType);
-        $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_INLINE, $this->storage->downloadName($asset));
+        // Shown in the browser only for kinds it can show (images, audio,
+        // video, PDF, plain text); everything else is saved under the
+        // asset's name: `<name>-<uuid>.<extension>`.
+        $fileName = $this->storage->downloadName($asset);
+        $response->setContentDisposition(
+            AssetFileTypes::isInline($mimeType) ? ResponseHeaderBag::DISPOSITION_INLINE : ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+            $fileName,
+            (string) preg_replace('/[^\x20-\x7e]/', '_', $fileName)
+        );
 
         // Conditional requests keep image-heavy pages from re-downloading bytes.
         $response->setAutoEtag();

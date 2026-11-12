@@ -11,6 +11,7 @@ namespace App\Tests\Controller\Api\V1\Admin;
 
 use App\Service\CMS\Admin\AssetExportImportService;
 use App\Service\CMS\Admin\AssetStorageService;
+use App\Tests\Support\AssetFixtures;
 use App\Tests\Support\QaWebTestCase;
 use PHPUnit\Framework\Attributes\Group as TestGroup;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -64,6 +65,8 @@ final class AssetBundleTest extends QaWebTestCase
 
         // A different instance has no such folders: the asset and both folders go.
         $this->request('DELETE', '/cms-api/v1/admin/assets/' . $this->asInt($asset['id']));
+        // (only an empty folder can be deleted: the child first, then its parent)
+        $this->request('DELETE', '/cms-api/v1/admin/asset-folders/' . $child);
         $this->request('DELETE', '/cms-api/v1/admin/asset-folders/' . $parent);
         self::assertNull($this->assetByUuid($uuid));
         self::assertSame([], $this->foldersNamed('qa-bundle-parent'));
@@ -108,6 +111,47 @@ final class AssetBundleTest extends QaWebTestCase
         $asset = $this->assetByUuid($uuid);
         self::assertNotNull($asset);
         self::assertNull($asset['folder_id']);
+    }
+
+    /**
+     * A13: an exported file is named like a download, `<name>-<uuid>.<ext>`,
+     * the manifest carries the extension and names the file in `bundle_path`,
+     * and importing it again keeps the extension.
+     */
+    public function testExportNamesTheFileLikeADownloadAndCarriesTheExtension(): void
+    {
+        $asset = $this->upload('qa-bundle-named.png');
+        $uuid = $this->asString($asset['uuid']);
+        $zip = $this->export([$this->asInt($asset['id'])]);
+
+        $entry = $this->manifestEntry($zip, $uuid);
+        self::assertSame('png', $entry['extension']);
+        self::assertSame('files/qa-bundle-named-' . $uuid . '.png', $entry['bundle_path']);
+
+        $archive = new \ZipArchive();
+        self::assertTrue($archive->open($zip, \ZipArchive::RDONLY));
+        self::assertNotFalse($archive->locateName('files/qa-bundle-named-' . $uuid . '.png'), 'The archive entry has the download name');
+        $archive->close();
+
+        $this->request('DELETE', '/cms-api/v1/admin/assets/' . $this->asInt($asset['id']));
+        self::assertSame(1, $this->importOk($zip)['imported']);
+        $restored = $this->assetByUuid($uuid);
+        self::assertNotNull($restored);
+        self::assertSame('png', $restored['extension']);
+        self::assertSame('qa-bundle-named-' . $uuid . '.png', $restored['file_name']);
+    }
+
+    /** A bundle made before the extension travelled gets it from the entry's mime type. */
+    public function testABundleWithoutExtensionTakesItFromTheMimeType(): void
+    {
+        $uuid = $this->newUuid();
+        $entry = $this->entry($uuid);
+        unset($entry['extension']);
+
+        self::assertSame(['imported' => 1, 'skipped' => 0, 'errors' => []], $this->importOk($this->bundle([$entry])));
+        $asset = $this->assetByUuid($uuid);
+        self::assertNotNull($asset);
+        self::assertSame('png', $asset['extension']);
     }
 
     public function testInvalidFolderPathsAreReportedForTheirEntryAndNothingIsImportedForIt(): void
@@ -293,7 +337,7 @@ final class AssetBundleTest extends QaWebTestCase
      */
     private function upload(string $name, array $fields = []): array
     {
-        $this->client->request('POST', '/cms-api/v1/admin/assets', $fields, ['file' => new UploadedFile($this->tempFile('qa-bytes'), $name, null, null, true)], $this->headers());
+        $this->client->request('POST', '/cms-api/v1/admin/assets', $fields, ['file' => new UploadedFile($this->tempFile(AssetFixtures::png('qa-bytes')), $name, null, null, true)], $this->headers());
         self::assertSame(201, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
 
         $asset = $this->assertEnvelopeSuccess($this->decode($this->client->getResponse()), 201);
@@ -439,6 +483,7 @@ final class AssetBundleTest extends QaWebTestCase
             'name' => 'qa-bundle-' . substr($uuid, 0, 8),
             'alt' => null,
             'mime_type' => 'image/png',
+            'extension' => 'png',
             'asset_type' => 'Asset',
             'groups' => [],
             'bundle_path' => 'files/' . $uuid,
@@ -471,7 +516,7 @@ final class AssetBundleTest extends QaWebTestCase
         foreach ($entries as $entry) {
             $path = $entry['bundle_path'] ?? null;
             if (is_string($path) && preg_match('#^files/[^/\\\\]+$#', $path) === 1) {
-                $files[$path] = 'qa-bytes';
+                $files[$path] = AssetFixtures::png('qa-bytes');
             }
         }
 

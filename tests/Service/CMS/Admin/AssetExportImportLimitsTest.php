@@ -179,7 +179,7 @@ final class AssetExportImportLimitsTest extends QaKernelTestCase
         file_put_contents($path, $bytes);
         $this->tempFiles[] = $path;
 
-        $created = $this->adminAssets->createAsset(new UploadedFile($path, $name . '.png', null, null, true), ['name' => $name]);
+        $created = $this->adminAssets->createAsset(new UploadedFile($path, $name . '.txt', null, null, true), ['name' => $name]);
         $this->uuids[] = $this->asString($created['uuid']);
 
         return $this->asInt($created['id']);
@@ -204,7 +204,8 @@ final class AssetExportImportLimitsTest extends QaKernelTestCase
                 'uuid' => $uuid,
                 'name' => 'qa-limit-' . substr($uuid, 0, 8),
                 'alt' => null,
-                'mime_type' => 'image/png',
+                'mime_type' => 'text/plain',
+                'extension' => 'txt',
                 'asset_type' => 'Asset',
                 'groups' => [],
                 'bundle_path' => 'files/' . $uuid,

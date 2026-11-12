@@ -21,6 +21,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'assets')]
 #[ORM\UniqueConstraint(name: 'uq_assets_uuid', columns: ['uuid'])]
 #[ORM\Index(name: 'idx_assets_id_asset_types', columns: ['id_asset_types'])]
+#[ORM\Index(name: 'idx_assets_content_hash', columns: ['content_hash'])]
 class Asset
 {
     #[ORM\Id]
@@ -45,8 +46,16 @@ class Asset
     #[ORM\Column(name: 'mime_type', type: 'string', length: 150, nullable: true)]
     private ?string $mimeType = null;
 
+    /** The checked, lower-cased file extension (no dot): the stored file has none, see AssetFileTypes. */
+    #[ORM\Column(name: 'extension', type: 'string', length: 20, nullable: true)]
+    private ?string $extension = null;
+
     #[ORM\Column(name: 'size', type: 'integer', nullable: true)]
     private ?int $size = null;
+
+    /** SHA-256 of the file's bytes, to warn about identical uploads. */
+    #[ORM\Column(name: 'content_hash', type: 'string', length: 64, nullable: true, options: ['fixed' => true])]
+    private ?string $contentHash = null;
 
     #[ORM\Column(name: 'alt', type: 'string', length: 500, nullable: true)]
     private ?string $alt = null;
@@ -120,6 +129,30 @@ class Asset
     public function setMimeType(?string $mimeType): static
     {
         $this->mimeType = $mimeType;
+
+        return $this;
+    }
+
+    public function getExtension(): ?string
+    {
+        return $this->extension;
+    }
+
+    public function setExtension(?string $extension): static
+    {
+        $this->extension = $extension;
+
+        return $this;
+    }
+
+    public function getContentHash(): ?string
+    {
+        return $this->contentHash;
+    }
+
+    public function setContentHash(?string $contentHash): static
+    {
+        $this->contentHash = $contentHash;
 
         return $this;
     }

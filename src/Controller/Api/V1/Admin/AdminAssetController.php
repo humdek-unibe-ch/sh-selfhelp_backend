@@ -263,6 +263,34 @@ class AdminAssetController extends AbstractController
     }
 
     /**
+     * Apply groups and/or managing roles once to every asset in a folder and
+     * its subfolders (nothing is stored on the folder). All or nothing: 403
+     * and no change when the caller may not update one of those assets.
+     *
+     * @route /admin/asset-folders/{folderId}/access
+     * @method POST
+     */
+    public function setAssetFolderAccess(int $folderId, Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/set_asset_folder_access', $this->jsonSchemaValidationService);
+
+            return $this->responseFormatter->formatSuccess(
+                $this->adminAssetService->setFolderAccess(
+                    $folderId,
+                    array_key_exists('group_ids', $data) ? $this->intList($data['group_ids']) : null,
+                    array_key_exists('role_ids', $data) ? $this->intList($data['role_ids']) : null
+                ),
+                'responses/admin/assets/asset_folder_access_envelope'
+            );
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Delete an empty folder (409 when it has a subfolder or any asset).
+     *
      * @route /admin/asset-folders/{folderId}
      * @method DELETE
      */
@@ -364,6 +392,16 @@ class AdminAssetController extends AbstractController
         }
 
         return $data;
+    }
+
+    /**
+     * The integers of a validated JSON list (the schema already guarantees it).
+     *
+     * @return list<int>
+     */
+    private function intList(mixed $value): array
+    {
+        return is_array($value) ? array_values(array_filter($value, 'is_int')) : [];
     }
 
     /**

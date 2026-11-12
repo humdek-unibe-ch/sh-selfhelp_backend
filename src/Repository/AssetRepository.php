@@ -94,6 +94,68 @@ class AssetRepository extends ServiceEntityRepository
         return $counts;
     }
 
+    /**
+     * All assets in the given folders, whoever may manage them: a folder
+     * action must know about every asset it touches, also those the caller
+     * cannot see.
+     *
+     * @param list<int> $folderIds
+     * @return list<Asset>
+     */
+    public function findInFolders(array $folderIds): array
+    {
+        if ($folderIds === []) {
+            return [];
+        }
+
+        /** @var list<Asset> $assets */
+        $assets = $this->createQueryBuilder('a')
+            ->andWhere('IDENTITY(a.folder) IN (:folderIds)')
+            ->setParameter('folderIds', $folderIds)
+            ->orderBy('a.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $assets;
+    }
+
+    /**
+     * How many assets sit directly in a folder, whoever may manage them.
+     */
+    public function countInFolder(int $folderId): int
+    {
+        return (int) $this->createQueryBuilder('a')
+            ->select('COUNT(a.id)')
+            ->andWhere('IDENTITY(a.folder) = :folderId')
+            ->setParameter('folderId', $folderId)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Other assets with exactly these bytes, newest first.
+     *
+     * @param list<int>|null $assetIds Assets the caller may manage: null = all (admin)
+     * @return list<Asset>
+     */
+    public function findDuplicates(string $contentHash, int $exceptAssetId, ?array $assetIds, int $limit): array
+    {
+        $qb = $this->createQueryBuilder('a')
+            ->andWhere('a.contentHash = :hash')
+            ->andWhere('a.id != :exceptId')
+            ->setParameter('hash', $contentHash)
+            ->setParameter('exceptId', $exceptAssetId);
+        $this->restrictToIds($qb, $assetIds);
+
+        /** @var list<Asset> $assets */
+        $assets = $qb->orderBy('a.id', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+
+        return $assets;
+    }
+
     public function findOneByUuid(string $uuid): ?Asset
     {
         return $this->findOneBy(['uuid' => $uuid]);

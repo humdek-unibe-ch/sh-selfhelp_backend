@@ -68,6 +68,29 @@ final class AdminAssetPermissionTest extends QaWebTestCase
     }
 
     /**
+     * A10: applying access to a folder needs `admin.asset.update`: the admin
+     * role gets 200, editor, user and guest personas 403, anonymous 401.
+     */
+    public function testAssetFolderAccessEnforcesTheUpdatePermission(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/asset-folders/2147483600/access', ['group_ids' => []]);
+
+        $admin = $this->loginAsQaAdmin();
+        $created = $this->jsonRequest('POST', '/cms-api/v1/admin/asset-folders', ['name' => 'qa-permission-folder'], $admin);
+        $folderId = null;
+        foreach ($this->asList($created['data'] ?? null) as $row) {
+            $row = $this->asArray($row);
+            if ($row['name'] === 'qa-permission-folder') {
+                $folderId = $this->asInt($row['id']);
+            }
+        }
+        self::assertNotNull($folderId);
+
+        $result = $this->jsonRequest('POST', '/cms-api/v1/admin/asset-folders/' . $folderId . '/access', ['group_ids' => []], $admin);
+        self::assertSame(['updated' => 0], $this->assertEnvelopeSuccess($result));
+    }
+
+    /**
      * Export returns a ZIP and import takes a multipart upload, so only the
      * negative half is asserted here; the admin round trip is covered by
      * AdminAssetControllerTest.

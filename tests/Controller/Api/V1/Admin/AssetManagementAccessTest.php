@@ -11,6 +11,7 @@ namespace App\Tests\Controller\Api\V1\Admin;
 
 use App\Service\Core\LookupService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Tests\Support\AssetFixtures;
 use App\Tests\Support\Factories\GroupFactory;
 use App\Tests\Support\Factories\RoleDataAccessFactory;
 use App\Tests\Support\Factories\RoleFactory;
@@ -63,7 +64,7 @@ final class AssetManagementAccessTest extends QaWebTestCase
         $other = ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->loginAs(self::OTHER_EMAIL)];
 
         $path = (string) tempnam(sys_get_temp_dir(), 'qa_asset');
-        file_put_contents($path, 'qa-bytes');
+        file_put_contents($path, AssetFixtures::png('qa-bytes'));
         $this->client->request('POST', '/cms-api/v1/admin/assets', [], ['file' => new UploadedFile($path, 'qa-owned.png', null, null, true)], $owner);
         self::assertSame(201, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
         $asset = $this->data();
@@ -115,7 +116,7 @@ final class AssetManagementAccessTest extends QaWebTestCase
 
         // A new upload is public and managed in full by the uploader's role.
         $path = (string) tempnam(sys_get_temp_dir(), 'qa_asset');
-        file_put_contents($path, 'qa-bytes');
+        file_put_contents($path, AssetFixtures::png('qa-bytes'));
         $this->client->request('POST', '/cms-api/v1/admin/assets', [], ['file' => new UploadedFile($path, 'qa-rights.png', null, null, true)], $owner);
         self::assertSame(201, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
         $asset = $this->data();
