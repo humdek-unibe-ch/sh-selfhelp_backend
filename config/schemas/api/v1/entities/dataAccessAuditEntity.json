@@ -9,8 +9,8 @@
             "description": "Unique identifier for the audit log entry"
         },
         "idUsers": {
-            "type": "integer",
-            "description": "ID of the user who performed the action"
+            "type": ["integer", "null"],
+            "description": "ID of the user who performed the action. Null once that user was deleted or their data was cleaned: the audit row is kept, only the person is removed."
         },
         "idResourceTypes": {
             "type": "integer",
@@ -67,18 +67,18 @@
         },
         "user": {
             "type": "object",
-            "description": "User who performed the action",
+            "description": "User who performed the action. All fields are null when the user no longer exists (deleted, or their data was cleaned).",
             "properties": {
                 "id": {
-                    "type": "integer",
+                    "type": ["integer", "null"],
                     "description": "User ID"
                 },
                 "username": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "description": "Username"
                 },
                 "email": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "description": "User email"
                 }
             },

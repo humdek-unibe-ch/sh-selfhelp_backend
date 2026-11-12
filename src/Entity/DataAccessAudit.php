@@ -41,8 +41,8 @@ class DataAccessAudit
     // `a.idResourceTypes`, `a.idAuditActions`, `a.idPermissionResults`).
     // Doctrine hydrates them and DQL reads them, both invisible to PHPStan
     // — see the documented property.onlyRead ignore in phpstan.dist.neon.
-    #[ORM\Column(name: 'id_users', type: Types::INTEGER)]
-    private int $idUsers;
+    #[ORM\Column(name: 'id_users', type: Types::INTEGER, nullable: true)]
+    private ?int $idUsers = null;
 
     #[ORM\Column(name: 'id_resource_types', type: Types::INTEGER)]
     private int $idResourceTypes;
@@ -81,9 +81,11 @@ class DataAccessAudit
     private \DateTimeImmutable $createdAt;
 
     // Relationships
+    // The audit row outlives the person: when the user is deleted or their data
+    // is cleaned the link is cleared and the row stays (SET NULL).
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', nullable: false)]
-    private User $user;
+    #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?User $user = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
     #[ORM\JoinColumn(name: 'id_resource_types', referencedColumnName: 'id', nullable: false)]
@@ -213,12 +215,12 @@ class DataAccessAudit
         return $this;
     }
 
-    public function getUser(): User
+    public function getUser(): ?User
     {
         return $this->user;
     }
 
-    public function setUser(User $user): self
+    public function setUser(?User $user): self
     {
         $this->user = $user;
         return $this;

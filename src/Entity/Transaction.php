@@ -52,8 +52,10 @@ class Transaction
     #[ORM\JoinColumn(name: 'id_transaction_by', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Lookup $transactionBy = null;
 
+    // The audit row outlives the person: when the user is deleted the link is
+    // cleared (SET NULL) and the row stays. See UserDataCleanerService.
     #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'transactions')]
-    #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', onDelete: 'SET NULL')]
     private ?User $user = null;
 
     public function __construct()
