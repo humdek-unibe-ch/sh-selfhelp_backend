@@ -35,15 +35,17 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * simplified fake role here (plan §16 / AGENTS.md Testing Rule 8).
  *
  * Persona → real seeded group/role mapping. The baseline schema seeds
- * two groups (`researcher`, `subject`) and one role (`admin`); admin rights
- * come from the role, there is no admin group. There is no
- * `editor`/`user`/`guest` role in production, so the personas map onto the
- * REAL groups instead of fabricating roles:
+ * ONE group (`subject`, the default group every new public page gives
+ * `select`) and one role (`admin`); admin rights come from the role, there is
+ * no admin group. There is no `editor`/`user`/`guest` role in production, so
+ * the personas map onto the REAL group instead of fabricating roles. A test
+ * that needs a second group creates a custom `qa_` group itself
+ * (GroupFactory), it never relies on a seeded one:
  *
  *   qa.admin   (no group)       role=admin   full admin access
- *   qa.editor  group=researcher (no role)    content/experiment manager
- *   qa.user    group=subject   (no role)    ordinary end user
- *   qa.guest   (no group)      (no role)    authenticated but unprivileged
+ *   qa.editor  group=subject    (no role)    non-admin with the default group
+ *   qa.user    group=subject    (no role)    ordinary end user
+ *   qa.guest   (no group)       (no role)    authenticated but unprivileged
  *
  * Only qa.admin holds the admin role, so only qa.admin passes admin API
  * route permissions — which is exactly what the Slice 3 permission matrix
@@ -62,7 +64,7 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
      * fast with a clear message instead of producing confusing downstream
      * failures (plan §32 / AGENTS.md Testing Rule 32).
      */
-    public const QA_FIXTURE_VERSION = '2026_11_04_001';
+    public const QA_FIXTURE_VERSION = '2026_11_11_001';
 
     /** Shared password for every QA persona. Test-only, never a real secret. */
     public const QA_PASSWORD = 'QaPassw0rd!2026';
@@ -117,10 +119,9 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
             );
         }
 
-        // researcher/subject are part of the production seed too; map the
-        // editor/user personas onto them. Resolve defensively so the
-        // fixture still seeds the critical admin persona on an unusual DB.
-        $researcherGroup = $manager->getRepository(Group::class)->findOneBy(['name' => 'researcher']);
+        // `subject` is part of the production seed too; map the editor/user
+        // personas onto it. Resolve defensively so the fixture still seeds the
+        // critical admin persona on an unusual DB.
         $subjectGroup = $manager->getRepository(Group::class)->findOneBy(['name' => 'subject']);
 
         $this->createPersona(
@@ -138,7 +139,7 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
             'QA Editor',
             $activeStatus,
             $userType,
-            array_filter([$researcherGroup]),
+            array_filter([$subjectGroup]),
             null,
         );
         $this->createPersona(

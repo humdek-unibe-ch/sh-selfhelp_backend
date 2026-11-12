@@ -15,7 +15,8 @@ use Doctrine\Migrations\AbstractMigration;
 /**
  * Assets: uuid identity, per-asset view groups (none = public), CMS management
  * via role_data_access, folders as an organisation-only tree, the asset bundle
- * export/import routes, the `researcher` group and no `admin` group.
+ * export/import routes, and no `admin` or `therapist` group (admin rights come
+ * from the admin role; `subject` is the one built-in group).
  *
  * Fresh installs only: the platform is unreleased, so this goes straight from
  * the baseline `assets` table to the final shape with no data backfill.
@@ -56,20 +57,23 @@ final class Version20261103112133 extends AbstractMigration
 
     public function getDescription(): string
     {
-        return 'Assets: uuid identity, view groups per asset (none = public), CMS management via role_data_access, organisation-only folder tree, export/import routes; the therapist group becomes researcher and the admin group is removed.';
+        return 'Assets: uuid identity, view groups per asset (none = public), CMS management via role_data_access, organisation-only folder tree, export/import routes; the admin and therapist groups are removed.';
     }
 
     public function up(Schema $schema): void
     {
-        // 1. Groups: therapist becomes researcher (created when missing); no
-        //    admin group, admin rights come from the admin role.
-        $this->addSql("UPDATE `groups` SET name = 'researcher', description = 'Researchers' WHERE name = 'therapist'");
+        // 1. Groups only decide who sees what. Admin rights come from the admin
+        //    role, so there is no `admin` group, and every group except the one
+        //    built-in default (`subject`) is custom, so `therapist` goes too.
+        //    Memberships and page/asset ACL rows cascade; role_data_access has no
+        //    foreign key to a group, so its rows for a removed group are deleted
+        //    by hand.
+        $this->addSql("DELETE FROM `groups` WHERE name IN ('admin', 'therapist')");
         $this->addSql(
-            'INSERT INTO `groups` (name, description, id_group_types, requires_2fa) '
-            . "SELECT 'researcher', 'Researchers', (SELECT id FROM lookups WHERE type_code = 'groupTypes' AND lookup_code = 'db_role' LIMIT 1), 0 FROM DUAL "
-            . "WHERE NOT EXISTS (SELECT 1 FROM `groups` WHERE name = 'researcher')"
+            'DELETE rda FROM role_data_access rda '
+            . "INNER JOIN lookups l ON l.id = rda.id_resource_types AND l.type_code = 'resourceTypes' AND l.lookup_code = 'group' "
+            . 'LEFT JOIN `groups` g ON g.id = rda.resource_id WHERE g.id IS NULL'
         );
-        $this->addSql("DELETE FROM `groups` WHERE name = 'admin'");
 
         // 2. Folders: an organisation-only tree.
         $this->addSql('CREATE TABLE assets_folders (id INT AUTO_INCREMENT NOT NULL, name VARCHAR(100) NOT NULL, id_parent INT DEFAULT NULL, INDEX idx_assets_folders_id_parent (id_parent), PRIMARY KEY (id)) DEFAULT CHARACTER SET utf8mb4 ENGINE = InnoDB');
@@ -158,13 +162,15 @@ final class Version20261103112133 extends AbstractMigration
         $this->addSql('ALTER TABLE assets_folders DROP FOREIGN KEY FK_6CD159451BB9D5A2');
         $this->addSql('DROP TABLE assets_folders');
 
-        // Memberships and ACL rows of the admin group are not restored.
-        $this->addSql(
-            'INSERT INTO `groups` (name, description, id_group_types, requires_2fa) '
-            . "SELECT 'admin', 'Administrators', (SELECT id FROM lookups WHERE type_code = 'groupTypes' AND lookup_code = 'db_role' LIMIT 1), 0 FROM DUAL "
-            . "WHERE NOT EXISTS (SELECT 1 FROM `groups` WHERE name = 'admin')"
-        );
-        $this->addSql("UPDATE `groups` SET name = 'therapist', description = 'Therapists' WHERE name = 'researcher'");
+        // The removed groups come back empty: memberships, ACL rows and
+        // role grants of the admin and therapist groups are not restored.
+        foreach (['admin' => 'Administrators', 'therapist' => 'Therapists'] as $name => $description) {
+            $this->addSql(
+                'INSERT INTO `groups` (name, description, requires_2fa) '
+                . "SELECT '" . $name . "', '" . $description . "', 0 FROM DUAL "
+                . "WHERE NOT EXISTS (SELECT 1 FROM `groups` WHERE name = '" . $name . "')"
+            );
+        }
     }
 
     private function updateImageField(string $field, ?string $title, string $help): void

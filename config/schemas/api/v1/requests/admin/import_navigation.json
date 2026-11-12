@@ -63,7 +63,7 @@
                 },
                 "access_groups": {
                     "type": "array",
-                    "description": "Optional group ids granted access to every embedded page imported with this bundle. Admin always gets full access. Public pages also receive default subject and therapist read ACL from page create; these groups are additional viewer/editor grants matching page import behaviour.",
+                    "description": "Optional group ids granted access to every embedded page imported with this bundle. Admin always gets full access. Public pages also give read access to every group flagged add_to_new_pages (by default the subject group) when the page is created; these groups are additional viewer/editor grants matching page import behaviour.",
                     "items": { "type": "integer" },
                     "default": []
                 }

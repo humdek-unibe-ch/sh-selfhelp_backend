@@ -9,11 +9,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Command;
 
-use App\Entity\Group;
 use App\Entity\Lookup;
 use App\Entity\User;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
+use App\Tests\Support\Factories\GroupFactory;
 use App\Tests\Support\QaKernelTestCase;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Command\Command;
@@ -233,12 +233,14 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
     {
         $email = $this->email('custom-group');
 
-        // researcher group + admin role both exist in the production seed.
+        // The admin role exists in the production seed; the group is a custom
+        // one (the seed has only `subject`).
+        $group = (new GroupFactory($this->em))->createGroup('qa_cmd_custom_group');
         $this->runCommand([
             'email' => $email,
             'display-name' => 'QA Custom Membership',
             '--password' => self::PASSWORD,
-            '--group' => 'researcher',
+            '--group' => 'qa_cmd_custom_group',
             '--role' => 'admin',
         ])->assertCommandIsSuccessful();
 
@@ -246,14 +248,11 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
         self::assertInstanceOf(User::class, $user);
         $userId = (int) $user->getId();
 
-        $researcher = $this->em->getRepository(Group::class)->findOneBy(['name' => 'researcher']);
-        self::assertInstanceOf(Group::class, $researcher);
-
         $membershipGroupId = $this->em->getConnection()->fetchOne(
             'SELECT id_groups FROM rel_groups_users WHERE id_users = :u',
             ['u' => $userId],
         );
-        self::assertSame((int) $researcher->getId(), $this->coerceInt($membershipGroupId), 'User must join the requested group.');
+        self::assertSame((int) $group->getId(), $this->coerceInt($membershipGroupId), 'User must join the requested group.');
         self::assertContains('ROLE_ADMIN', $user->getRoles(), 'User must hold the requested role.');
     }
 

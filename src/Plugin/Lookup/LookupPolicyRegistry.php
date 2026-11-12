@@ -48,7 +48,6 @@ final class LookupPolicyRegistry
         LookupService::PAGE_SURFACE => LookupExtensionPolicy::CLOSED,
         LookupService::HOOK_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::ASSET_TYPES => LookupExtensionPolicy::CLOSED,
-        LookupService::GROUP_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::USER_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::USER_STATUS => LookupExtensionPolicy::CLOSED,
         LookupService::STYLE_TYPE => LookupExtensionPolicy::CLOSED,

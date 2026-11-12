@@ -15,13 +15,13 @@
       "maxLength": 250,
       "description": "Group description"
     },
-    "id_group_types": {
-      "type": "integer",
-      "description": "Group type ID"
-    },
     "requires_2fa": {
       "type": "boolean",
       "description": "Whether the group requires 2FA"
+    },
+    "add_to_new_pages": {
+      "type": "boolean",
+      "description": "Give this group `select` on every new public page automatically"
     },
     "acls": {
       "$ref": "../../common/acl_array.json",

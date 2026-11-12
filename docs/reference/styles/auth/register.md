@@ -73,7 +73,7 @@ account-activation email job. The new account is left in the `invited` status
 identical for both modes.
 
 **Multi-group assignment.** The `group` field is a select-group **MultiSelect**,
-so an admin can pick several groups (for example `subject` and `researcher`).
+so an admin can pick several groups (for example `subject` and a custom study group).
 `resolveSectionPolicy` extracts every integer ID from the stored value
 (separator-agnostic) and deduplicates it, and the service creates one
 `users_groups` row per group. In code-required mode these section groups are

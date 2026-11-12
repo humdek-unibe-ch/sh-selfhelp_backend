@@ -129,6 +129,8 @@ class AdminGroupControllerTest extends BaseControllerTest
             $this->assertArrayHasKey('description', $group);
             $this->assertArrayHasKey('users_count', $group);
             $this->assertArrayHasKey('requires_2fa', $group);
+            $this->assertArrayHasKey('add_to_new_pages', $group);
+            $this->assertArrayNotHasKey('id_group_types', $group, 'The group type no longer exists');
         }
     }
 
@@ -190,7 +192,8 @@ class AdminGroupControllerTest extends BaseControllerTest
         $groupData = [
             'name' => $this->testGroupName,
             'description' => 'Test group description',
-            'requires_2fa' => false
+            'requires_2fa' => false,
+            'add_to_new_pages' => true,
         ];
 
         $this->client->request(
@@ -223,6 +226,8 @@ class AdminGroupControllerTest extends BaseControllerTest
         $this->assertSame($groupData['name'], $group['name']);
         $this->assertSame($groupData['description'], $group['description']);
         $this->assertSame($groupData['requires_2fa'], $group['requires_2fa']);
+        $this->assertTrue($group['add_to_new_pages'], 'The default-group flag is stored as sent');
+        $this->assertArrayNotHasKey('id_group_types', $group, 'The group type no longer exists');
         
         // Store the created group ID for other tests
         $this->testGroupId = $this->asInt($group['id']);
@@ -270,11 +275,12 @@ class AdminGroupControllerTest extends BaseControllerTest
         $this->testCreateGroupSuccess();
         
         // Group name is an immutable permission identifier: updateGroup only
-        // mutates description / requires_2fa / id_group_types, never the name.
+        // mutates description / requires_2fa / add_to_new_pages, never the name.
         $updateData = [
             'name' => $this->testGroupName . ' Updated',
             'description' => 'Updated description',
-            'requires_2fa' => true
+            'requires_2fa' => true,
+            'add_to_new_pages' => false,
         ];
 
         $this->client->request(
@@ -299,6 +305,7 @@ class AdminGroupControllerTest extends BaseControllerTest
         $this->assertSame($this->testGroupName, $group['name']);
         $this->assertSame($updateData['description'], $group['description']);
         $this->assertSame($updateData['requires_2fa'], $group['requires_2fa']);
+        $this->assertFalse($group['add_to_new_pages'], 'The default-group flag can be switched off again');
     }
 
     /**

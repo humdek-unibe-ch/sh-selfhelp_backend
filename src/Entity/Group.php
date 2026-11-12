@@ -35,11 +35,16 @@ class Group
     #[ORM\Column(name: 'description', type: 'string', length: 250)]
     private string $description;
 
-    #[ORM\Column(name: 'id_group_types', type: 'integer', nullable: true)]
-    private ?int $idGroupTypes = null;
-
     #[ORM\Column(name: 'requires_2fa', type: 'boolean')]
     private bool $requires2fa = false;
+
+    /**
+     * Every new public page gives this group `select` (see
+     * AdminPageService::createPage). Any number of groups may carry it; the
+     * seed flags only `subject`.
+     */
+    #[ORM\Column(name: 'add_to_new_pages', type: 'boolean', options: ['default' => false])]
+    private bool $addToNewPages = false;
 
     public function __construct()
     {
@@ -119,18 +124,6 @@ class Group
         return $this;
     }
 
-    public function getIdGroupTypes(): ?int
-    {
-        return $this->idGroupTypes;
-    }
-
-    public function setIdGroupTypes(?int $idGroupTypes): static
-    {
-        $this->idGroupTypes = $idGroupTypes;
-
-        return $this;
-    }
-
     public function isRequires2fa(): ?bool
     {
         return $this->requires2fa;
@@ -139,6 +132,18 @@ class Group
     public function setRequires2fa(bool $requires2fa): static
     {
         $this->requires2fa = $requires2fa;
+
+        return $this;
+    }
+
+    public function isAddToNewPages(): bool
+    {
+        return $this->addToNewPages;
+    }
+
+    public function setAddToNewPages(bool $addToNewPages): static
+    {
+        $this->addToNewPages = $addToNewPages;
 
         return $this;
     }

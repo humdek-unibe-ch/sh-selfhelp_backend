@@ -20,7 +20,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Permission-matrix + legacy-route regression for first-class CMS apps.
  *
  * QA personas: only qa.admin holds the `admin` role with `admin.cms_app.*`.
- * qa.editor is in the therapist group with no admin role, so it must be
+ * qa.editor is in the subject group with no admin role, so it must be
  * rejected on every `/admin/cms-apps*` route even if it could edit content
  * elsewhere. That is the cross-scope negative case for CMS-app permissions.
  */

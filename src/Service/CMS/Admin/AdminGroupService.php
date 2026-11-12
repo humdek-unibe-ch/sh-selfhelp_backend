@@ -148,10 +148,7 @@ class AdminGroupService extends BaseService
             $group->setName($this->asString($groupData['name']));
             $group->setDescription($this->asString($groupData['description'] ?? ''));
             $group->setRequires2fa((bool) ($groupData['requires_2fa'] ?? false));
-
-            if (isset($groupData['id_group_types'])) {
-                $group->setIdGroupTypes($this->asIntOrNull($groupData['id_group_types']));
-            }
+            $group->setAddToNewPages((bool) ($groupData['add_to_new_pages'] ?? false));
 
             $this->entityManager->persist($group);
             $this->entityManager->flush();
@@ -219,8 +216,8 @@ class AdminGroupService extends BaseService
             if (isset($groupData['requires_2fa'])) {
                 $group->setRequires2fa((bool) $groupData['requires_2fa']);
             }
-            if (isset($groupData['id_group_types'])) {
-                $group->setIdGroupTypes($this->asIntOrNull($groupData['id_group_types']));
+            if (isset($groupData['add_to_new_pages'])) {
+                $group->setAddToNewPages((bool) $groupData['add_to_new_pages']);
             }
 
             $this->entityManager->flush();
@@ -414,8 +411,8 @@ class AdminGroupService extends BaseService
             'id' => $group->getId(),
             'name' => $group->getName(),
             'description' => $group->getDescription(),
-            'id_group_types' => $group->getIdGroupTypes(),
             'requires_2fa' => $group->isRequires2fa(),
+            'add_to_new_pages' => $group->isAddToNewPages(),
             'users_count' => $group->getUsersGroups()->count(),
             'users' => array_map(function (UsersGroup $ug) {
                 $user = $ug->getUser();

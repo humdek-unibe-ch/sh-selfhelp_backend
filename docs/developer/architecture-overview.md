@@ -1811,8 +1811,8 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id`: int (PK)
 - `name`: string
 - `description`: string
-- `id_group_types`: int (nullable, FK to Lookup)
 - `requires_2fa`: bool
+- `add_to_new_pages`: bool (a new public page gives this group `select`)
 
 ### Hook
 - `id`: int (PK)
@@ -2208,8 +2208,8 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id`: int (PK)
 - `name`: string (length 100)
 - `description`: string (length 250)
-- `id_group_types`: int (nullable)
 - `requires_2fa`: bool (default 0)
+- `add_to_new_pages`: bool (default 0; a new public page gives this group `select`)
 
 ### hooks
 - `id`: int (PK)

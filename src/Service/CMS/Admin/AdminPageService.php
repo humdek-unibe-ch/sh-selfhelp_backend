@@ -41,11 +41,6 @@ class AdminPageService extends BaseService
 {
     use TranslationManagerTrait;
 
-    // Groups every new public page is readable by. Admins need no group: the
-    // admin role bypasses page ACLs (ACLService::hasAccess).
-    private const GROUP_SUBJECT = 'subject';
-    private const GROUP_RESEARCHER = 'researcher';
-
     /**
      * Constructor
      */
@@ -226,25 +221,21 @@ class AdminPageService extends BaseService
             $this->entityManager->persist($page);
             $this->entityManager->flush(); // To get the page ID
 
-            // Fetch groups by name
             $groupRepo = $this->entityManager->getRepository(Group::class);
-            $subjectGroup = $groupRepo->findOneBy(['name' => self::GROUP_SUBJECT]);
-            $researcherGroup = $groupRepo->findOneBy(['name' => self::GROUP_RESEARCHER]);
-            if (!$subjectGroup || !$researcherGroup) {
-                throw new ServiceException('One or more required groups not found.', Response::HTTP_INTERNAL_SERVER_ERROR);
-            }
 
             // Track the group ids already granted so author-selected groups
             // never create duplicate ACL rows.
             $grantedGroupIds = [];
 
             if (!$isCmsSurface) {
-                // Public website pages are readable by the subject +
-                // researcher groups (select only).
-                $this->aclService->addGroupAcl($page, $subjectGroup, true, false, false, false, $this->entityManager);
-                $grantedGroupIds[(int) $subjectGroup->getId()] = true;
-                $this->aclService->addGroupAcl($page, $researcherGroup, true, false, false, false, $this->entityManager);
-                $grantedGroupIds[(int) $researcherGroup->getId()] = true;
+                // Public website pages are readable (select only) by every
+                // group flagged `add_to_new_pages`. No flagged group means
+                // nothing is added, and that is not an error. Admins need no
+                // group: the admin role bypasses page ACLs (ACLService::hasAccess).
+                foreach ($groupRepo->findBy(['addToNewPages' => true]) as $defaultGroup) {
+                    $this->aclService->addGroupAcl($page, $defaultGroup, true, false, false, false, $this->entityManager);
+                    $grantedGroupIds[(int) $defaultGroup->getId()] = true;
+                }
             }
             // CMS application pages stay admin/editor-only: no default reader
             // groups are added; the author grants editor groups explicitly.

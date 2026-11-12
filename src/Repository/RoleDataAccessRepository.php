@@ -782,8 +782,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'id' => $group->getId(),
                 'name' => $group->getName(),
                 'description' => $group->getDescription(),
-                'id_group_types' => $group->getIdGroupTypes(),
                 'requires_2fa' => $group->isRequires2fa(),
+                'add_to_new_pages' => $group->isAddToNewPages(),
                 'users_count' => (int) $userCount,
                 'crud' => 15 // Full permissions for accessible groups
             ];
