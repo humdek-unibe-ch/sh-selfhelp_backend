@@ -60,22 +60,27 @@ class JobSchedulerService extends BaseService
     }
 
     /**
-     * Resolve an attachment given as an asset URL to the stored file and its
-     * display name. Returns the inputs unchanged when it is not an asset.
+     * Resolve an email attachment, given as the asset's delivery URL, to the
+     * stored file and the name to attach it under. Null when it is not an
+     * uploaded asset or its file is gone.
      *
-     * @return array{0: string, 1: string|null}
+     * Only assets can be attached. A server file path is never read: an action
+     * author must not be able to mail out `.env` or another asset's bytes by
+     * naming a path. Which assets an author may attach is checked when the
+     * action is saved (see ActionAttachmentValidator).
+     *
+     * @return array{0: string, 1: string}|null
      */
-    private function resolveAssetAttachment(string $reference, ?string $filename): array
+    private function resolveAssetAttachment(string $reference): ?array
     {
         $uuid = $this->assetStorage->uuidFromReference($reference);
         $asset = $uuid !== null ? $this->assetRepository->findOneByUuid($uuid) : null;
-        if ($asset === null) {
-            return [$reference, $filename];
+        $path = $asset !== null ? $this->assetStorage->resolveForDelivery($asset->getUuid()) : null;
+        if ($asset === null || $path === null) {
+            return null;
         }
 
-        $path = $this->assetStorage->resolveForDelivery($asset->getUuid());
-
-        return [$path ?? $reference, $this->assetStorage->downloadName($asset)];
+        return [$path, $this->assetStorage->downloadName($asset)];
     }
 
     /**
@@ -963,21 +968,18 @@ class JobSchedulerService extends BaseService
             $isHtml ? $email->html($this->mailHtmlRenderer->render($body)) : $email->text($body);
 
             foreach ($attachments as $attachment) {
-                if (!is_array($attachment)) {
+                // Action configs store the asset delivery URL (assets live
+                // outside the docroot under a uuid, so it is never a file path).
+                $reference = is_array($attachment) ? ($attachment['path'] ?? null) : null;
+                $resolved = is_string($reference) && $reference !== '' ? $this->resolveAssetAttachment($reference) : null;
+                if ($resolved === null) {
+                    $this->logger->warning('Email attachment skipped: it is not an available asset', [
+                        'jobId' => $job->getId(),
+                        'attachment' => is_string($reference) ? $reference : null,
+                    ]);
                     continue;
                 }
-                $path = $attachment['path'] ?? '';
-                $filename = $attachment['filename'] ?? null;
-                $filename = is_string($filename) ? $filename : null;
-                if (is_string($path) && $path !== '' && !is_file($path)) {
-                    // Action configs store the asset delivery URL; resolve it to
-                    // the stored file (assets live outside the docroot under a
-                    // uuid, so the URL is never a filesystem path).
-                    [$path, $filename] = $this->resolveAssetAttachment($path, $filename);
-                }
-                if (is_string($path) && $path !== '' && is_file($path)) {
-                    $email->attachFromPath($path, $filename);
-                }
+                $email->attachFromPath($resolved[0], $resolved[1]);
             }
 
             $this->mailer->send($email);

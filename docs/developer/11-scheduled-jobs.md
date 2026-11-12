@@ -286,7 +286,10 @@ Stored config includes:
 - body
 - attachments
 
-Attachments are included when local files exist.
+Attachments are assets only: each entry is an asset's delivery URL, resolved to
+the asset's file when the mail is built. A server path or an unknown asset in a
+stored config is skipped with a warning and the mail still goes out (see
+[Email attachments](09-asset-management.md#email-attachments)).
 
 ## Push Notification Execution
 

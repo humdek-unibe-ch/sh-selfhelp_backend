@@ -200,6 +200,28 @@ Useful for resubmits and edits where older queued jobs should not still fire.
 }
 ```
 
+### Email attachments
+
+`notification.attachments` (also in the notification of a reminder) is a list
+of **assets**, each given as the asset's delivery URL
+(`/cms-api/v1/assets/<uuid>`; the frontend form `/api/assets/<uuid>` and an
+absolute URL naming the same asset are accepted). Blank entries are ignored.
+The check happens when the action is saved (`POST` and `PUT`), against the
+person saving it, because the action later runs with system rights:
+
+- a server file path, an external URL or anything else that is not an
+  uploaded asset is refused with `400`;
+- an asset that does not exist is refused with `400`;
+- an asset the person saving may not view (the asset's groups, as on the
+  website) is refused with `403`. The admin role may attach any asset.
+
+Nothing is stored when a save is refused. When the mail is sent, only assets
+resolve to a file: a server path in a stored config is skipped (with a warning
+in the log) and the mail still goes out. Each attachment is named after its
+asset uuid plus the extension of its mime type. The view right is checked at
+save time only; restricting the asset's groups later does not change actions
+that already name it.
+
 ### Template placeholders
 
 Notification subject/body/recipient fields use Mustache `{{...}}` placeholders

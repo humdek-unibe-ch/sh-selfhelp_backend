@@ -201,6 +201,61 @@ final class JobSchedulerServiceTest extends QaKernelTestCase
     {
         /** @var AssetStorageService $storage */
         $storage = $this->service(AssetStorageService::class);
+        $uuid = $this->createStoredAsset($storage, 'qa-attachment.pdf', 'application/pdf', 'qa attachment body');
+        $path = $storage->absolutePath($uuid);
+
+        try {
+            $email = $this->sendAttachmentEmail([['filename' => $uuid, 'path' => $storage->publicUrl($uuid)]]);
+
+            $attachments = $email->getAttachments();
+            self::assertCount(1, $attachments, 'The asset URL must resolve to the stored file and be attached.');
+            self::assertSame($uuid . '.pdf', $attachments[0]->getFilename(), 'Attached as the uuid with the extension of its mime type.');
+            self::assertSame('qa attachment body', $attachments[0]->getBody());
+        } finally {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
+    }
+
+    /**
+     * Security: an action author must not be able to mail out a server file by
+     * naming its path, neither a file outside the asset store (`.env`, keys)
+     * nor an asset's own stored file (which would skip the asset's view
+     * groups). Only the asset delivery URL is attached; the mail itself still
+     * goes out.
+     */
+    public function testEmailAttachmentGivenAsServerFilePathIsNeverAttached(): void
+    {
+        /** @var AssetStorageService $storage */
+        $storage = $this->service(AssetStorageService::class);
+        $uuid = $this->createStoredAsset($storage, 'qa-restricted.pdf', 'application/pdf', 'qa restricted asset body');
+        $assetPath = $storage->absolutePath($uuid);
+        $secretPath = (string) tempnam(sys_get_temp_dir(), 'qa_secret');
+        file_put_contents($secretPath, 'qa secret body');
+
+        try {
+            $email = $this->sendAttachmentEmail([
+                ['filename' => 'qa-secret.txt', 'path' => $secretPath],
+                ['filename' => 'qa-restricted.pdf', 'path' => $assetPath],
+                ['filename' => 'qa-relative', 'path' => 'var/assets/' . $uuid],
+            ]);
+
+            self::assertCount(0, $email->getAttachments(), 'A server file path must never be attached.');
+        } finally {
+            foreach ([$assetPath, $secretPath] as $file) {
+                if (is_file($file)) {
+                    unlink($file);
+                }
+            }
+        }
+    }
+
+    /**
+     * Stores an asset row and its file the way an upload does, and returns its uuid.
+     */
+    private function createStoredAsset(AssetStorageService $storage, string $name, string $mimeType, string $body): string
+    {
         $type = $this->em->getRepository(Lookup::class)->findOneBy([
             'typeCode' => LookupService::ASSET_TYPES,
             'lookupCode' => LookupService::ASSET_TYPES_ASSET,
@@ -211,56 +266,58 @@ final class JobSchedulerServiceTest extends QaKernelTestCase
         $asset = new Asset();
         $asset->setUuid($uuid);
         $asset->setAssetType($type);
-        $asset->setName('qa-attachment.pdf');
-        $asset->setMimeType('application/pdf');
+        $asset->setName($name);
+        $asset->setMimeType($mimeType);
         $this->em->persist($asset);
         $this->em->flush();
 
         if (!is_dir($storage->storageRoot())) {
             mkdir($storage->storageRoot(), 0755, true);
         }
-        $path = $storage->absolutePath($uuid);
-        file_put_contents($path, 'qa attachment body');
+        file_put_contents($storage->absolutePath($uuid), $body);
 
-        try {
-            $job = $this->jobs->create(
-                LookupService::JOB_TYPES_EMAIL,
-                LookupService::SCHEDULED_JOBS_STATUS_QUEUED,
-                null,
-                new \DateTime('now', new \DateTimeZone('UTC')),
-                'qa_attachment_email_job',
-                ['email' => [
-                    'recipient_emails' => 'qa_attachment_mailbox@selfhelp.test',
-                    'subject' => 'QA attachment email',
-                    'body' => 'QA attachment body',
-                    'from_email' => 'qa-noreply@selfhelp.test',
-                    'from_name' => 'QA',
-                    'is_html' => false,
-                    'attachments' => [['filename' => $uuid, 'path' => $storage->publicUrl($uuid)]],
-                ]],
-            );
+        return $uuid;
+    }
 
-            $this->scheduler->executeJob($this->jobId($job), LookupService::TRANSACTION_BY_BY_SYSTEM);
+    /**
+     * Runs an email job with the given attachments and returns the mail that
+     * was sent for it.
+     *
+     * @param list<array<string, string>> $attachments
+     */
+    private function sendAttachmentEmail(array $attachments): \Symfony\Component\Mime\Email
+    {
+        $job = $this->jobs->create(
+            LookupService::JOB_TYPES_EMAIL,
+            LookupService::SCHEDULED_JOBS_STATUS_QUEUED,
+            null,
+            new \DateTime('now', new \DateTimeZone('UTC')),
+            'qa_attachment_email_job',
+            ['email' => [
+                'recipient_emails' => 'qa_attachment_mailbox@selfhelp.test',
+                'subject' => 'QA attachment email',
+                'body' => 'QA attachment body',
+                'from_email' => 'qa-noreply@selfhelp.test',
+                'from_name' => 'QA',
+                'is_html' => false,
+                'attachments' => $attachments,
+            ]],
+        );
 
-            $sent = array_values(array_filter(
-                self::getMailerMessages(),
-                static fn (object $message): bool => $message instanceof \Symfony\Component\Mime\Email
-                    && $message->getSubject() === 'QA attachment email'
-            ));
-            // The message logger records the queued and the sent event of the
-            // same email, so look at the last copy.
-            self::assertNotEmpty($sent, 'The attachment email must be sent.');
-            $email = array_pop($sent);
-            self::assertInstanceOf(\Symfony\Component\Mime\Email::class, $email);
-            $attachments = $email->getAttachments();
-            self::assertCount(1, $attachments, 'The asset URL must resolve to the stored file and be attached.');
-            self::assertSame($uuid . '.pdf', $attachments[0]->getFilename(), 'Attached as the uuid with the extension of its mime type.');
-            self::assertSame('qa attachment body', $attachments[0]->getBody());
-        } finally {
-            if (is_file($path)) {
-                unlink($path);
-            }
-        }
+        $this->scheduler->executeJob($this->jobId($job), LookupService::TRANSACTION_BY_BY_SYSTEM);
+
+        $sent = array_values(array_filter(
+            self::getMailerMessages(),
+            static fn (object $message): bool => $message instanceof \Symfony\Component\Mime\Email
+                && $message->getSubject() === 'QA attachment email'
+        ));
+        // The message logger records the queued and the sent event of the
+        // same email, so look at the last copy.
+        self::assertNotEmpty($sent, 'The attachment email must be sent.');
+        $email = array_pop($sent);
+        self::assertInstanceOf(\Symfony\Component\Mime\Email::class, $email);
+
+        return $email;
     }
 
     /**
