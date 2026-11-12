@@ -112,7 +112,7 @@ class RegistrationService extends BaseService
             } else {
                 // Open mode enrols the user into EVERY group the register
                 // section selected, so one register style can assign multiple
-                // groups (e.g. "subject" + "researcher").
+                // groups (e.g. "subject" + a custom study group).
                 $vc     = null;
                 $groups = $sectionGroups;
             }

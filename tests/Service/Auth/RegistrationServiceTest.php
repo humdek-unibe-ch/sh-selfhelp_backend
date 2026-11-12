@@ -267,8 +267,8 @@ final class RegistrationServiceTest extends QaKernelTestCase
 
     public function testOpenRegistrationEnrolsTheUserIntoEverySelectedGroup(): void
     {
-        // A register style that selected TWO groups (e.g. "subject" +
-        // "therapist") must enrol the new user into BOTH — the historical bug
+        // A register style that selected TWO groups (e.g. "subject" + a
+        // custom group) must enrol the new user into BOTH — the historical bug
         // only kept the first group because the value was cast with (int).
         $groupA = $this->qaGroup;
         $groupB = (new GroupFactory($this->em))->createGroup('qa_register_group_2');
