@@ -280,6 +280,53 @@ everyone else; IPv6 counts per /64. Details in `docs/developer/03-authentication
   the record named by the style default, `record_id` (F87). Before, a blank value
   showed no record at all, which disagreed with the import above.
 
+## About the platform
+
+- The `version` style draws an "about this platform" block: the SelfHelp
+  version, the frameworks (PHP, Symfony, MySQL, Redis), the enabled plugins and
+  the direct production libraries of the backend, each with its licence. The
+  backend generates it from what is installed (`PlatformAboutService`; the
+  libraries are the `require` of `composer.json`, resolved through
+  `vendor/composer/installed.json`) and adds it to the section as `about`
+  **after** the page cache is read, so it is never cached with the page and a
+  permission change shows on the next request. Exact version numbers are shown
+  only to a caller who holds `admin.system.read`; everyone else sees the
+  platform version, the names and the licences. The web and mobile clients add
+  their own generated list in the same shape.
+- New translatable headings on `version`: `title`, `label_frameworks`,
+  `label_plugins`, `label_libraries`, `label_web`, `label_app`, `label_filter`,
+  `label_no_match` (en-GB and de-CH).
+- The Impressum page shows this block instead of the SelfHelp 1
+  "Components & versions" area. The migration deletes that heading, intro, card
+  (with every descendant) and note on every instance, with no check for
+  operator edits, and places one `version` section there; it never adds a
+  second one. The SH1 text is not restored on `down()`.
+- `GET /admin/system/version` returns `frameworks` and `libraries` with exact
+  versions and licences for the admin System page.
+- The admin "Referrers" card gets real data: the web client sends the external
+  referrer host as `X-Referrer-Host`; the mobile app sends none. A test now
+  covers the page endpoint (an external host counts once per page view; a
+  missing, malformed or own-host value counts nothing).
+- Known limit: `_section_recursive.json` ties `about` to the `version` style
+  with `if/then`, which the validator (`justinrainbow/json-schema` 6.x) does not
+  evaluate, like every other per-style rule in that file. The shape of `about`
+  is checked directly against `common/_platform_about.json` in
+  `VersionStyleAboutTest`.
+
+## Database cleanup
+
+- New `docs/reference/database-inventory.md`: every table, procedure, function,
+  lookup type and leftover of the schema, with what uses it.
+- The known-dead SH1 leftovers are gone, completely: the tables `libraries` and
+  `rel_sections_navigation` (and the entities `Library`, `SectionsNavigation`),
+  the column `users.intern` (and `User::$intern`; the three `intern = false`
+  filters it fed were always true), the two `hookTypes` lookup rows (and
+  `LookupService::HOOK_TYPES` with its policy entry), and the unused
+  `MESSENGER_TRANSPORT_DSN` in `.env` and `.env.test`. The migration stops if a
+  foreign key still points at a `hookTypes` row; `down()` brings back the
+  structure and the two lookup rows, not the 23 SH1 `libraries` rows (nothing
+  read them).
+
 ## Security and logging
 
 `api_request_logs` masks every request/response key containing `password`,
@@ -297,7 +344,7 @@ locally built image never contains uploaded files.
 
 `supports.frontend` is `>=0.1.70 <0.2.0` (uuid asset contract, `can_view` /
 `can_update` / `can_delete`, `isFile`; 0.1.69 was never tagged); the frontend
-uses `@selfhelp/shared` 1.22.1. `supports.manager` is `>=1.7.0` (first manager
+uses `@selfhelp/shared` 1.23.0 (the `about` block). `supports.manager` is `>=1.7.0` (first manager
 that backs up `form_files`, `assets` and the plugin artifact volumes; the
 registry `requiresManager` floor is raised when 0.1.43 is published).
 `pluginApiVersion` is unchanged (`0.1.0`). Migrations: `Version20260716180311`,
@@ -306,7 +353,10 @@ registry `requiresManager` floor is raised when 0.1.43 is published).
 `Version20261028100251`, `Version20261028125153`, `Version20261103112133`,
 `Version20261111082842` (group type out, `add_to_new_pages` in),
 `Version20261111083203` (audit rows keep their history without the person),
-`Version20261111104125` (index on `api_request_logs.id_users`).
+`Version20261111104125` (index on `api_request_logs.id_users`),
+`Version20261112163406` (dead SH1 tables, column and lookup rows out),
+`Version20261112164930` (headings of the `version` style),
+`Version20261112164932` (Impressum shows the generated block).
 
 # v0.1.36
 

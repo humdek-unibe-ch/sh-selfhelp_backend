@@ -8,10 +8,11 @@ Source of truth: `src/types/styles/error.ts` (shared), `src/registry/styles.regi
 
 System styles are the small, non-interactive surfaces the platform shows when a
 page cannot render its normal content: access denied, content missing, page not
-found, and the build/version diagnostic. They are author-placeable styles (so a
-CMS can theme the message), render target `both`, and share a common field set.
-Read [`_conventions.md`](./_conventions.md) first; common fields are not repeated
-below.
+found, plus the "about this platform" block (`version`). They are author-placeable
+styles (so a CMS can theme the message), render target `both`, and the first
+three share a common field set; `version` has its own headings and a generated
+body, see [`version`](#version). Read [`_conventions.md`](./_conventions.md)
+first; common fields are not repeated below.
 
 **Shared field set (no-access / missing / not-found).** All three are the same
 renderer family and expose the same fields:
@@ -85,13 +86,21 @@ not a contract bug.
 
 ## version
 
-**Purpose.** A build/version diagnostic surface.
+**Purpose.** The "about this platform" block: which SelfHelp version runs, on which frameworks, with which plugins and libraries, under which licences. Generated from what is really installed, so a page never carries a hand-written, outdated list.
 
-**Administrators.** A diagnostic marker with no authored content fields. The authoritative version information lives on the admin System Maintenance page, not in a page section, so placing this style produces no visible output today.
+**Administrators.** Place it once, for example on the Impressum page (the seeded Impressum already carries one). The only things to write are the eight headings (`title`, `label_frameworks`, `label_plugins`, `label_libraries`, `label_web`, `label_app`, `label_filter`, `label_no_match`); they are translatable. The lists themselves cannot be edited. Visitors see the platform version, the names and the licences. Exact version numbers are shown only to a signed-in user who may read the System page (`admin.system.read`).
 
-**Developers.** `version` has no content fields. Both renderers are intentionally inert — the mobile `Version` renders `null`, and the web `VersionStyle` renders `null` — kept as real renderers (not `UnknownStyle` fallbacks) so the established `both`-target style satisfies web/mobile registry parity. Per the catalog rule, if no content references `version` it is a candidate for removal in a future coordinated catalog migration; until then it stays as an inert diagnostic.
+**Developers.** The backend fills a read-only `about` object on every `version` section **after** the page cache is read (`PageService::withPlatformAboutOnPage` → `PlatformAboutService`). It is decided per request and never stored in the cached page, so a permission change shows on the next request. Shape (`IPlatformAbout` in `@selfhelp/shared`; schema `common/_platform_about.json`):
 
-**Distinctive fields.** None.
+- `detail` — true only when the caller holds `admin.system.read`; versions are `null` otherwise;
+- `product` — `{ name, version }`, always shown;
+- `frameworks` — PHP, Symfony, MySQL, Redis;
+- `plugins` — the enabled plugins (`name` = plugin id, licence from its manifest);
+- `libraries` — the direct production requirements of the backend `composer.json`, resolved through `vendor/composer/installed.json`, sorted by name.
+
+List items are `{ name, version | null, license | null }`; several licences are joined with ` OR `. Web and mobile add their own generated list (headings `label_web` / `label_app`, same item shape) and show versions only when `about.detail` is true. Both draw the block as one card with a tab (or segment) per non-empty group, a filter box (`label_filter` / `label_no_match`), and licence badges. No heading text or library list is hard-coded in a client. The same frameworks and libraries with exact versions are returned by `GET /admin/system/version` for the admin System page.
+
+**Distinctive fields.** `title`, `label_frameworks`, `label_plugins`, `label_libraries`, `label_web`, `label_app`, `label_filter`, `label_no_match` — translatable text (`display = 1`), seeded in en-GB and de-CH. Defaults: "About this platform", "Frameworks", "Plugins", "Libraries", "Website", "Mobile app", "Filter", "Nothing matches the filter.". The `about` object is not a field; it is added to the section in the response.
 
 **Children.** No.
 
