@@ -25,6 +25,7 @@ use App\Service\Core\ConditionService;
 use App\Service\Core\InterpolationService;
 use App\Service\Core\UserContextAwareService;
 use App\Service\Auth\UserContextService;
+use App\Service\System\PlatformAboutService;
 
 class PageService extends BaseService
 {
@@ -83,6 +84,7 @@ class PageService extends BaseService
         private readonly \App\Repository\PageTypeRepository $pageTypeRepository,
         private readonly \App\Repository\AssetRepository $assetRepository,
         private readonly \App\Service\CMS\Admin\AssetStorageService $assetStorage,
+        private readonly PlatformAboutService $platformAbout,
     ) {
     }
 
@@ -422,13 +424,87 @@ class PageService extends BaseService
         // Check if user has access to the page
         $this->userContextAwareService->checkAclAccess((string) $page->getKeyword(), 'select');
 
-        // If preview mode is disabled and a published version exists, serve it
-        if (!$preview && $page->getPublishedVersionId()) {
-            return $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements);
+        // If preview mode is disabled and a published version exists, serve it;
+        // otherwise serve the draft version (fresh from database).
+        $pageData = (!$preview && $page->getPublishedVersionId())
+            ? $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements)
+            : $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements);
+
+        // Both versions leave here, after every cache read: what the `version`
+        // style shows depends on the caller, so it is added last.
+        return $this->withPlatformAboutOnPage($pageData);
+    }
+
+    /**
+     * Add the `about` block to every `version` section of the page payload.
+     *
+     * It belongs to the caller, not to the page: guests and users without
+     * `admin.system.read` get no versions, so it is built here, per request,
+     * after the page cache, and never stored in the cached payload (anonymous
+     * visitors share one cache entry). Pages without a `version` section cost
+     * one walk of the section tree and nothing else.
+     *
+     * @param array<string, mixed> $pageData
+     * @return array<string, mixed>
+     */
+    private function withPlatformAboutOnPage(array $pageData): array
+    {
+        $page = $pageData['page'] ?? null;
+        if (!is_array($page) || !is_array($page['sections'] ?? null)) {
+            return $pageData;
         }
 
-        // Otherwise serve the draft version (fresh from database)
-        return $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements);
+        if (!$this->containsStyle($page['sections'], StyleNames::STYLE_VERSION)) {
+            return $pageData;
+        }
+
+        $about = $this->platformAbout->aboutForCaller($this->userContextAwareService->getCurrentUser());
+        $page['sections'] = $this->fillPlatformAbout($page['sections'], $about);
+        $pageData['page'] = $page;
+
+        return $pageData;
+    }
+
+    /**
+     * @param array<array-key, mixed> $sections
+     */
+    private function containsStyle(array $sections, string $styleName): bool
+    {
+        foreach ($sections as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            if (($section['style_name'] ?? null) === $styleName) {
+                return true;
+            }
+            if (is_array($section['children'] ?? null) && $this->containsStyle($section['children'], $styleName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<array-key, mixed> $sections
+     * @param array<string, mixed> $about
+     * @return list<array<string, mixed>>
+     */
+    private function fillPlatformAbout(array $sections, array $about): array
+    {
+        $filled = [];
+        foreach ($sections as $section) {
+            $section = $this->asAssocArray($section);
+            if (($section['style_name'] ?? null) === StyleNames::STYLE_VERSION) {
+                $section['about'] = $about;
+            }
+            if (is_array($section['children'] ?? null)) {
+                $section['children'] = $this->fillPlatformAbout($section['children'], $about);
+            }
+            $filled[] = $section;
+        }
+
+        return $filled;
     }
 
     /**

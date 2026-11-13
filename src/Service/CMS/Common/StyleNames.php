@@ -58,6 +58,14 @@ final class StyleNames
     public const STYLE_FILE_INPUT = 'file-input';
 
     /**
+     * "About the platform" block. The backend adds the `about` payload to every
+     * section of this style when the page is served, after the page cache is
+     * read, because the detail shown depends on the caller (see
+     * PageService::withPlatformAboutOnPage and PlatformAboutService).
+     */
+    public const STYLE_VERSION = 'version';
+
+    /**
      * Styles that are allowed to be used for submitting data
      */
     public const FORM_STYLE_NAMES = [

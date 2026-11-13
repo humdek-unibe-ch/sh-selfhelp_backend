@@ -2207,6 +2207,97 @@
                     }
                 }
             }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "version" } }
+            },
+            "then": {
+                "properties": {
+                    "about": {
+                        "$ref": "_platform_about.json"
+                    },
+                    "title": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Heading of the about block"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Heading metadata"
+                            }
+                        }
+                    },
+                    "label_frameworks": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Heading of the frameworks list"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Heading metadata"
+                            }
+                        }
+                    },
+                    "label_plugins": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Heading of the plugins list"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Heading metadata"
+                            }
+                        }
+                    },
+                    "label_libraries": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Heading of the libraries list"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Heading metadata"
+                            }
+                        }
+                    },
+                    "label_web": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Heading of the list of the web client's own libraries"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Heading metadata"
+                            }
+                        }
+                    },
+                    "label_app": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Heading of the list of the mobile app's own libraries"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Heading metadata"
+                            }
+                        }
+                    }
+                },
+                "required": ["about"]
+            }
         }
     ]
 }
