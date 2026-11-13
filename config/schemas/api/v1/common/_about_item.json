@@ -1,0 +1,22 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "About Item",
+    "description": "One framework, plugin or library of the 'about the platform' list (mirrors @selfhelp/shared IAboutItem).",
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "Product or package name, e.g. 'PHP', 'doctrine/orm' or 'sh2-shp-survey-js'."
+        },
+        "version": {
+            "type": ["string", "null"],
+            "description": "Exact version. null when the caller may not see versions, or when it cannot be read."
+        },
+        "license": {
+            "type": ["string", "null"],
+            "description": "SPDX id or a short text; several licences are joined with ' OR '. null when unknown."
+        }
+    },
+    "required": ["name", "version", "license"],
+    "additionalProperties": false
+}
