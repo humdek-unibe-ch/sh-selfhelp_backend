@@ -192,7 +192,6 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
         $user->setName($displayName);
         $user->setUserName($email);
         $user->setBlocked(false);
-        $user->setIntern(false);
         $user->setStatus($activeStatus);
         $user->setUserType($userType);
         $user->setPassword($this->passwordHasher->hashPassword($user, self::QA_PASSWORD));

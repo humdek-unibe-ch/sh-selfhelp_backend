@@ -40,7 +40,6 @@ final class LookupService
     public const PAGE_ACCESS_TYPES = 'pageAccessTypes';
     public const PAGE_SURFACE = 'pageSurface';
     public const STYLE_RENDER_TARGETS = 'styleRenderTargets';
-    public const HOOK_TYPES = 'hookTypes';
     public const ASSET_TYPES = 'assetTypes';
     public const USER_TYPES = 'userTypes';
     public const USER_STATUS = 'userStatus';
@@ -221,10 +220,6 @@ final class LookupService
             default => [],
         };
     }
-
-    // hookTypes
-    public const HOOK_TYPES_HOOK_OVERWRITE_RETURN = 'hook_overwrite_return';
-    public const HOOK_TYPES_HOOK_ON_FUNCTION_EXECUTE = 'hook_on_function_execute';
 
     // assetTypes
     public const ASSET_TYPES_CSS = 'css';

@@ -124,8 +124,8 @@ class AdminUserService extends BaseService
     /**
      * Population counts for the admin Users page tiles.
      *
-     * Scoped to the caller's VISIBLE user set (same `intern = false`,
-     * `id_status > 0` and group-access rules as the list) so the tiles always
+     * Scoped to the caller's VISIBLE user set (same `id_status > 0` and
+     * group-access rules as the list) so the tiles always
      * reconcile with the table underneath them: `total` equals the unfiltered
      * list's `totalCount` for the same admin. Deliberately ignores the current
      * search/status/group filters — the tiles describe the population the admin
@@ -554,7 +554,7 @@ class AdminUserService extends BaseService
 
     /**
      * Resolve the group scope for a caller: null for an admin (sees every
-     * non-intern user), otherwise the groups they have access to. Mirrors the
+     * user with an active status), otherwise the groups they have access to. Mirrors the
      * branch in fetchFilteredUsersFromRepository() so stats/export and the
      * list agree on who is visible.
      *

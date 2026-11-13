@@ -154,11 +154,9 @@ parameters:
     selfhelp_health_mercure_url_default: ''
     selfhelp.health.mailer_dsn: '%env(default:selfhelp_health_mailer_dsn_default:MAILER_DSN)%'
     selfhelp_health_mailer_dsn_default: ''
-    # Probe the SINGLE, real worker transport env (MESSENGER_PLUGIN_OPS_DSN) —
-    # NOT a parallel MESSENGER_TRANSPORT_DSN alias (which nothing sets, so the
-    # worker health falsely showed "not_configured" on every instance). Falls
-    # back to the same doctrine default messenger.yaml uses, so the probe always
-    # reflects the transport that is actually running.
+    # Probe the SINGLE, real worker transport env (MESSENGER_PLUGIN_OPS_DSN).
+    # Falls back to the same doctrine default messenger.yaml uses, so the probe
+    # always reflects the transport that is actually running.
     selfhelp.health.messenger_dsn: '%env(default:selfhelp_health_messenger_dsn_default:MESSENGER_PLUGIN_OPS_DSN)%'
     selfhelp_health_messenger_dsn_default: 'doctrine://default?queue_name=plugin_ops&auto_setup=true'
 

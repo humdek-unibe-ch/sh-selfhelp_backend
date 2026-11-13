@@ -67,7 +67,6 @@ final class UserFactory
         $user->setName($name);
         $user->setUserName($email);
         $user->setBlocked($blocked);
-        $user->setIntern(false);
         $user->setStatus($this->lookup(LookupService::USER_STATUS, $statusCode));
         $user->setUserType($this->lookup(LookupService::USER_TYPES, LookupService::USER_TYPES_USER));
         $user->setPassword($this->passwordHasher->hashPassword($user, $password));

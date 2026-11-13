@@ -134,9 +134,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'integer', nullable: true, options: ['default' => 1])]
     private ?int $id_status = 1;
 
-    #[ORM\Column(type: 'boolean', options: ['default' => 0])]
-    private bool $intern = false;
-
     /**
      * Account-validation / 2FA-style one-time token (the invite/confirm link).
      * Intentionally NOT used for password recovery — see the dedicated
@@ -287,20 +284,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function getIdStatus(): ?int
     {
         return $this->id_status;
-    }
-
-
-
-    public function isIntern(): ?bool
-    {
-        return $this->intern;
-    }
-
-    public function setIntern(bool $intern): static
-    {
-        $this->intern = $intern;
-
-        return $this;
     }
 
     public function getToken(): ?string
