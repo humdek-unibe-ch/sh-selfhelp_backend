@@ -17,7 +17,7 @@ Source of truth: Runtime code, configuration, migrations, and tests in this repo
 > `rel_groups_users`, `rel_roles_users`, `rel_permissions_roles`,
 > `rel_api_routes_permissions`, `rel_pages_sections`, `rel_fields_pages`,
 > `rel_fields_styles`, `rel_fields_page_types`, `rel_sections_hierarchy`,
-> `rel_sections_navigation`, `rel_styles_allowed_relationships`,
+> `rel_styles_allowed_relationships`,
 > `page_acl_groups` (was `acl_groups`), `validation_code_groups`
 > (was `codes_groups`). All FK columns follow `id_<target_table>` (with
 > explicit self-references like `id_parent_page`, `id_child_section`,
@@ -248,8 +248,8 @@ CREATE TABLE `sections` (
 ```
 
 Parent/child relationships between sections live in the dedicated relation
-tables `rel_sections_hierarchy` and `rel_sections_navigation`, with explicit
-`id_parent_section` / `id_child_section` foreign keys.
+table `rel_sections_hierarchy`, with explicit `id_parent_section` /
+`id_child_section` foreign keys.
 
 #### `fields` - Content Fields
 ```sql
@@ -268,7 +268,6 @@ CREATE TABLE `fields` (
 #### Junction Tables for CMS (canonical `rel_` naming)
 - **`rel_pages_sections`**: Links pages to sections with position
 - **`rel_fields_pages`**: Page-level field defaults
-- **`rel_sections_navigation`**: Navigation-specific section relationships
 - **`rel_sections_hierarchy`**: Parent/child relationships between sections
 
 ### 4. Access Control Lists (ACL) Tables

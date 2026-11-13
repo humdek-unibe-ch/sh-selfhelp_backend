@@ -189,7 +189,6 @@ src/
 │   ├── Group.php
 │   ├── Hook.php
 │   ├── Language.php
-│   ├── Library.php
 │   ├── LogPerformance.php
 │   ├── Lookup.php
 │   ├── Page.php
@@ -207,7 +206,6 @@ src/
 │   ├── Section.php
 │   ├── SectionsFieldsTranslation.php
 │   ├── SectionsHierarchy.php
-│   ├── SectionsNavigation.php
 │   ├── Style.php
 │   ├── StyleGroup.php
 │   ├── StylesAllowedRelationship.php

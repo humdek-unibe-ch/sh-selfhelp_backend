@@ -1814,29 +1814,11 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `requires_2fa`: bool
 - `add_to_new_pages`: bool (a new public page gives this group `select`)
 
-### Hook
-- `id`: int (PK)
-- `id_hook_types`: int (FK to lookups, `type_code='hookTypes'`)
-- `name`: string (nullable)
-- `description`: string (nullable)
-- `class`: string
-- `function`: string
-- `exec_class`: string
-- `exec_function`: string
-- `priority`: int (nullable)
-
 ### Language
 - `id`: int (PK)
 - `locale`: string
 - `language`: string
 - `csv_separator`: string
-
-### Library
-- `id`: int (PK)
-- `name`: string (nullable)
-- `version`: string (nullable)
-- `license`: string (nullable)
-- `comments`: string (nullable)
 
 ### LogPerformance
 - `id_user_activities`: int (PK, FK to user_activities)
@@ -2031,12 +2013,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_child_section`: int (PK, FK to sections)
 - `position`: int (nullable)
 
-### rel_sections_navigation (relation: pure link, parent/child sections per page)
-- `id_parent_section`: int (PK, FK to sections)
-- `id_child_section`: int (PK, FK to sections)
-- `id_pages`: int (FK to pages)
-- `position`: int
-
 ### styles
 - `id`: int (PK)
 - `name`: string
@@ -2080,7 +2056,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_genders`: int (nullable, FK to Gender)
 - `blocked`: bool
 - `id_status`: int (nullable, FK to UserStatus)
-- `intern`: bool
 - `token`: string (nullable)
 - `id_languages`: int (nullable, FK to Language)
 - `is_reminded`: bool
@@ -2211,29 +2186,11 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `requires_2fa`: bool (default 0)
 - `add_to_new_pages`: bool (default 0; a new public page gives this group `select`)
 
-### hooks
-- `id`: int (PK)
-- `id_hook_types`: int (FK to lookups, `type_code='hookTypes'`)
-- `name`: string (nullable, length 100)
-- `description`: string (nullable, length 1000)
-- `class`: string (length 100)
-- `function`: string (length 100)
-- `exec_class`: string (length 100)
-- `exec_function`: string (length 100)
-- `priority`: int (default 10)
-
 ### Language
 - `id`: int (PK)
 - `locale`: string (length 5)
 - `language`: string (length 100)
 - `csv_separator`: string (length 1, default ',')
-
-### Library
-- `id`: int (PK)
-- `name`: string (nullable, length 250)
-- `version`: string (nullable, length 500)
-- `license`: string (nullable, length 1000)
-- `comments`: string (nullable, length 1000)
 
 ### mail_attachments
 - `id`: int (PK)
@@ -2334,7 +2291,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_languages`: int (nullable, FK to languages)
 - `id_status`: int (nullable, FK to lookups, `type_code='userStatus'`)
 - `blocked`: bool
-- `intern`: bool
 - `last_login`: datetime (nullable)
 - `last_url`: string (nullable)
 - `user_name`: string (nullable)
@@ -2640,7 +2596,7 @@ This section outlines the setup for writing and running automated tests for the 
     - `APP_SECRET`: **Crucial! Set this to a unique, strong random string.**
     - `DATABASE_URL`: Defines the database connection for tests. Defaults to SQLite (`sqlite:///%kernel.project_dir%/var/data.db.test`). You can change this to a dedicated test PostgreSQL or MySQL database.
     - `JWT_SECRET_KEY`, `JWT_PUBLIC_KEY`, `JWT_PASSPHRASE`: Configure these to point to your test JWT keys and passphrase. You may need to generate separate keys for the test environment (e.g., in `config/jwt/test/`).
-    - `MESSENGER_TRANSPORT_DSN='sync://'`: Disables asynchronous message processing for tests by default.
+    - Messenger needs no variable here: `config/packages/messenger.yaml` (`when@test`) sets the `plugin_ops` transport to `sync://`, so tests run plugin operations inline.
 - **`config/packages/test/doctrine.yaml`**: Configures Doctrine specifically for the test environment, ensuring it uses the `DATABASE_URL` from `.env.test`.
 - **`config/packages/test/framework.yaml`**: Contains framework-specific overrides for the test environment, such as using mock session storage and disabling the profiler for performance.
 
