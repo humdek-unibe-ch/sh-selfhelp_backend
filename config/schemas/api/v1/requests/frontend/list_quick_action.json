@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "List Quick Action Request",
+  "description": "Runs a server-defined quick action of a list on one record. The client names the page, the record (in the path), the action (in the path) and the version of the record it saw; the server decides what is assigned.",
+  "required": [
+    "page_id",
+    "expected_version"
+  ],
+  "properties": {
+    "page_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The page the list is on."
+    },
+    "expected_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The record version the action is based on (the `version` the client last received). An action based on an older version is refused with 409 and nothing is written."
+    },
+    "preview": {
+      "type": "boolean",
+      "description": "Act on the draft of the page instead of its published version. Only for a signed-in person who may read the draft; it must match what the person is looking at (the page endpoint's `preview`). Without it the published version is used. The page access rights, the live data and the permissions stay the same."
+    }
+  },
+  "additionalProperties": false
+}

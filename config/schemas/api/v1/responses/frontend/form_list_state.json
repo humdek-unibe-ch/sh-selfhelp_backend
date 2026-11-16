@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Form List State Response",
+  "description": "The server-rendered state of an entry-form-list or data-view: the page of records the visitor sees, what the visitor may do with each, the controls with their choices and the record that is open. Clients draw it; they decide nothing.",
+  "allOf": [
+    {
+      "$ref": "../common/_response_envelope.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "$ref": "../../common/_form_list_state.json"
+        }
+      },
+      "required": [
+        "data"
+      ]
+    }
+  ]
+}
