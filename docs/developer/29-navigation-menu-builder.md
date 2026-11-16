@@ -3,7 +3,7 @@
 Audience: Developers and technical product owners.
 Status: active.
 Applies to: SelfHelp2 backend `0.1.33+`, frontend/mobile/shared navigation contracts (`@selfhelp/shared` `1.21.5`).
-Last verified: 2026-11-09.
+Last verified: 2026-11-16.
 Source of truth: `NavigationMenuService`, admin navigation APIs, `GET /navigation`, `@selfhelp/shared` navigation types.
 
 ## Overview
@@ -173,6 +173,27 @@ contract (`navigationChildrenNavModes` lookup type):
   → `sidebar`), branch group, breadcrumb trail, and the prev/next pager
   (neighbour page titles, auto-translated). Migration
   `Version20260710093045` (+ round-trip test) seeds the navigation lookups and final presentation contract.
+
+## Root item limit (`item_limit`)
+
+Each system menu has its own nullable `navigation_menus.item_limit`. It caps
+**root** items only (children may still be nested under an existing root).
+
+| Menu | Default | Notes |
+|------|---------|--------|
+| `web_header` | **8** | Raised from the original seed of 5 (migration `Version20261116132240` only bumps rows still at 5) |
+| `web_footer` | unlimited (`null`) | |
+| `mobile_drawer` | unlimited (`null`) | |
+| `mobile_bottom_tabs` | **5** | Phone tab bar |
+
+Admins set the value in the menu builder (Max root items) via
+`PUT /admin/navigation/menus/{menu_key}` (`item_limit`: integer 1–50, or `null`
+for unlimited). **Soft overflow:** lowering the limit below the current root
+count does not delete items; public resolve truncates **every** system menu
+with `NavigationMenuResolveSupport::applyRootItemLimit` (not only bottom tabs),
+and the builder shows an over-limit badge while keeping the full stored list.
+Persist `null` for unlimited — never `0` (runtime would treat `<= 0` as
+unlimited).
 
 ## Mobile drawer and bottom tabs
 
