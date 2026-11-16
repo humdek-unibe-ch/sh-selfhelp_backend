@@ -25,11 +25,11 @@ use Symfony\Component\HttpFoundation\ResponseHeaderBag;
  *
  *   GET /cms-api/v1/forms/files/{record_id}/{field}?index=0
  *
- * Form files live outside the document root, so this is the only way to read
- * them. Allowed: the user who submitted the record, or a user with READ on the
- * form's data table (admins always) — or anyone when the field's
- * `files_public` switch is on. Like the asset route it has no route-level
- * permission: access is decided per record here.
+ * Form files live outside the document root. Allowed here: the user who
+ * submitted the record, or a user with READ on the form's data table (CMS /
+ * data browser). Page viewers open files through the list route
+ * `GET /lists/{section}/records/{record}/files/{field}` (F165). The field's
+ * `files_public` switch no longer means "anyone with the link".
  */
 final class FormFileController extends AbstractController
 {
@@ -109,19 +109,23 @@ final class FormFileController extends AbstractController
     }
 
     /**
-     * Access decision shared by single files and zips. Anonymous callers learn
-     * nothing about private or missing files.
+     * Access decision shared by single files and zips. Owner and table READ
+     * only; page viewers use the list current-file route (F165).
      *
      * @param array{dataTableId: int, ownerId: int|null, public: bool}|null $file
      */
     private function deny(?array $file): ?Response
     {
         $user = $this->userContextService->getCurrentUser();
-        if ($user === null && !($file['public'] ?? false)) {
+        if ($user === null) {
             return new Response('Authentication required', Response::HTTP_UNAUTHORIZED);
         }
-        if ($file !== null && !$file['public'] && !$this->canRead((int) $user?->getId(), $file['ownerId'], $file['dataTableId'])) {
-            return new Response('Access denied', Response::HTTP_FORBIDDEN);
+        if ($file === null) {
+            return null;
+        }
+        if (!$this->canRead((int) $user->getId(), $file['ownerId'], $file['dataTableId'])) {
+            // Same answer as a missing file: do not reveal that the record exists.
+            return new Response('File not found', Response::HTTP_NOT_FOUND);
         }
 
         return null;
