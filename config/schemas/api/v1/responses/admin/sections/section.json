@@ -70,6 +70,52 @@
                         "locked": { "type": "boolean", "description": "True when an admin manually renamed the table (provenance 'manual'); the form section's displayName field no longer overwrites it" }
                     },
                     "required": ["id", "name", "display_name", "locked"]
+                },
+                "list_source": {
+                    "type": "object",
+                    "description": "Present only for entry-form-list and data-view sections whose table can be found: what the list editor may offer an author. A list names its columns by immutable keys (section_<input id>) that nobody can know by heart, so the pickers draw from this answer. It is the set the save check accepts. Never cached: it follows the inputs of the form inside the list.",
+                    "properties": {
+                        "data_table": {
+                            "type": ["object", "null"],
+                            "description": "The stored table the list reads; null while the form inside the list was never submitted",
+                            "properties": {
+                                "id": { "type": "integer", "description": "data_tables.id" },
+                                "name": { "type": "string", "description": "Storage name of the table" }
+                            },
+                            "required": ["id", "name"]
+                        },
+                        "form_section_id": { "type": ["integer", "null"], "description": "The form inside the list when the list reads that form's table (no data_table of its own); otherwise null" },
+                        "columns": {
+                            "type": "array",
+                            "description": "Columns of the table: the inputs of the form (in form order) then stored columns no input owns",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "field": { "type": "string", "description": "Immutable column key to store in the list's JSON fields" },
+                                    "label": { "type": "string", "description": "The name an author knows (the input name)" },
+                                    "type": { "type": "string", "description": "Value type: text, number, boolean, date or datetime" }
+                                },
+                                "required": ["field", "label", "type"]
+                            }
+                        },
+                        "row_fields": {
+                            "type": "array",
+                            "description": "Fields every record has (entry date, record number, who wrote it) with the places a list may use them in",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "field": { "type": "string", "description": "Row field name" },
+                                    "label": { "type": "string", "description": "Readable name" },
+                                    "type": { "type": "string", "description": "Value type: text, number or datetime" },
+                                    "column": { "type": "boolean", "description": "May be a column or a visitor control of the list" },
+                                    "sort": { "type": "boolean", "description": "May be in the default order" },
+                                    "filter": { "type": "boolean", "description": "May be in the fixed filter and the conditions of quick actions" }
+                                },
+                                "required": ["field", "label", "type", "column", "sort", "filter"]
+                            }
+                        }
+                    },
+                    "required": ["data_table", "form_section_id", "columns", "row_fields"]
                 }
             },
             "required": ["section", "fields", "languages"]
