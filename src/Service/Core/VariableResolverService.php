@@ -149,21 +149,11 @@ class VariableResolverService
             ? $maintenanceMessage
             : self::DEFAULT_MAINTENANCE_MESSAGE;
 
-        // Add custom variables from request (supporting {{var}} syntax from frontend)
-        // Only add plain versions to prevent duplication and confusion
-        if ($request) {
-            $allRequestData = array_merge(
-                $request->query->all(),
-                $request->request->all()
-            );
-
-            foreach ($allRequestData as $key => $value) {
-                // Only add if not already defined to prevent overwriting system variables
-                if (!isset($variables[$key])) {
-                    $variables[$key] = $value;
-                }
-            }
-        }
+        // F04: request query/body parameters are NOT variables. A visitor controls
+        // every one of them, so letting them satisfy a condition or fill a content
+        // placeholder would let anyone call the API with `?name=value` and unlock
+        // or spoof content. Route parameters are the declared, safe exception:
+        // they live in their own `{{route.*}}` scope (see PageService).
 
         $this->memoizedAllVariables[$memoKey] = $variables;
         return $variables;

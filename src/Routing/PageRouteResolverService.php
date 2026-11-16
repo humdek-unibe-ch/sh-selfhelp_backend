@@ -113,6 +113,60 @@ class PageRouteResolverService
     }
 
     /**
+     * Whether a page can be reached with exactly these route parameters, and what the route that
+     * matches them requires of them.
+     *
+     * A client that asks for a part of a page (the state of a list) names the route parameters of the
+     * page it shows. They are not believed: a path is built from each active route of the page that
+     * has these placeholders, and the parameters count only when the resolver itself maps that path
+     * back to this page with exactly these values. A parameter that breaks the requirement of its
+     * placeholder (`\d+`), one the page's routes do not have, or one that is missing is refused.
+     *
+     * @param array<string, string> $params placeholder name => value
+     * @return array{route_params: array<string, string>, route_requirements: array<string, string>}|null
+     *         Null when the page has no active route with exactly these placeholders that accepts the values.
+     */
+    public function resolveParams(int $pageId, array $params): ?array
+    {
+        if ($params === []) {
+            return null;
+        }
+        ksort($params);
+        $names = array_keys($params);
+
+        foreach ($this->getRows() as $row) {
+            if ($row['page_id'] !== $pageId) {
+                continue;
+            }
+            preg_match_all('/\{([A-Za-z_][A-Za-z0-9_]*)\}/', $row['path_pattern'], $found);
+            $placeholders = $found[1];
+            sort($placeholders);
+            if ($placeholders !== $names) {
+                continue;
+            }
+
+            $path = preg_replace_callback(
+                '/\{([A-Za-z_][A-Za-z0-9_]*)\}/',
+                static fn (array $match): string => rawurlencode($params[$match[1]] ?? ''),
+                $row['path_pattern'],
+            );
+            $resolved = is_string($path) ? $this->resolve($path) : null;
+            if ($resolved === null || $resolved['page_id'] !== $pageId) {
+                continue;
+            }
+            $matched = $resolved['route_params'];
+            ksort($matched);
+            if ($matched !== $params) {
+                continue;
+            }
+
+            return ['route_params' => $matched, 'route_requirements' => $resolved['route_requirements']];
+        }
+
+        return null;
+    }
+
+    /**
      * The canonical path for a page, derived from the cached active rows.
      * Returns the canonical route pattern, or null when the page has none.
      */

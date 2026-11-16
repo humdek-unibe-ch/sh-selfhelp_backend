@@ -22,11 +22,14 @@ final class UserDataRemoval
      * @param list<int> $dataTableIds data tables whose rows changed, to clear their caches
      * @param list<\Closure(): void> $afterCommit work that plugins asked to run
      *        after the commit (see {@see \App\Plugin\Event\UserDataCleanupEvent})
+     * @param list<string> $fileKeys logical keys of the stored files the erased rows and their
+     *        history named; deleted after the commit unless a surviving value still names them
      */
     public function __construct(
         public readonly array $removed,
         public readonly array $dataTableIds,
         public readonly array $afterCommit,
+        public readonly array $fileKeys = [],
     ) {
     }
 }

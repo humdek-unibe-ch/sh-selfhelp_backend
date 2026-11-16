@@ -46,6 +46,9 @@ final class LookupService
     public const STYLE_TYPE = 'styleType';
     public const PLUGINS = 'plugins';
     public const DATA_COL_DISPLAY_NAME_SOURCE = 'dataColDisplayNameSource';
+    public const DATA_COL_VALUE_TYPES = 'dataColValueTypes';
+    public const DATA_REVISION_OPERATIONS = 'dataRevisionOperations';
+    public const DATA_REVISION_SOURCES = 'dataRevisionSources';
 
     // Lookup Codes
     // notificationTypes
@@ -55,6 +58,29 @@ final class LookupService
     // dataColDisplayNameSource (data_cols.display_name provenance, issue #56)
     public const DATA_COL_DISPLAY_NAME_SOURCE_AUTO = 'auto';
     public const DATA_COL_DISPLAY_NAME_SOURCE_MANUAL = 'manual';
+
+    // dataColValueTypes (data_cols.id_value_type: how typed filters/sorts read the stored text).
+    // A NULL FK means `text`. Values are never guessed from content.
+    public const DATA_COL_VALUE_TYPES_TEXT = 'text';
+    public const DATA_COL_VALUE_TYPES_NUMBER = 'number';
+    public const DATA_COL_VALUE_TYPES_DATE = 'date';
+    public const DATA_COL_VALUE_TYPES_DATETIME = 'datetime';
+    public const DATA_COL_VALUE_TYPES_BOOLEAN = 'boolean';
+
+    // dataRevisionOperations (data_revisions.id_operations: what happened to the record)
+    public const DATA_REVISION_OPERATIONS_CREATE = 'create';
+    public const DATA_REVISION_OPERATIONS_UPDATE = 'update';
+    public const DATA_REVISION_OPERATIONS_DELETE = 'delete';
+    public const DATA_REVISION_OPERATIONS_RESTORE = 'restore';
+    public const DATA_REVISION_OPERATIONS_BASELINE = 'baseline';
+
+    // dataRevisionSources (data_revisions.id_sources: through which door it was written)
+    public const DATA_REVISION_SOURCES_FORM = 'form';
+    public const DATA_REVISION_SOURCES_ADMIN = 'admin';
+    public const DATA_REVISION_SOURCES_QUICK_ACTION = 'quick_action';
+    public const DATA_REVISION_SOURCES_JOB = 'job';
+    public const DATA_REVISION_SOURCES_IMPORT = 'import';
+    public const DATA_REVISION_SOURCES_SYSTEM = 'system';
 
     // actionScheduleTypes
     public const ACTION_SCHEDULE_TYPES_IMMEDIATELY = 'immediately';
