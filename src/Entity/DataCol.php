@@ -79,6 +79,18 @@ class DataCol
     #[ORM\JoinColumn(name: 'id_display_name_source', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?Lookup $displayNameSource = null;
 
+    /**
+     * How typed filters and sorts read this column's stored text, modelled as a
+     * `lookups` row (type `dataColValueTypes`, codes `text` | `number` | `date` |
+     * `datetime` | `boolean`). A NULL FK is the default `text`. A column never
+     * takes its type from its values: a known form input supplies it when the
+     * column is created and refreshes it when the form is saved, any other
+     * source stays `text` until a type is declared explicitly.
+     */
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_value_type', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Lookup $valueType = null;
+
 
     public function getId(): ?int
     {
@@ -119,6 +131,27 @@ class DataCol
         $this->displayNameSource = $displayNameSource;
 
         return $this;
+    }
+
+    public function getValueType(): ?Lookup
+    {
+        return $this->valueType;
+    }
+
+    public function setValueType(?Lookup $valueType): static
+    {
+        $this->valueType = $valueType;
+
+        return $this;
+    }
+
+    /**
+     * Value type code, resolved from the lookup FK. A NULL FK is the default
+     * `text`, so callers get a stable code without joining/null-checking.
+     */
+    public function getValueTypeCode(): string
+    {
+        return $this->valueType?->getLookupCode() ?? 'text';
     }
 
     /**
