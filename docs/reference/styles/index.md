@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, shared types, frontend/mobile renderers).
-Last verified: 2026-06-22.
+Last verified: 2026-11-13.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 A **style** is a reusable CMS building block. Each style:
@@ -127,6 +127,7 @@ the per-style web/mobile mapping and the recommended targeting.
 | `form-log` | yes | [forms.md#form-log](./forms.md#form-log) |
 | `form-record` | yes | [forms.md#form-record](./forms.md#form-record) |
 | `entry-record-form` | yes | [forms.md#entry-record-form](./forms.md#entry-record-form) |
+| `entry-form-list` | yes | [forms.md#entry-form-list](./forms.md#entry-form-list) |
 | `input` | no | [forms.md#input](./forms.md#input) |
 | `text-input` | no | [forms.md#text-input](./forms.md#text-input) |
 | `textarea` | no | [forms.md#textarea](./forms.md#textarea) |
@@ -149,6 +150,7 @@ the per-style web/mobile mapping and the recommended targeting.
 | `progress-root` | yes | [forms.md#progress-root](./forms.md#progress-root) |
 | `progress-section` | no | [forms.md#progress-section](./forms.md#progress-section) |
 | `entry-table` | no | [forms.md#entry-table](./forms.md#entry-table) |
+| `data-view` | yes | [forms.md#data-view](./forms.md#data-view) |
 
 ## composite
 

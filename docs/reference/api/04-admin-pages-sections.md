@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-07-01.
+Last verified: 2026-11-13.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -399,6 +399,10 @@ section). The response is built from a shared cache, but this check runs on ever
 read, so a cached section is never served to a role without the grant. The option
 lists of the pickers inside `fields[].config.options` are read per request (assets
 only those the caller may manage).
+
+For `entry-form-list` and `data-view` sections the response also carries
+`list_source`, the columns and row fields the list editor may offer; see
+[22-form-lists.md](22-form-lists.md#authoring-administration-api).
 
 ### Create Page Section
 

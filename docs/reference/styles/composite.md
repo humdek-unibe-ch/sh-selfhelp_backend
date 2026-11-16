@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 composite styles (`@selfhelp/shared` `composite` category).
-Last verified: 2026-07-09.
+Last verified: 2026-11-13.
 Source of truth: `src/types/styles/composite.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Composite styles combine child sections into a richer widget (accordions, tabs,
@@ -155,6 +155,8 @@ the matching item children inside it.
 | Prefix row tokens (`item.name`) | **Scope** property field |
 | Optional column subset | **Selected columns** property field |
 
+**Managing or searching the rows.** An `entry-list` only draws the rows it is given. To let people add, edit and delete them, use [`entry-form-list`](./forms.md#entry-form-list); for a read-only list with server-side search, sort, filters and paging, use [`data-view`](./forms.md#data-view) (with its `custom` layout you compose the card of one record from sections, and the server draws it per record). The shipped CMS-in-CMS templates use an `entry-form-list` for the CMS page and an `entry-list` or `data-view` for the public page, all over one table (see the [cookbook](../../cookbook/cms-in-cms-list-detail.md)).
+
 **Do not** use Data configuration → *Table* on an `entry-list` section to bind rows. That path applies to other styles (`loop`, `data-container`, …) but is **ignored** for entry holders since core `0.1.35`. A section with only a legacy `data_config.table` binding and an empty **Data table** field renders **no rows**.
 
 You **may** still add Data configuration on the same section when you need **helper scopes** only — for example a `filters` scope whose values you reference inside the **Filter** property field (`{{filters.category}}`). Helper scopes do not replace **Data table**.
@@ -177,14 +179,15 @@ Filter safety: see [data-table-filter-safety.md](../../developer/data-table-filt
 
 1. Set **Data table** to the owning form's table (or `@section:<form>` in bundles).
 2. Set **Load record from route parameter** to the route param name (usually `record_id`) — the **same field** as on `entry-record-form`.
+3. Optional **Fixed filter**: a typed JSON filter (same shape as a list's fixed filter) that bounds which record this detail may show. Use `status = published` on a public detail so drafts answer like a missing record. A section **condition** is not an access boundary.
 
-There is **no SQL Filter** on this style. The server reads the named route param and loads that `record_id`. If the param is missing or empty, nothing is shown (fail-closed). Optional **Scope** prefixes interpolation tokens (e.g. `team_member.name`).
+There is **no author SQL filter** on this style. The server reads the named route param and loads that `record_id`, then applies `fixed_filter` through the data query engine. If the param is missing or empty, or the record is outside the fixed filter, nothing is shown (fail-closed; the page still returns 200 with an empty detail). Optional **Scope** prefixes interpolation tokens (e.g. `team_member.name`). File tokens `{{field__url}}` / `{{field__files}}` use the section-scoped current-file route of this page.
 
-**Data binding (important).** The record comes **only** from property fields (**Data table**, **Own entries only**, **Load record from route parameter**, **Scope**). **Data configuration** → *Table* does **not** load the record.
+**Data binding (important).** The record comes **only** from property fields (**Data table**, **Own entries only**, **Load record from route parameter**, **Fixed filter**, **Scope**). **Data configuration** → *Table* does **not** load the record.
 
-**Developers.** `PageService::resolveEntryRows()` for `entry-record` builds `AND record_id = <int>` from `load_record_from` + the matched route params (same resolution path as `entry-record-form` / `SectionUtilityService::applySectionData`). No author SQL; no `DataTableFilterService` on this style. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
+**Developers.** `PageService::resolveEntryRows()` for `entry-record` builds `AND record_id = <int>` from `load_record_from` + the matched route params, then checks `fixed_filter` via `DataQueryEngine` (F166). The current-file route uses the same filter through `FormListContextResolver::entryRecordContext`. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md) and [22-form-lists.md](../api/22-form-lists.md).
 
-**Distinctive fields.** `data_table` (`select-data_table`), `own_entries_only` (checkbox), `load_record_from` (text; route param name, default `record_id`), `scope` (text). Removed: `url_param`, author `filter`.
+**Distinctive fields.** `data_table` (`select-data_table`), `own_entries_only` (checkbox), `load_record_from` (text; route param name, default `record_id`), `fixed_filter` (json; default empty group), `scope` (text). Removed: `url_param`, author `filter`.
 
 **Children.** Yes.
 

@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-11-13.
 Source of truth: Controllers in `src/Controller/Api/V1`, JSON schemas in `config/schemas/api/v1`, and the `api_routes` rows seeded by the migrations.
 
 This is the endpoint-by-endpoint usage reference for the public and admin API. For the architectural patterns behind these endpoints, see [../../developer/05-api-patterns.md](../../developer/05-api-patterns.md).
@@ -85,6 +85,7 @@ See [01-authentication.md](01-authentication.md) for the login, refresh, 2FA, an
 
 - [15-frontend-pages.md](15-frontend-pages.md) - Public page content access.
 - [17-form-submissions.md](17-form-submissions.md) - Form input submission and storage.
+- [22-form-lists.md](22-form-lists.md) - Entry List with Form and Data View: list state, URL grammar, quick actions, record history, restore.
 
 ## JSON schemas
 

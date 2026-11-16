@@ -3,7 +3,7 @@
 Audience: Developers (shared package, web renderer, mobile renderer).
 Status: active (architecture reference; mobile renderer adoption in progress).
 Applies to: the shared semantic contract and its two renderer adapters.
-Last verified: 2026-06-23.
+Last verified: 2026-11-13.
 Source of truth: `@selfhelp/shared` `theme/semantic.ts` (mapper), `BASE_STYLE_REGISTRY` (web Mantine targets), the installed `heroui-native@1.0.2` export list, the mobile `mobileStyleProps` + per-style renderers, and `mobile.md` (repo root).
 
 > How a SelfHelp style and its fields turn into pixels on each platform. The
@@ -209,6 +209,22 @@ are sufficient to implement any style:
    (none today); never read `web_*`.
 4. Map content/behaviour fields (unprefixed) the same on both platforms.
 5. For layout, use the RN flexbox caveats (§6).
+
+**Entry lists.** `entry-form-list` and `data-view` have no HeroUI Native peer and
+no `shared_*` field. The mobile renderer
+(`components/styles/composite/FormList/` in `sh-selfhelp_mobile`) draws the list
+the server computed (`GET /lists/{section_id}/state`) with React Native
+primitives and the app's light/dark colours: cards or dense rows (the author's
+`layout`), or — for a `data-view` with the layout `custom` — the sections the
+server drew for each record, rendered by the ordinary section renderer with
+`css_mobile` (the web-only `list_row_css` is not used), a search field, the filter controls, a pager, and a full-screen
+`Modal` sheet for the record (or the same form in place when the author chose
+page presentation). The form inside is the author's ordinary form children,
+rendered by the form styles of the app. The renderer reads the unprefixed list
+fields and `css_mobile` only, keeps the list state in the screen (seeded by the
+`<key>.*` parameters of the route or deep link) and never stores the rows in the
+persisted query cache. The authoring of lists (columns, filters, templates,
+the data tables) is CMS administration and stays on the web.
 
 ## 8. HeroUI Native **Pro** components
 
