@@ -2298,6 +2298,23 @@
                 },
                 "required": ["about"]
             }
+        },
+        {
+            "if": {
+                "properties": {
+                    "style_name": { "enum": ["entry-form-list", "data-view"] }
+                }
+            },
+            "then": {
+                "properties": {
+                    "list_state": {
+                        "$ref": "_form_list_state.json"
+                    },
+                    "list_error": {
+                        "$ref": "_form_list_error.json"
+                    }
+                }
+            }
         }
     ]
 }

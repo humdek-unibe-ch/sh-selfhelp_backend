@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Form List Error",
+  "description": "Why a list on a page has no state: the visitor must sign in (401), may not see it (403), asked for something the list does not offer (400) or the list is not configured correctly (500). The page itself is still served; the client draws the list's error state.",
+  "type": "object",
+  "required": [
+    "status",
+    "message"
+  ],
+  "properties": {
+    "status": {
+      "type": "integer",
+      "description": "HTTP status the list state endpoint would answer with."
+    },
+    "message": {
+      "type": "string"
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Machine-readable cause, e.g. `login_required`, `operation_disabled`, `invalid_list_parameter`, `unknown_list_parameter`, `duplicate_list_parameter`, `invalid_list_config`."
+    },
+    "parameter": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The URL parameter that caused it; a client may drop it."
+    }
+  },
+  "additionalProperties": false
+}
