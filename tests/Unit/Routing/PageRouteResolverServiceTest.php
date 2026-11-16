@@ -74,6 +74,38 @@ final class PageRouteResolverServiceTest extends TestCase
         self::assertNull($resolver->resolve('/team/abc'));
     }
 
+    public function testRouteParametersOfAPageAreOnlyBelievedWhenTheResolverMapsThemBackToThatPage(): void
+    {
+        $resolver = $this->devResolver($this->seedRoutes());
+
+        self::assertSame(
+            ['route_params' => ['record_id' => '5'], 'route_requirements' => ['record_id' => '\\d+']],
+            $resolver->resolveParams(12, ['record_id' => '5']),
+        );
+        self::assertSame(
+            ['route_params' => ['token' => 'abc.def', 'user_id' => '42'], 'route_requirements' => []],
+            $resolver->resolveParams(10, ['user_id' => '42', 'token' => 'abc.def']),
+            'Several placeholders, in any order.',
+        );
+
+        self::assertNull($resolver->resolveParams(12, []), 'No parameters is no route.');
+        self::assertNull($resolver->resolveParams(12, ['record_id' => 'abc']), 'The requirement of the placeholder (\\d+) holds.');
+        self::assertNull($resolver->resolveParams(12, ['record_id' => '5/6']), 'A value cannot add a segment.');
+        self::assertNull($resolver->resolveParams(12, ['record_id' => '5', 'extra' => '1']), 'A parameter the route does not have.');
+        self::assertNull($resolver->resolveParams(12, ['other' => '5']), 'A placeholder the route does not have.');
+        self::assertNull($resolver->resolveParams(10, ['user_id' => '42']), 'A missing placeholder.');
+        self::assertNull($resolver->resolveParams(13, ['record_id' => '5']), 'A page whose routes have no placeholder.');
+        self::assertNull($resolver->resolveParams(999, ['record_id' => '5']), 'A page without routes.');
+        self::assertNull(
+            $resolver->resolveParams(14, ['slug' => 'about']),
+            'A value that the resolver sends to another page (the static /about) is not believed for this page.',
+        );
+        self::assertSame(
+            ['route_params' => ['slug' => 'elsewhere'], 'route_requirements' => []],
+            $resolver->resolveParams(14, ['slug' => 'elsewhere']),
+        );
+    }
+
     public function testStaticWinsOverCatchAllAtSameDepth(): void
     {
         $resolver = $this->devResolver($this->seedRoutes());

@@ -121,7 +121,7 @@ final class LoopHydrationTest extends QaWebTestCase
      */
     private function renderAndFindLoopSection(Page $page): array
     {
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $envelope = $this->jsonRequest(
             'GET',
             '/cms-api/v1/pages/by-keyword/' . $page->getKeyword() . '?preview=true',

@@ -229,11 +229,13 @@ final class FormRecordEditModeTest extends QaWebTestCase
      */
     private function updateRecord(string $token, Page $page, Section $section, int $recordId, string $value): array
     {
+        // The request names the version the record has: these tests are about WHO may change it.
         return $this->jsonRequest('PUT', self::UPDATE, [
             'page_id' => (int) $page->getId(),
             'section_id' => (int) $section->getId(),
             'form_data' => ['qa_answer' => $value],
             'update_based_on' => ['record_id' => $recordId],
+            'expected_version' => self::coerceInt($this->em->getConnection()->fetchOne('SELECT version FROM data_rows WHERE id = :id', ['id' => $recordId])),
         ], $token);
     }
 

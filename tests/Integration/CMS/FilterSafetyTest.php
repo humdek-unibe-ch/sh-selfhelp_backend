@@ -142,7 +142,7 @@ final class FilterSafetyTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
@@ -180,7 +180,7 @@ final class FilterSafetyTest extends QaWebTestCase
         $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
 
         $this->pages->invalidatePageScopedCaches();
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
 
         $badResolve = $this->jsonRequest(
             'GET',

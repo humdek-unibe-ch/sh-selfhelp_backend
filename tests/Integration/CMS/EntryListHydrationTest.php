@@ -108,7 +108,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $this->pages->invalidatePageScopedCaches();
 
         // 3. Render: exactly one clone per row, each with its own value.
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $envelope = $this->jsonRequest(
             'GET',
             '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true',
@@ -147,6 +147,8 @@ final class EntryListHydrationTest extends QaWebTestCase
     public function testEntryListInjectsUnderscoredLabelsForEveryOptionStyleFamily(): void
     {
         [$formPage, $formSection] = $this->pages->createFormPage('qa_el_select_rows', openAccess: true);
+        // A form only accepts the inputs it declares: the answer column is an input like the option inputs below.
+        $this->addNamedFormInput($formSection, 'qa_el_select_answer', 'qa_answer');
         $optionSections = [
             [
                 'section' => $this->pages->createSection('qa_el_select_category', 'select'),
@@ -212,6 +214,7 @@ final class EntryListHydrationTest extends QaWebTestCase
             'form_data' => [
                 'qa_answer' => 'row-1',
                 'category' => 'release',
+                // A multi-select sends its choices as one comma separated text (web and mobile alike).
                 'tags' => 'release,notice',
                 'channel' => 'notice',
                 'topics' => 'feature,notice',
@@ -234,16 +237,20 @@ final class EntryListHydrationTest extends QaWebTestCase
         self::assertInstanceOf(DataTable::class, $dataTable);
         $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
         $this->setSectionField($listSection, 'own_entries_only', '0', 1);
+        $this->setSectionField($listSection, 'scope', 'item', 1);
         $this->em->flush();
 
         $cardSection = $this->pages->createSection('qa_el_select_list_card', 'text');
         $this->linkChild($listSection, $cardSection);
-        $labelTemplate = '{{_category_label}}|{{_tags_labels}}|{{_channel_label}}|{{_topics_labels}}|{{_view_label}}';
+        // The last two tokens name the scope: a template written for `scope: item`
+        // reads the labels like the other values of the row.
+        $labelTemplate = '{{_category_label}}|{{_tags_labels}}|{{_channel_label}}|{{_topics_labels}}|{{_view_label}}'
+            . '|{{item._category_label}}|{{item._tags_labels}}';
         $this->setSectionField($cardSection, 'text', $labelTemplate, 2);
         $this->setSectionField($cardSection, 'text', $labelTemplate, 3);
 
         $this->pages->invalidatePageScopedCaches();
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $dataDe = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true&language_id=2', null, $token)
         );
@@ -261,11 +268,11 @@ final class EntryListHydrationTest extends QaWebTestCase
         self::assertNotNull($entryListDe);
         self::assertNotNull($entryListEn);
         self::assertSame(
-            'Freigabe|Freigabe, Hinweis|Hinweis|Funktion, Hinweis|Funktion',
+            'Freigabe|Freigabe, Hinweis|Hinweis|Funktion, Hinweis|Funktion|Freigabe|Freigabe, Hinweis',
             $this->firstChildTextContent($entryListDe)
         );
         self::assertSame(
-            'Release|Release, Notice|Notice|Feature, Notice|Feature',
+            'Release|Release, Notice|Notice|Feature, Notice|Feature|Release|Release, Notice',
             $this->firstChildTextContent($entryListEn)
         );
     }
@@ -301,7 +308,7 @@ final class EntryListHydrationTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
@@ -356,9 +363,12 @@ final class EntryListHydrationTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
+        // View as the owner of owner-row (`qa.user`); admin owns other-row and
+        // would see that one instead under own_entries_only (F172).
+        // No preview=true: that needs edit rights (F152); qa.user only has select.
         $token = $this->loginAsQaUser();
         $data = $this->assertEnvelopeSuccess(
-            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword(), null, $token),
         );
         $sections = $this->sectionsFromPayload($data);
         $entryList = $this->findSectionByStyle($sections, 'entry-list');
@@ -422,7 +432,7 @@ final class EntryListHydrationTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
@@ -435,6 +445,7 @@ final class EntryListHydrationTest extends QaWebTestCase
     public function testEntryListFilterUsesDataConfigHelperScope(): void
     {
         [$formPage, $formSection] = $this->pages->createFormPage('qa_el_helper', openAccess: true);
+        $this->addNamedFormInput($formSection, 'qa_el_helper_answer', 'qa_answer');
         $categoryInput = $this->addNamedFormInput($formSection, 'qa_el_helper_category', 'category');
 
         $rows = [
@@ -450,7 +461,8 @@ final class EntryListHydrationTest extends QaWebTestCase
             ]));
         }
 
-        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'ASC']);
+        // The newest row is one this test just submitted; older rows belong to fixtures and other tests.
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'DESC']);
         self::assertInstanceOf(DataRow::class, $firstRow);
         $dataTable = $firstRow->getDataTable();
         self::assertInstanceOf(DataTable::class, $dataTable);
@@ -483,7 +495,7 @@ final class EntryListHydrationTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
@@ -507,7 +519,8 @@ final class EntryListHydrationTest extends QaWebTestCase
             ]));
         }
 
-        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'ASC']);
+        // The newest row is one this test just submitted; older rows belong to fixtures and other tests.
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'DESC']);
         self::assertInstanceOf(DataRow::class, $firstRow);
         $dataTable = $firstRow->getDataTable();
         self::assertInstanceOf(DataTable::class, $dataTable);
@@ -531,7 +544,7 @@ final class EntryListHydrationTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
@@ -556,7 +569,8 @@ final class EntryListHydrationTest extends QaWebTestCase
             ]));
         }
 
-        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'ASC']);
+        // The newest row is one this test just submitted; older rows belong to fixtures and other tests.
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'DESC']);
         self::assertInstanceOf(DataRow::class, $firstRow);
         $dataTable = $firstRow->getDataTable();
         self::assertInstanceOf(DataTable::class, $dataTable);
@@ -582,7 +596,7 @@ final class EntryListHydrationTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
@@ -598,6 +612,7 @@ final class EntryListHydrationTest extends QaWebTestCase
     public function testEntryListFilterRejectsUnsafeValueFromDataConfigHelperScope(): void
     {
         [$formPage, $formSection] = $this->pages->createFormPage('qa_el_unsafe_helper', openAccess: true);
+        $this->addNamedFormInput($formSection, 'qa_el_unsafe_answer', 'qa_answer');
         $categoryInput = $this->addNamedFormInput($formSection, 'qa_el_unsafe_category', 'category');
 
         $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
@@ -609,7 +624,8 @@ final class EntryListHydrationTest extends QaWebTestCase
             ],
         ]));
 
-        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'ASC']);
+        // The newest row is one this test just submitted; older rows belong to fixtures and other tests.
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'DESC']);
         self::assertInstanceOf(DataRow::class, $firstRow);
         $dataTable = $firstRow->getDataTable();
         self::assertInstanceOf(DataTable::class, $dataTable);
@@ -642,7 +658,7 @@ final class EntryListHydrationTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );

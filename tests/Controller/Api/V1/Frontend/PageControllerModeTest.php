@@ -121,6 +121,20 @@ final class PageControllerModeTest extends QaWebTestCase
         self::assertSame(Response::HTTP_UNAUTHORIZED, $envelope['status'] ?? null, 'Anonymous preview must be unauthorized.');
     }
 
+    public function testPreviewRequiresEditRights(): void
+    {
+        // Login alone is not enough: a participant without page edit rights
+        // gets 403 and nothing from the draft.
+        $envelope = $this->jsonRequest(
+            'GET',
+            self::BASE . '/by-keyword/home?preview=true',
+            null,
+            $this->loginAsQaUser(),
+        );
+
+        self::assertSame(Response::HTTP_FORBIDDEN, $envelope['status'] ?? null, 'A participant preview must be forbidden.');
+    }
+
     // -- helpers ------------------------------------------------------------
 
     /**

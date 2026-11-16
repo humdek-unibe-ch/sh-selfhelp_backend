@@ -24,6 +24,7 @@ use App\Service\CMS\Admin\AdminUserService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\FormFileUploadService;
 use App\Service\Core\LookupService;
+use App\Service\CMS\DataRevision\DataRevisionErasureService;
 use App\Service\Core\UserDataCleanerService;
 use App\Service\Core\UserDataRemoval;
 use App\Tests\Support\Factories\DataTableFactory;
@@ -269,6 +270,7 @@ final class UserDataCleanerServiceTest extends QaKernelTestCase
             $this->service(CacheService::class),
             $this->service(EventDispatcherInterface::class),
             $logger,
+            $this->service(DataRevisionErasureService::class),
         );
 
         $removal = $cleaner->removeData($targetId);

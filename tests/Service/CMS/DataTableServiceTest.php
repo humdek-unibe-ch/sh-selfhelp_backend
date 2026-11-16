@@ -165,6 +165,33 @@ final class DataTableServiceTest extends QaKernelTestCase
         self::assertGreaterThanOrEqual(1, $deleted, 'A matching column must be reported as removed.');
     }
 
+    /**
+     * Regression: the columns used to be removed through the ORM, and `DataCell::$dataRow`
+     * cascades REMOVE, so deleting a column also deleted every record that had a value in it.
+     */
+    public function testDeletingAColumnKeepsTheRecordsThatHadAValueInIt(): void
+    {
+        $first = $this->tables->addRow('qa_dts_keeprows', ['qa_field' => 'v1', 'qa_extra' => 'e1'], $this->userId());
+        $second = $this->tables->addRow('qa_dts_keeprows', ['qa_field' => 'v2'], $this->userId());
+        $this->em->clear();
+
+        self::assertSame(1, $this->service->deleteColumns('qa_dts_keeprows', ['qa_extra']));
+        $this->em->clear();
+
+        $db = $this->em->getConnection();
+        foreach ([$first, $second] as $recordId) {
+            self::assertSame(1, $this->asInt($db->fetchOne('SELECT COUNT(*) FROM data_rows WHERE id = :id', ['id' => $recordId])), 'The record survives.');
+        }
+        self::assertSame('v1', $db->fetchOne(
+            'SELECT c.value FROM data_cells c JOIN data_cols dc ON dc.id = c.id_data_cols WHERE c.id_data_rows = :id AND dc.field_key = :k',
+            ['id' => $first, 'k' => 'qa_field'],
+        ), 'Its other values survive.');
+        self::assertFalse($db->fetchOne(
+            'SELECT c.value FROM data_cells c JOIN data_cols dc ON dc.id = c.id_data_cols WHERE c.id_data_rows = :id AND dc.field_key = :k',
+            ['id' => $first, 'k' => 'qa_extra'],
+        ), 'The value of the deleted column is gone.');
+    }
+
     public function testDeleteDataTableRemovesIt(): void
     {
         $table = $this->tables->createTable('qa_dts_drop');

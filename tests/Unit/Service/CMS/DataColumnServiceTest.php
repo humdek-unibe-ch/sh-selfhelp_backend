@@ -11,6 +11,7 @@ namespace App\Tests\Unit\Service\CMS;
 
 use App\Exception\ServiceException;
 use App\Service\CMS\DataColumnService;
+use App\Service\CMS\FormFieldKeyResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 
@@ -18,7 +19,7 @@ final class DataColumnServiceTest extends TestCase
 {
     public function testGeneratedOptionLabelKeysFailValidationInsteadOfBeingSilentlyDropped(): void
     {
-        $service = new DataColumnService($this->createStub(EntityManagerInterface::class));
+        $service = $this->service();
 
         $this->expectException(ServiceException::class);
         $this->expectExceptionMessage('Reserved runtime option label key "_category_label"');
@@ -31,9 +32,17 @@ final class DataColumnServiceTest extends TestCase
 
     public function testGeneratedMultiOptionLabelKeyIsReserved(): void
     {
-        $service = new DataColumnService($this->createStub(EntityManagerInterface::class));
+        $service = $this->service();
 
         self::assertTrue($service->isReservedKey('_tags_labels'));
         self::assertSame([], $service->filterFieldData(['_tags_labels' => 'Release, Notice']));
+    }
+
+    private function service(): DataColumnService
+    {
+        return new DataColumnService(
+            $this->createStub(EntityManagerInterface::class),
+            $this->createStub(FormFieldKeyResolver::class),
+        );
     }
 }

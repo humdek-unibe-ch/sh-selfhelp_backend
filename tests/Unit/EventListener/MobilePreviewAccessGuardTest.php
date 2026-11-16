@@ -181,6 +181,47 @@ final class MobilePreviewAccessGuardTest extends TestCase
     }
 
     /**
+     * An entry list / data-view on the previewed page reads its state (and
+     * history / files) with the preview token. Without these allowlist entries
+     * the mobile pane shows "You may not use this list" while the web pane works.
+     */
+    public function testAllowsPreviewTokenOnFormListReadsAndWrites(): void
+    {
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/lists/21/state?page_id=11', 'form_list_state_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/lists/21/records/4/history', 'form_list_history_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/lists/21/records/4/versions/2', 'form_list_version_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/lists/21/records/4/compare', 'form_list_compare_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/lists/21/records/4/files/photo', 'form_list_current_file_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/lists/21/records/4/versions/2/files/photo', 'form_list_version_file_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/lists/21/records/4/actions/publish', 'form_list_quick_action_v1', 'POST', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/lists/21/records/4/restore', 'form_list_restore_v1', 'POST', self::PREVIEW_PAYLOAD),
+        );
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function testBlocksPreviewTokenOnFormListStateNonGet(): void
+    {
+        $this->assertDenied(
+            $this->event('/cms-api/v1/lists/21/state', 'form_list_state_v1', 'POST', self::PREVIEW_PAYLOAD),
+        );
+    }
+
+    /**
      * The form allowlist is exact: a non-form core mutation that merely lives
      * under a similar path is still denied.
      */

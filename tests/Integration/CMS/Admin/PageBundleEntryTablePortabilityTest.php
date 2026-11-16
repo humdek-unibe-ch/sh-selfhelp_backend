@@ -13,20 +13,22 @@ use App\Tests\Support\QaWebTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Export/import portability of the CMS-in-CMS admin grid (issue #30 polish
- * wave): the `entry-table` style stores its binding as an install-specific
- * numeric `data_tables.id`, and every in-content URL (entry-table `add_url` /
- * `edit_url`, card link `url`) is written against the bundle's own routes.
+ * Export/import portability of the data bindings of a CMS-in-CMS app. The
+ * redesigned app is one dataset with two surfaces: the CMS page holds an
+ * `entry-form-list` whose inline form owns the table, the public pages read it
+ * (`data-view` for the list, `entry-record` for the detail).
  *
- * A round-trip must therefore:
+ * Every list, data view and detail stores its binding as an install-specific
+ * numeric `data_tables.id`, and the public list links to the detail through a
+ * `detail_url` written against the bundle's own routes. A round trip must:
  *  1. rewrite the numeric `data_table` field to the portable
  *     `@section:<owner form section>` token on export (and carry the owner in
  *     `data_tables[]`),
  *  2. relink the token to the freshly-created owner's NEW data table id on
- *     import, and
+ *     import, so the three pages read the one table of the imported form, and
  *  3. when the import applies a route prefix, move the bundle's own
- *     cross-page links onto the prefixed URLs (otherwise "Add new" / per-row
- *     edit / card "Open" would point at the unprefixed originals).
+ *     cross-page links onto the prefixed URLs (otherwise a visitor's click on a
+ *     row would leave the imported app).
  *
  * The app is scaffolded through the real wizard, exported and re-imported
  * through the public admin API; all pages are deleted in a finally block and
@@ -39,14 +41,11 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
     private const IMPORT_KEYWORD_PREFIX = 'qa2-';
     private const IMPORT_ROUTE_PREFIX = '/qa2';
 
-    /** The wizard scopes the entry variables by the base name (hyphens become underscores). */
-    private const ENTRY_SCOPE = 'qa_et_port';
-
-    public function testEntryTableBindingAndLinksSurvivePrefixedRoundTrip(): void
+    public function testDataBindingsAndLinksSurvivePrefixedRoundTrip(): void
     {
         $admin = $this->loginAsQaAdmin();
 
-        // Scaffold the full five-page app (form + cms pair + public pair).
+        // Scaffold the full app: the CMS page that manages the records and the public pair that shows them.
         $shell = $this->assertEnvelopeSuccess(
             $this->jsonRequest('POST', '/cms-api/v1/admin/cms-apps', [
                 'name' => self::BASE . '-app',
@@ -71,49 +70,45 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
         );
         $wizardData = $this->assertEnvelopeSuccess($wizard, 201);
         [$sourcePageIds, $sourceByRole] = $this->indexCreatedPages($wizardData['created'] ?? null);
-        self::assertCount(5, $sourcePageIds, 'The scaffold must create five pages.');
+        self::assertCount(3, $sourcePageIds, 'The scaffold must create the CMS list page and the public list and detail pages.');
+        self::assertSame(['cms_list', 'public_detail', 'public_list'], $this->sortedKeys($sourceByRole));
 
         $importedPageIds = [];
         try {
-            // ---- Export: the numeric data_table binding must leave as a token.
+            // ---- Export: the numeric data_table bindings must leave as a token.
             $export = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/export', [
                 'pageIds' => $sourcePageIds,
                 'options' => ['includeDataTables' => true],
             ], $admin);
             $bundle = $this->assertEnvelopeSuccess($export, 200);
 
-            $entryTable = $this->findBundleSectionByStyle($bundle['pages'] ?? [], 'entry-table');
-            self::assertNotNull($entryTable, 'The exported bundle must carry the admin entry-table section.');
+            $formHolder = $this->findBundleSectionByStyle($bundle['pages'] ?? [], 'form-record');
+            self::assertNotNull($formHolder, 'The exported bundle must carry the form inside the CMS list.');
+            $ownerName = self::coerceString($formHolder['section_name'] ?? null);
 
-            $exportedBinding = $this->firstFieldContent($entryTable, 'data_table');
-            self::assertIsString($exportedBinding);
-            self::assertStringStartsWith(
-                '@section:',
-                $exportedBinding,
-                'The entry-table data_table binding must be exported as a portable owner token, not a numeric id.'
-            );
-            $ownerName = substr($exportedBinding, strlen('@section:'));
+            foreach (['entry-form-list', 'data-view', 'entry-record'] as $style) {
+                $section = $this->findBundleSectionByStyle($bundle['pages'] ?? [], $style);
+                self::assertNotNull($section, sprintf('The exported bundle must carry the "%s" section.', $style));
+                $binding = $this->firstFieldContent($section, 'data_table');
+                if ($style === 'entry-form-list') {
+                    // The list reads the table of its own form: no binding to carry.
+                    self::assertNull($binding, 'The CMS list needs no data_table: its inline form owns the table.');
+                    continue;
+                }
+                self::assertSame(
+                    '@section:' . $ownerName,
+                    $binding,
+                    sprintf('The "%s" data_table binding must be exported as the owner token of the inline form, not a numeric id.', $style)
+                );
+            }
 
-            $formHolder = $this->findBundleSectionByStyle($bundle['pages'] ?? [], 'entry-record-form');
-            self::assertNotNull($formHolder, 'The exported bundle must carry the entry-record-form holder.');
-            self::assertSame(
-                $formHolder['section_name'] ?? null,
-                $ownerName,
-                'The token must name the form section that owns the data table.'
-            );
-
-            $dataTables = is_array($bundle['data_tables'] ?? null) ? $bundle['data_tables'] : [];
             $owners = [];
-            foreach ($dataTables as $table) {
+            foreach (is_array($bundle['data_tables'] ?? null) ? $bundle['data_tables'] : [] as $table) {
                 if (is_array($table) && is_string($table['owner_section_name'] ?? null)) {
                     $owners[] = $table['owner_section_name'];
                 }
             }
-            self::assertContains(
-                $ownerName,
-                $owners,
-                'The entry-table-referenced table must be exported in the data_tables[] block.'
-            );
+            self::assertContains($ownerName, $owners, 'The table the public pages read must be exported in the data_tables[] block.');
 
             // ---- Import (prefixed): token relinks, links move onto the prefix.
             $import = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/import', [
@@ -130,78 +125,63 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
                     $importedPageIds[] = $entry['page_id'];
                 }
             }
-            self::assertCount(5, $importedPageIds, 'The prefixed import must recreate all five pages.');
+            self::assertCount(3, $importedPageIds, 'The prefixed import must recreate the three pages.');
 
-            $importedAdminListId = $this->pageIdByKeyword($created, self::IMPORT_KEYWORD_PREFIX . 'cms-' . self::BASE);
+            $importedCmsListId = $this->pageIdByKeyword($created, self::IMPORT_KEYWORD_PREFIX . 'cms-' . self::BASE);
             $importedPublicListId = $this->pageIdByKeyword($created, self::IMPORT_KEYWORD_PREFIX . self::BASE);
+            $importedDetailId = $this->pageIdByKeyword($created, self::IMPORT_KEYWORD_PREFIX . self::BASE . '-record');
 
-            // The relinked binding is the NEW owner's data table: numeric, and
-            // different from the source app's table id.
-            $sourceBinding = $this->sectionFieldValue($sourceByRole['cms_list'], 'entry-table', 'data_table', $admin);
-            $importedBinding = $this->sectionFieldValue($importedAdminListId, 'entry-table', 'data_table', $admin);
-            self::assertIsNumeric($importedBinding, 'The imported entry-table must be relinked to a real data table id.');
-            self::assertNotSame(
-                $sourceBinding,
+            // The relinked binding is the NEW owner's data table: numeric, different from the source
+            // app's table, owned by the form that came with the imported CMS list, and the same for
+            // every page that reads it.
+            $sourceBinding = $this->sectionFieldValue($sourceByRole['public_list'], 'data-view', 'data_table', $admin);
+            $importedBinding = $this->sectionFieldValue($importedPublicListId, 'data-view', 'data_table', $admin);
+            self::assertIsNumeric($importedBinding, 'The imported data view must be relinked to a real data table id.');
+            self::assertNotSame($sourceBinding, $importedBinding, 'The imported data view must read the NEW app\'s table, not the source install\'s.');
+            self::assertSame(
                 $importedBinding,
-                'The imported entry-table must bind to the NEW app\'s table, not the source install\'s.'
+                $this->sectionFieldValue($importedDetailId, 'entry-record', 'data_table', $admin),
+                'The imported detail reads the table of the imported list.'
             );
 
-            // The new binding points at a table owned by an IMPORTED form
-            // section (table name == owner section id). The wizard reuses one
-            // form section on two pages; the bundle format embeds sections per
-            // page, so the import materializes one copy per page — the relink
-            // may bind to either copy. Collect every imported entry-record-form
-            // section id across the app's pages as valid owners.
-            $importedFormSectionIds = [];
-            foreach ($importedPageIds as $importedPageId) {
-                $resp = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d/sections', $importedPageId), null, $admin);
-                $data = $this->assertEnvelopeSuccess($resp);
-                $formSectionId = $this->findSectionIdByStyle(
-                    is_array($data['sections'] ?? null) ? $data['sections'] : [],
-                    'entry-record-form'
-                );
-                if ($formSectionId !== null) {
-                    $importedFormSectionIds[] = (string) $formSectionId;
-                }
-            }
-            self::assertNotEmpty($importedFormSectionIds, 'The imported app must contain entry-record-form sections.');
-            $newTableName = $this->dataTableNameById((int) $importedBinding, $admin);
-            self::assertContains(
-                $newTableName,
-                $importedFormSectionIds,
-                'The relinked table must be owned by one of the imported form sections.'
+            $importedFormSectionId = $this->firstSectionIdByStyle($importedCmsListId, 'form-record', $admin);
+            self::assertSame(
+                (string) $importedFormSectionId,
+                $this->dataTableNameById((int) $importedBinding, $admin),
+                'The relinked table must be owned by the form of the imported CMS list.'
             );
 
-            // Route-prefixed in-content links: entry-table add/edit URLs and the
-            // public card link all moved onto the /qa2 base.
-            $addUrl = $this->sectionFieldValue($importedAdminListId, 'entry-table', 'add_url', $admin);
+            // Route-prefixed in-content link: the data view's link to the detail moved onto the /qa2 base.
             self::assertSame(
-                self::IMPORT_ROUTE_PREFIX . '/cms/' . self::BASE . '/form',
-                $addUrl,
-                'The "Add new" URL must follow the route prefix.'
-            );
-            $editUrl = $this->sectionFieldValue($importedAdminListId, 'entry-table', 'edit_url', $admin);
-            self::assertSame(
-                self::IMPORT_ROUTE_PREFIX . '/cms/' . self::BASE . '/{record_id}',
-                $editUrl,
-                'The per-row edit URL must follow the route prefix (keeping its {record_id} template).'
-            );
-            $cardLink = $this->sectionFieldValue($importedPublicListId, 'link', 'url', $admin);
-            self::assertSame(
-                self::IMPORT_ROUTE_PREFIX . '/' . self::BASE . '/{{' . self::ENTRY_SCOPE . '.record_id}}',
-                $cardLink,
-                'The public card "Open" link must follow the route prefix (keeping its scoped {{scope.record_id}} token).'
+                self::IMPORT_ROUTE_PREFIX . '/' . self::BASE . '/{record_id}',
+                $this->sectionFieldValue($importedPublicListId, 'data-view', 'detail_url', $admin),
+                'The row link must follow the route prefix (keeping its {record_id} template).'
             );
 
-            // The source app is untouched: its links keep the unprefixed base.
-            $sourceAddUrl = $this->sectionFieldValue($sourceByRole['cms_list'], 'entry-table', 'add_url', $admin);
-            self::assertSame('/cms/' . self::BASE . '/form', $sourceAddUrl, 'The source app must keep its own URLs.');
+            // The source app is untouched: its link keeps the unprefixed base.
+            self::assertSame(
+                '/' . self::BASE . '/{record_id}',
+                $this->sectionFieldValue($sourceByRole['public_list'], 'data-view', 'detail_url', $admin),
+                'The source app must keep its own URLs.'
+            );
         } finally {
             foreach (array_merge($sourcePageIds, $importedPageIds) as $pageId) {
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
             }
             $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin);
         }
+    }
+
+    /**
+     * @param array<string, int> $byRole
+     * @return list<string>
+     */
+    private function sortedKeys(array $byRole): array
+    {
+        $keys = array_keys($byRole);
+        sort($keys);
+
+        return $keys;
     }
 
     /**
@@ -255,8 +235,7 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
                 continue;
             }
             if (($section['style_name'] ?? null) === $styleName) {
-                /** @var array<string, mixed> $section */
-                return $section;
+                return self::asArray($section);
             }
             $found = $this->findInSectionList($section['children'] ?? null, $styleName);
             if ($found !== null) {

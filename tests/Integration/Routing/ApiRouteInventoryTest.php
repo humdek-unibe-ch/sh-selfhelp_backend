@@ -76,6 +76,16 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         // Form file delivery: owner or READ on the form's data table, checked per record.
         'form_files_serve_v1',
         'form_files_zip_v1',
+        // Entry-form-list / data-view: the list's page ACL, the record's owner / table
+        // grant and the list's own switches are enforced inside FormListContextResolver
+        // and the list services (a public data-view is readable by guests by design).
+        'form_list_state_v1',
+        'form_list_quick_action_v1',
+        'form_list_history_v1',
+        'form_list_version_v1',
+        'form_list_compare_v1',
+        'form_list_restore_v1',
+        'form_list_version_file_v1',
         // Public frontend reads (page ACL handled per-page; lookups/languages
         // and CSS classes are public catalogue data).
         'frontend_css_classes_get_all_v1',
