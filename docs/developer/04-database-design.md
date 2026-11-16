@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-26.
+Last verified: 2026-11-13.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > ⚠️ **Document status.** This file describes the historical legacy schema
@@ -441,6 +441,14 @@ CREATE TABLE `data_cells` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
+#### Column value type, record version and history (added 2026-11-13)
+
+- `data_cols.id_value_type` (nullable FK to `lookups`, group `dataColValueTypes`: `text`, `number`, `date`, `datetime`, `boolean`; NULL = text) tells the data query engine how to compare and sort a column's text. A known form input supplies it when its column is created and refreshes it when the form is saved. Migration `Version20261113104850`.
+- `data_rows.version` (INT, default 1) is the record's version, advanced atomically with each persisted change. Migration `Version20261113120906`.
+- `data_rows` has two covering indexes for the list reads, `idx_data_rows_table_timestamp (id_data_tables, timestamp, id, id_action_trigger_types)` and `idx_data_rows_table_user_timestamp (id_data_tables, id_users, timestamp, id, id_action_trigger_types)`, so the default order (`timestamp DESC, id DESC`), the record count and the owner-scoped lists do not read every row of the table. Migration `Version20261113135247`; measurements in [data-query-engine.md](./data-query-engine.md#performance). The older `idx_data_rows_id_data_tables` is now redundant (a prefix of both) and stays until a separate clean-up.
+- `data_revisions` (one event per persisted change, unique `(id_data_rows, version)`), `data_revision_changes` (per field and language: before/after value references, or a checkpoint snapshot) and `data_revision_values` (immutable values, stored once per record) hold the record history. Everything cascades from `data_rows`; actor links are `SET NULL`. Lookups `dataRevisionOperations` and `dataRevisionSources`. See [record-history.md](./record-history.md).
+- The `data_cells.value` column is still `utf8mb3`; the revision tables are `utf8mb4`.
+
 #### Translation Logic Rules
 
 1. **Language ID 1 (Internal/Default)**: Represents the internal language, cannot be translated
@@ -449,6 +457,14 @@ CREATE TABLE `data_cells` (
 4. **Multi-translation Rule**: If a cell exists with `language_id > 1`, it can have multiple translations
 
 #### Data Retrieval with `get_data_table_filtered`
+
+> **Superseded (2026-11-13).** No code path calls the `get_data_table_*` stored
+> procedures any more: every generic-store read goes through the structured data
+> query engine ([data-query-engine.md](./data-query-engine.md)). The requested
+> language's cell wins and a missing one falls back to language 1 (the procedure
+> returned the larger text when both existed). The procedures remain in the
+> database until a cleanup migration removes them (proposed finding). The text
+> below describes the procedure for historical context only.
 
 The stored procedure `get_data_table_filtered` (renamed from `get_dataTable_with_filter` as part of the lowercase_snake_case normalization in the canonical baseline migration) supports language filtering and timezone conversion:
 

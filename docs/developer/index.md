@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-11-13.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 Technical documentation for the SelfHelp Symfony backend: architecture, patterns, and conventions. This is the developer-area index; see [../README.md](../README.md) for the whole-repo docs map.
@@ -33,6 +33,10 @@ Technical documentation for the SelfHelp Symfony backend: architecture, patterns
 ## Content management system
 
 - [08-cms-architecture.md](08-cms-architecture.md) - Page, section, and field model.
+- [form-lists.md](form-lists.md) - Entry lists with forms (`entry-form-list`, `data-view`): dataset boundary, request flow, writes, quick actions, portability.
+- [data-query-engine.md](data-query-engine.md) - The one structured reader of the generic data store, its semantics and limits, and the reader inventory.
+- [record-history.md](record-history.md) - Record versions, revisions, restore and explicit erasure.
+- [data-table-filter-safety.md](data-table-filter-safety.md) - How author filter fragments are checked and translated.
 - [section.md](section.md) - Section internals and rendering.
 - [section-export-import.md](section-export-import.md) - Section export/import format.
 - [09-asset-management.md](09-asset-management.md) - File upload and asset handling.
