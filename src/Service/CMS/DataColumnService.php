@@ -9,8 +9,12 @@ namespace App\Service\CMS;
 
 use App\Entity\DataCol;
 use App\Entity\DataTable;
+use App\Entity\Lookup;
+use App\Entity\Section;
+use App\Entity\SectionsFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Service\Core\BaseService;
+use App\Service\Core\LookupService;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -31,7 +35,10 @@ use Symfony\Component\HttpFoundation\Response;
  *     (`INSERT IGNORE` keyed on the unique `(id_data_tables, field_key)`) so a
  *     concurrent submission can never close the Doctrine unit of work mid-save;
  *   - auto-populates `display_name` from incoming labels, but never overwrites a
- *     manually curated label (`display_name_source = manual`).
+ *     manually curated label (`display_name_source = manual`);
+ *   - keeps the declared value type of each column (`text` when unset) in step
+ *     with the form input that feeds it, so lists sort and filter numbers and
+ *     dates as numbers and dates (see {@see FormFieldKeyResolver::valueTypeFor()}).
  */
 class DataColumnService extends BaseService
 {
@@ -72,8 +79,18 @@ class DataColumnService extends BaseService
         'metadata',
     ];
 
+    /**
+     * Lookup id of each value type code. Ids only: an entity kept here would be
+     * detached when the entity manager is cleared (a worker clears it between
+     * messages) and could not be assigned to a column afterwards.
+     *
+     * @var array<string, int|null>
+     */
+    private array $valueTypeLookupIds = [];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly FormFieldKeyResolver $formFieldKeyResolver,
     ) {
     }
 
@@ -160,15 +177,17 @@ class DataColumnService extends BaseService
         }
 
         $columns = $this->fetchColumns($dataTable, $keys);
+        $types = $this->formFieldKeyResolver->getFieldKeyToValueType((string) $dataTable->getName());
 
         $missing = array_values(array_diff($keys, array_keys($columns)));
         if ($missing !== []) {
-            $this->insertMissingColumns((int) $dataTable->getId(), $missing, $labels);
+            $this->insertMissingColumns((int) $dataTable->getId(), $missing, $labels, $types);
             // Re-read so the rows just inserted via DBAL become managed entities.
             $columns = $this->fetchColumns($dataTable, $keys);
         }
 
         $this->applyLabels($columns, $labels);
+        $this->applyValueTypes($columns, $types);
 
         return $columns;
     }
@@ -206,30 +225,35 @@ class DataColumnService extends BaseService
      *
      * @param list<string> $missing
      * @param array<string, string|null> $labels
+     * @param array<string, string> $types field_key => declared value type (missing = text)
      */
-    private function insertMissingColumns(int $tableId, array $missing, array $labels): void
+    private function insertMissingColumns(int $tableId, array $missing, array $labels, array $types): void
     {
         $conn = $this->entityManager->getConnection();
 
         foreach ($missing as $key) {
             $label = $labels[$key] ?? null;
             $label = is_string($label) && $label !== '' ? $label : null;
+            $typeCode = $types[$key] ?? LookupService::DATA_COL_VALUE_TYPES_TEXT;
+            $valueTypeId = $typeCode === LookupService::DATA_COL_VALUE_TYPES_TEXT ? null : $this->valueTypeLookupId($typeCode);
 
             // id_display_name_source is left NULL, which the entity interprets as
             // the default `auto` provenance (issue #56). It only becomes the
             // `manual` lookup FK once an admin curates the label.
             $conn->executeStatement(
-                'INSERT IGNORE INTO data_cols (id_data_tables, field_key, display_name, id_display_name_source) '
-                . 'VALUES (:tableId, :fieldKey, :displayName, NULL)',
+                'INSERT IGNORE INTO data_cols (id_data_tables, field_key, display_name, id_display_name_source, id_value_type) '
+                . 'VALUES (:tableId, :fieldKey, :displayName, NULL, :valueType)',
                 [
                     'tableId' => $tableId,
                     'fieldKey' => $key,
                     'displayName' => $label,
+                    'valueType' => $valueTypeId,
                 ],
                 [
                     'tableId' => ParameterType::INTEGER,
                     'fieldKey' => ParameterType::STRING,
                     'displayName' => $label === null ? ParameterType::NULL : ParameterType::STRING,
+                    'valueType' => $valueTypeId === null ? ParameterType::NULL : ParameterType::INTEGER,
                 ]
             );
         }
@@ -264,6 +288,113 @@ class DataColumnService extends BaseService
                 $column->setDisplayName($label);
             }
         }
+    }
+
+    /**
+     * Keep the declared value type of the columns in step with the form inputs
+     * that feed them. A column with no declared type counts as `text`.
+     *
+     * @param array<string, DataCol> $columns
+     * @param array<string, string> $types field_key => declared value type (missing = text)
+     */
+    private function applyValueTypes(array $columns, array $types): void
+    {
+        foreach ($columns as $key => $column) {
+            // Only core form inputs state a type. A column of another source
+            // (SurveyJS, validation inputs) keeps the type it has.
+            if (!isset($types[$key]) && !$this->isCoreFormKey($key)) {
+                continue;
+            }
+            $wanted = $types[$key] ?? LookupService::DATA_COL_VALUE_TYPES_TEXT;
+            if ($column->getValueTypeCode() === $wanted) {
+                continue;
+            }
+            $this->setColumnValueType($column, $wanted);
+        }
+    }
+
+    /**
+     * After a form input section was edited, move the declared type of its data
+     * column to what the input stores now (for example `number` after the input
+     * type changed from text to number). A no-op when no column exists yet.
+     *
+     * @return list<int> ids of the data tables whose column changed
+     */
+    public function syncValueTypeForInputSection(Section $section): array
+    {
+        $fieldKey = FormFieldKeyResolver::FIELD_KEY_PREFIX . (int) $section->getId();
+
+        /** @var list<array{fieldName: mixed, content: mixed}> $rows */
+        $rows = $this->entityManager->createQueryBuilder()
+            ->select('f.name AS fieldName', 't.content AS content')
+            ->from(SectionsFieldsTranslation::class, 't')
+            ->join('t.field', 'f')
+            ->where('t.section = :section')
+            ->andWhere('f.name IN (:names)')
+            ->setParameter('section', $section)
+            ->setParameter('names', ['type_input', 'web_datepicker_type'])
+            ->getQuery()
+            ->getResult();
+
+        $typeInput = null;
+        $pickerType = null;
+        foreach ($rows as $row) {
+            if (!is_scalar($row['content'])) {
+                continue;
+            }
+            if ($row['fieldName'] === 'type_input' && $typeInput === null) {
+                $typeInput = (string) $row['content'];
+            }
+            if ($row['fieldName'] === 'web_datepicker_type' && $pickerType === null) {
+                $pickerType = (string) $row['content'];
+            }
+        }
+
+        $wanted = FormFieldKeyResolver::valueTypeFor($section->getStyle()?->getName(), $typeInput, $pickerType);
+
+        /** @var list<DataCol> $columns */
+        $columns = $this->entityManager->getRepository(DataCol::class)->findBy(['fieldKey' => $fieldKey]);
+        $affected = [];
+        foreach ($columns as $column) {
+            if ($column->getValueTypeCode() === $wanted) {
+                continue;
+            }
+            $this->setColumnValueType($column, $wanted);
+            $table = $column->getDataTable();
+            if ($table !== null && $table->getId() !== null) {
+                $affected[(int) $table->getId()] = true;
+            }
+        }
+        if ($affected !== []) {
+            $this->entityManager->flush();
+        }
+
+        return array_keys($affected);
+    }
+
+    private function setColumnValueType(DataCol $column, string $typeCode): void
+    {
+        // Text is stored as no value (NULL), the same as a column that never had a type.
+        $lookupId = $typeCode === LookupService::DATA_COL_VALUE_TYPES_TEXT ? null : $this->valueTypeLookupId($typeCode);
+        $column->setValueType($lookupId === null ? null : $this->entityManager->getReference(Lookup::class, $lookupId));
+    }
+
+    private function valueTypeLookupId(string $code): ?int
+    {
+        if (!array_key_exists($code, $this->valueTypeLookupIds)) {
+            $lookup = $this->entityManager->getRepository(Lookup::class)->findOneBy([
+                'typeCode' => LookupService::DATA_COL_VALUE_TYPES,
+                'lookupCode' => $code,
+            ]);
+            $this->valueTypeLookupIds[$code] = $lookup instanceof Lookup ? $lookup->getId() : null;
+        }
+
+        return $this->valueTypeLookupIds[$code];
+    }
+
+    private function isCoreFormKey(string $key): bool
+    {
+        return str_starts_with($key, FormFieldKeyResolver::FIELD_KEY_PREFIX);
     }
 
     /**

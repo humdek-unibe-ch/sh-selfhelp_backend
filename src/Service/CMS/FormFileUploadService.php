@@ -27,7 +27,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class FormFileUploadService extends BaseService
 {
-    private const UPLOAD_DIR = 'uploads/form-files/';
+    /** Prefix of the logical key stored in a cell (and in history values) for an uploaded file. */
+    public const UPLOAD_DIR = 'uploads/form-files/';
     private const ALLOWED_EXTENSIONS = [
         // Images
         'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'ico',
@@ -75,6 +76,36 @@ class FormFileUploadService extends BaseService
     }
 
     /**
+     * The stored cell text of a file-input field (logical keys), or null when
+     * the record / field has none. Used by form updates that keep, remove or
+     * append files without re-uploading.
+     */
+    public function cellValue(int $recordId, string $field): ?string
+    {
+        $connection = $this->entityManager->getConnection();
+        $row = $connection->fetchAssociative(
+            'SELECT t.name AS table_name FROM data_rows r'
+            . ' JOIN data_tables t ON t.id = r.id_data_tables WHERE r.id = :id',
+            ['id' => $recordId]
+        );
+        if ($row === false) {
+            return null;
+        }
+        $tableName = is_scalar($row['table_name']) ? (string) $row['table_name'] : '';
+        if (!$this->isFileInputField($field, $tableName)) {
+            return null;
+        }
+        $fieldKey = $this->formFieldKeyResolver->getNameToFieldKey($tableName)[$field] ?? $field;
+        $value = $connection->fetchOne(
+            'SELECT c.value FROM data_cells c JOIN data_cols dc ON dc.id = c.id_data_cols'
+            . " WHERE c.id_data_rows = :id AND dc.field_key = :key AND c.value <> '' LIMIT 1",
+            ['id' => $recordId, 'key' => $fieldKey]
+        );
+
+        return is_string($value) ? $value : null;
+    }
+
+    /**
      * Locate every stored file of a form record's field.
      *
      * `$field` is the input name or its `section_<id>` key; it must be a
@@ -102,12 +133,8 @@ class FormFileUploadService extends BaseService
         }
         $fieldKey = $this->formFieldKeyResolver->getNameToFieldKey($tableName)[$field] ?? $field;
 
-        $value = $connection->fetchOne(
-            'SELECT c.value FROM data_cells c JOIN data_cols dc ON dc.id = c.id_data_cols'
-            . " WHERE c.id_data_rows = :id AND dc.field_key = :key AND c.value <> '' LIMIT 1",
-            ['id' => $recordId, 'key' => $fieldKey]
-        );
-        if (!is_string($value)) {
+        $value = $this->cellValue($recordId, $field);
+        if ($value === null) {
             return null;
         }
 
@@ -215,7 +242,23 @@ class FormFileUploadService extends BaseService
     /** File name as uploaded: strips the `<timestamp>_<random>_` storage prefix. */
     public function originalName(string $path): string
     {
-        return preg_replace('/^\d+_[0-9a-f]{8}_/', '', basename($path)) ?? basename($path);
+        return self::nameOfKey($path);
+    }
+
+    /** File name as uploaded, from a stored path or a logical key. */
+    public static function nameOfKey(string $key): string
+    {
+        return preg_replace('/^\d+_[0-9a-f]{8}_/', '', basename($key)) ?? basename($key);
+    }
+
+    /**
+     * The file on disk behind a logical key; null when the key is unsafe or the file
+     * is gone (erased, or never stored). History uses this to say whether an old file
+     * can still be shown or restored.
+     */
+    public function resolveKey(string $key): ?string
+    {
+        return $this->resolveForDelivery($key);
     }
 
     /**
@@ -226,17 +269,49 @@ class FormFileUploadService extends BaseService
      */
     private function resolveCellValue(string $value): array
     {
-        $decoded = json_decode($value, true);
-        $paths = is_array($decoded) ? array_values($decoded) : [$value];
         $resolved = [];
-        foreach ($paths as $path) {
-            $absolutePath = is_string($path) ? $this->resolveForDelivery($path) : null;
+        foreach (self::keysIn($value) as $key) {
+            $absolutePath = $this->resolveForDelivery($key);
             if ($absolutePath !== null) {
                 $resolved[] = $absolutePath;
             }
         }
 
         return $resolved;
+    }
+
+    /**
+     * The logical file keys a stored value names: one key, or a JSON list of keys.
+     * Anything that is not a safe `uploads/form-files/...` key is ignored. Used for
+     * current cells and for history values alike.
+     *
+     * @return list<string>
+     */
+    public static function keysIn(?string $value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+        $decoded = json_decode($value, true);
+        $candidates = is_array($decoded) ? array_values($decoded) : [$value];
+        $keys = [];
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && str_starts_with($candidate, self::UPLOAD_DIR) && !str_contains($candidate, '..')) {
+                $keys[] = $candidate;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * Whether a stored cell value names one or more form-file keys.
+     * Multi-file JSON may escape slashes (`uploads\/form-files\/`); {@see keysIn()}
+     * still finds them, while a plain `str_contains($value, UPLOAD_DIR)` does not.
+     */
+    public static function cellHoldsFiles(?string $value): bool
+    {
+        return self::keysIn($value) !== [];
     }
 
     /**
@@ -534,6 +609,89 @@ class FormFileUploadService extends BaseService
     }
 
     /**
+     * Delete the stored files behind these logical keys, except any key that a
+     * surviving value still names: a current cell, or the history of a record that
+     * remains. Call it AFTER the transaction that erased the data committed (a file
+     * cannot roll back); the values it checks are the committed ones.
+     *
+     * Files are the one thing soft deletes and edits keep (history retains them), so
+     * this is how an explicit erasure finally removes them. A key is unique per upload,
+     * so in practice nothing else names it; the scan is the proof, not an assumption.
+     *
+     * @param list<string> $logicalKeys `uploads/form-files/...` keys; anything else is ignored
+     * @return int number of files removed
+     */
+    public function deleteUnreferencedFiles(array $logicalKeys): int
+    {
+        $candidates = [];
+        foreach ($logicalKeys as $key) {
+            if (str_starts_with($key, self::UPLOAD_DIR) && !str_contains($key, '..')) {
+                $candidates[$key] = true;
+            }
+        }
+        if ($candidates === []) {
+            return 0;
+        }
+
+        // One pass over every value that names a form file (a small subset of all
+        // values); a candidate that some value still names is not deletable.
+        $connection = $this->entityManager->getConnection();
+        $marker = '%' . self::UPLOAD_DIR . '%';
+        foreach (
+            [
+                'SELECT value FROM data_cells WHERE value LIKE :marker',
+                'SELECT content FROM data_revision_values WHERE content LIKE :marker',
+            ] as $sql
+        ) {
+            foreach ($connection->iterateColumn($sql, ['marker' => $marker]) as $value) {
+                if (!is_string($value)) {
+                    continue;
+                }
+                foreach (self::keysIn($value) as $key) {
+                    unset($candidates[$key]);
+                }
+                if ($candidates === []) {
+                    return 0;
+                }
+            }
+        }
+
+        $removed = 0;
+        foreach (array_keys($candidates) as $key) {
+            $path = $this->absolutePath((string) $key);
+            if (!is_file($path)) {
+                continue;
+            }
+            if (unlink($path)) {
+                $removed++;
+                $this->pruneEmptyDirectories(dirname($path));
+            } else {
+                $this->logger->warning("Failed to delete file: {$path}");
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
+     * Remove the now-empty directories above a deleted file, never the storage root.
+     */
+    private function pruneEmptyDirectories(string $directory): void
+    {
+        $root = realpath($this->storageRoot());
+        $current = realpath($directory);
+        while (
+            $root !== false
+            && $current !== false
+            && $current !== $root
+            && str_starts_with($current, $root . DIRECTORY_SEPARATOR)
+            && @rmdir($current)
+        ) {
+            $current = realpath(dirname($current));
+        }
+    }
+
+    /**
      * Delete every form file a user uploaded (`var/form-files/user_<id>/`).
      *
      * @return int number of files removed
@@ -576,14 +734,12 @@ class FormFileUploadService extends BaseService
         $fileData = [];
 
         foreach ($formData as $fieldName => $fieldValue) {
-            // Check if field value looks like a file path (contains upload directory)
-            if (is_string($fieldValue) && str_contains($fieldValue, self::UPLOAD_DIR)) {
+            if (is_string($fieldValue) && self::cellHoldsFiles($fieldValue)) {
                 $fileData[$fieldName] = $fieldValue;
             } elseif (is_array($fieldValue)) {
-                // Check if array contains file paths
                 $hasFilePaths = false;
                 foreach ($fieldValue as $value) {
-                    if (is_string($value) && str_contains($value, self::UPLOAD_DIR)) {
+                    if (is_string($value) && self::cellHoldsFiles($value)) {
                         $hasFilePaths = true;
                         break;
                     }
