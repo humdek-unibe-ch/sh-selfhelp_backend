@@ -33,6 +33,11 @@
             "user_authenticated": {
               "type": "boolean",
               "description": "Whether the user was authenticated during submission"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The record's version after this request."
             }
           },
           "required": [
@@ -40,7 +45,8 @@
             "section_id",
             "page_id",
             "submitted_at",
-            "user_authenticated"
+            "user_authenticated",
+            "version"
           ],
           "additionalProperties": false
         }
