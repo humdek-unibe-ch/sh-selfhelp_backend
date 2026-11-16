@@ -347,9 +347,12 @@ class NavigationMenuService extends BaseService
             $translationMap,
         );
 
-        if ($menuKey === LookupService::NAVIGATION_MENU_KEY_MOBILE_BOTTOM_TABS) {
-            $resolvedRoots = NavigationMenuResolveSupport::applyRootItemLimit($resolvedRoots, $menu->getItemLimit());
-        }
+        // Soft over-limit: every system menu truncates public roots the same way
+        // (null / <= 0 = unlimited). Admin overview keeps the full stored list.
+        $resolvedRoots = NavigationMenuResolveSupport::applyRootItemLimit(
+            $resolvedRoots,
+            $menu->getItemLimit(),
+        );
 
         $isWebMenu = $menu->getPlatform()?->getLookupCode() === 'web';
 
