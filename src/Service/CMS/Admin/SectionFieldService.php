@@ -22,6 +22,7 @@ use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
 use App\Service\CMS\DataColumnService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\FormList\FormListConfigValidator;
 use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
@@ -54,6 +55,8 @@ class SectionFieldService extends BaseService
         private readonly SectionRepository $sectionRepository,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
         private readonly AssetAccessService $assetAccessService,
+        private readonly SectionTableBindingGuard $tableBindingGuard,
+        private readonly FormListConfigValidator $listConfigValidator,
     ) {
     }
 
@@ -511,6 +514,14 @@ class SectionFieldService extends BaseService
      */
     public function updateSectionFields(Section $section, array $contentFields, array $propertyFields): void
     {
+        // F07: an editor may bind only tables their role can read, checked
+        // before anything is written.
+        $this->tableBindingGuard->assertPropertyFieldsBindable($propertyFields);
+
+        // A list (entry-form-list, data-view) is checked against its table: a mistake is told to the
+        // author now instead of showing as a broken list to the visitors.
+        $this->listConfigValidator->assertSectionSaveValid($section, $propertyFields);
+
         // Validate that all fields belong to the section's style
         $allFieldIds = array_map(fn ($v): int => $this->asInt($v), array_merge(
             array_column($contentFields, 'fieldId'),
@@ -542,21 +553,17 @@ class SectionFieldService extends BaseService
                 // immutable section_<id> column. No-op when no column exists yet or
                 // the label is manually locked. Bust the affected tables' caches so
                 // the Data browser + variable picker reflect the new label.
-                $affectedTableIds = $this->dataColumnService->renameAutoColumnByFieldKey(
+                $this->bustDataTableCaches($this->dataColumnService->renameAutoColumnByFieldKey(
                     'section_' . (int) $section->getId(),
                     $nameUpdate
-                );
-                foreach ($affectedTableIds as $tableId) {
-                    $this->cache
-                        ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                        ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
-                }
-                if ($affectedTableIds !== []) {
-                    $this->cache
-                        ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                        ->invalidateAllListsInCategory();
-                }
+                ));
             }
+        }
+
+        if (!$isFormSection) {
+            // The input type decides how the stored text of the column is compared
+            // and sorted in lists, so the column's declared type follows the input.
+            $this->bustDataTableCaches($this->dataColumnService->syncValueTypeForInputSection($section));
         }
 
         // Invalidate section cache after updates
@@ -568,6 +575,26 @@ class SectionFieldService extends BaseService
             ->invalidateAllListsInCategory();
         $pageIds = $this->sectionRepository->getPageIdsContainingSection((int) $section->getId());
         $this->navigationCacheInvalidator->invalidateForPageIds($pageIds);
+    }
+
+    /**
+     * Drop the cached data of tables whose columns changed, so the Data browser,
+     * the variable picker and the lists show the change.
+     *
+     * @param list<int> $tableIds
+     */
+    private function bustDataTableCaches(array $tableIds): void
+    {
+        foreach ($tableIds as $tableId) {
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
+        }
+        if ($tableIds !== []) {
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateAllListsInCategory();
+        }
     }
 
     /**

@@ -23,6 +23,7 @@ use App\Service\CMS\Admin\SectionFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
 use App\Service\CMS\Admin\SectionCreationService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\FormList\FormListConfigValidator;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -49,7 +50,9 @@ class AdminSectionService extends BaseService
         private readonly CacheService $cache,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly SectionTableBindingGuard $tableBindingGuard,
+        private readonly FormListConfigValidator $listConfigValidator
     ) {
     }
 
@@ -92,6 +95,16 @@ class AdminSectionService extends BaseService
             );
 
         $payload['fields'] = $this->sectionFieldService->withPickerOptions($this->asArray($payload['fields'] ?? null));
+
+        // For a list section, what its editor may offer: the table the list reads and the
+        // fields of that table under the names an author knows (a list names its columns by
+        // immutable keys nobody can know by heart). It follows the inputs of the form inside
+        // the list, which change without this section changing, so it is never cached.
+        $section = $this->sectionRepository->find($section_id);
+        $listSource = $section instanceof Section ? $this->listConfigValidator->catalogOf($section) : null;
+        if ($listSource !== null) {
+            $payload['list_source'] = $listSource;
+        }
 
         return $payload;
     }
@@ -419,7 +432,10 @@ class AdminSectionService extends BaseService
                         $section->setCondition($this->asStringOrNull($globalFields['condition']));
                     }
                     if (array_key_exists('data_config', $globalFields)) {
-                        $section->setDataConfig($this->asStringOrNull($globalFields['data_config']));
+                        $dataConfig = $this->asStringOrNull($globalFields['data_config']);
+                        // F07: an editor may bind only tables their role can read.
+                        $this->tableBindingGuard->assertDataConfigBindable($dataConfig);
+                        $section->setDataConfig($dataConfig);
                     }
                     if (array_key_exists('css', $globalFields)) {
                         $section->setCss($this->asStringOrNull($globalFields['css']));
