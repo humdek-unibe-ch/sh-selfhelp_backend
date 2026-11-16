@@ -607,6 +607,10 @@ admin, not to the user), so the erasure itself stays recorded.
     "removed": {
       "scheduled_job_recipients": 2,
       "scheduled_jobs": 3,
+      "data_revisions": 4,
+      "data_revision_changes": 11,
+      "data_revision_values": 8,
+      "data_revision_actor_links": 1,
       "data_cells": 18,
       "data_rows": 7,
       "transactions": 42,
@@ -620,8 +624,10 @@ admin, not to the user), so the erasure itself stays recorded.
 
 `removed` reports a count per kind, every key always present
 ([schema](../../../config/schemas/api/v1/responses/admin/users/clean_user_data.json)).
-`form_files` counts files; for `transactions` and `data_access_audits` the count
-is the rows **detached from the user** (they are kept), not deleted.
+`form_files` counts files; for `transactions`, `data_access_audits` and
+`data_revision_actor_links` the count is the rows **detached from the user**
+(they are kept), not deleted. History of the user's own records is erased
+(`data_revisions`, `data_revision_changes`, `data_revision_values`).
 
 **Permissions:** `admin.user.update` (route). The service additionally requires
 `PERMISSION_DELETE` on the target user, and refuses system users (`admin`,

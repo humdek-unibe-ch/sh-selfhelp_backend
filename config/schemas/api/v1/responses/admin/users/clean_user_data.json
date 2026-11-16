@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Clean User Data Result Schema",
-    "description": "Result of POST /admin/users/{userId}/clean-data: what the user produced is erased, the account stays. `removed` counts the rows per kind. For `transactions` and `data_access_audits` the rows are KEPT as the audit trail and only lose the link to the user, so the count is rows detached, not deleted. `form_files` is the number of uploaded files deleted from disk.",
+    "description": "Result of POST /admin/users/{userId}/clean-data: what the user produced is erased, the account stays. `removed` counts the rows per kind. For `transactions`, `data_access_audits` and `data_revision_actor_links` the rows are KEPT as the audit / history trail and only lose the link to the user, so the count is rows detached, not deleted. History of the user's own records is erased (`data_revisions`, `data_revision_changes`, `data_revision_values`). `form_files` is the number of uploaded files deleted from disk.",
     "type": "object",
     "allOf": [
         { "$ref": "../../common/_response_envelope.json" }
@@ -26,6 +26,26 @@
                             "type": "integer",
                             "minimum": 0,
                             "description": "Scheduled jobs owned by the user (deleted)"
+                        },
+                        "data_revisions": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Revision events of records owned by the user (deleted)"
+                        },
+                        "data_revision_changes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Field/language change rows of those revisions (deleted)"
+                        },
+                        "data_revision_values": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Stored revision values of those records (deleted)"
+                        },
+                        "data_revision_actor_links": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Revision actor links on somebody else's records detached from the user; the history rows are kept"
                         },
                         "data_cells": {
                             "type": "integer",
@@ -61,6 +81,10 @@
                     "required": [
                         "scheduled_job_recipients",
                         "scheduled_jobs",
+                        "data_revisions",
+                        "data_revision_changes",
+                        "data_revision_values",
+                        "data_revision_actor_links",
                         "data_cells",
                         "data_rows",
                         "transactions",
