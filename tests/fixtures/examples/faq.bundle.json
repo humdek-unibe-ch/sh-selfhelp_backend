@@ -4,14 +4,14 @@
     "exported_at": "2026-07-06T00:00:00+00:00",
     "core_version": "0.1.x",
     "title": "FAQ accordion",
-    "description": "Data-driven FAQ rendered as a Mantine accordion — one item per data row; managed in an admin grid.",
+    "description": "Frequently asked questions as an accessible accordion for visitors, managed in a list with categories, search and history for editors.",
     "tags": [
         "cms-in-cms",
         "accordion",
         "list only",
         "translatable"
     ],
-    "_comment": "CMS-in-CMS template: an FAQ app in three pages. PUBLIC: /faq renders every question as a Mantine accordion item (one item per data row via entry-list hydration). ADMIN (CMS surface): /cms/faq is an entry-table CRUD grid and /cms/faq/form is one create+edit form page with two routes (blank = create, /{record_id} = update) opened as a modal. Data binding is portable via \"@section:faq-form\" tokens; data_tables[] carries columns + sample rows (import with options.importData=true). The answer input is translatable. Content locales: de-CH + en-GB. Use a keyword + route prefix to import a second copy — in-content links are rewritten automatically. Import via Admin > Pages > Import. NOT auto-seeded.",
+    "_comment": "CMS-in-CMS template: an FAQ app in two pages. PUBLIC: /faq renders every question as an accordion item (one item per record through entry-list); the category label is translated through the option labels of the form. CMS: /cms/faq is ONE entry-form-list that holds the form: filter by category, search, add and edit questions in a dialog, delete them and restore earlier versions. The inputs are defined once, in the form inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). Question and answer are translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
     "data_tables": [
         {
             "owner_section_name": "faq-form",
@@ -22,7 +22,7 @@
             ],
             "rows": [
                 {
-                    "category": "account",
+                    "category": "Account",
                     "question": {
                         "en-GB": "How do I reset my password?",
                         "de-CH": "Wie setze ich mein Passwort zurück?"
@@ -33,7 +33,7 @@
                     }
                 },
                 {
-                    "category": "mobile",
+                    "category": "Mobile",
                     "question": {
                         "en-GB": "Can I use the platform on my phone?",
                         "de-CH": "Kann ich die Plattform auf dem Handy nutzen?"
@@ -44,7 +44,7 @@
                     }
                 },
                 {
-                    "category": "privacy",
+                    "category": "Privacy",
                     "question": {
                         "en-GB": "Who can see my answers?",
                         "de-CH": "Wer kann meine Antworten sehen?"
@@ -55,7 +55,7 @@
                     }
                 },
                 {
-                    "category": "studies",
+                    "category": "Studies",
                     "question": {
                         "en-GB": "How do I withdraw from a study?",
                         "de-CH": "Wie trete ich aus einer Studie aus?"
@@ -66,7 +66,7 @@
                     }
                 },
                 {
-                    "category": "compatibility",
+                    "category": "Compatibility",
                     "question": {
                         "en-GB": "Which browsers are supported?",
                         "de-CH": "Welche Browser werden unterstützt?"
@@ -81,12 +81,12 @@
     ],
     "pages": [
         {
-            "keyword": "cms-faq-form",
+            "keyword": "cms-faq",
             "surface": "cms",
             "page_access_type": "mobile_and_web",
             "headless": false,
             "open_access": false,
-            "url": "/cms/faq/form",
+            "url": "/cms/faq",
             "parent_keyword": null,
             "is_system": false,
             "fields": [
@@ -96,222 +96,285 @@
                     "translations": [
                         {
                             "language_code": "de-CH",
-                            "content": "Frage"
+                            "content": "FAQ verwalten"
                         },
                         {
                             "language_code": "en-GB",
-                            "content": "Question"
-                        }
-                    ]
-                },
-                {
-                    "name": "open_in_modal",
-                    "display": false,
-                    "translations": [
-                        {
-                            "language_code": "all",
-                            "content": "1"
+                            "content": "Manage FAQ"
                         }
                     ]
                 }
             ],
             "routes": [
                 {
-                    "path_pattern": "/cms/faq/form",
+                    "path_pattern": "/cms/faq",
                     "requirements": null,
                     "is_canonical": true,
                     "is_active": true,
                     "priority": 0
-                },
-                {
-                    "path_pattern": "/cms/faq/{record_id}",
-                    "requirements": {
-                        "record_id": "\\d+"
-                    },
-                    "is_canonical": false,
-                    "is_active": true,
-                    "priority": 0
                 }
             ],
+            "cms_app_role": "cms_list",
             "sections": [
                 {
-                    "section_name": "faq-form",
-                    "style_name": "entry-record-form",
+                    "section_name": "faq-cms-list",
+                    "style_name": "entry-form-list",
                     "fields": {
                         "title": {
                             "de-CH": {
-                                "content": "FAQ-Eintrag"
+                                "content": "Fragen"
                             },
                             "en-GB": {
-                                "content": "FAQ entry"
+                                "content": "Questions"
                             }
                         },
-                        "alert_success": {
-                            "de-CH": {
-                                "content": "Eintrag gespeichert."
-                            },
-                            "en-GB": {
-                                "content": "Entry saved."
-                            }
-                        },
-                        "btn_save_label": {
-                            "de-CH": {
-                                "content": "Speichern"
-                            },
-                            "en-GB": {
-                                "content": "Save"
-                            }
-                        },
-                        "btn_update_label": {
-                            "de-CH": {
-                                "content": "Aktualisieren"
-                            },
-                            "en-GB": {
-                                "content": "Update"
-                            }
-                        },
-                        "btn_cancel_label": {
-                            "de-CH": {
-                                "content": "Abbrechen"
-                            },
-                            "en-GB": {
-                                "content": "Cancel"
-                            }
-                        },
-                        "btn_cancel_url": {
+                        "list_key": {
                             "all": {
-                                "content": "/cms/faq"
+                                "content": "faq"
                             }
                         },
-                        "close_modal_on_save": {
+                        "list_layout": {
                             "all": {
-                                "content": "1"
+                                "content": "table"
                             }
                         },
-                        "load_record_from": {
+                        "form_presentation": {
                             "all": {
-                                "content": "record_id"
+                                "content": "modal"
+                            }
+                        },
+                        "page_size": {
+                            "all": {
+                                "content": "25"
+                            }
+                        },
+                        "list_columns": {
+                            "all": {
+                                "content": "[{\"field\":\"category\",\"label\":{\"de-CH\":\"Kategorie\",\"en-GB\":\"Category\"},\"sortable\":true,\"format\":\"badge\"},{\"field\":\"question\",\"label\":{\"de-CH\":\"Frage\",\"en-GB\":\"Question\"},\"sortable\":true,\"searchable\":true},{\"field\":\"answer\",\"label\":{\"de-CH\":\"Antwort\",\"en-GB\":\"Answer\"},\"searchable\":true}]"
+                            }
+                        },
+                        "list_sort": {
+                            "all": {
+                                "content": "[{\"field\":\"category\",\"direction\":\"asc\"},{\"field\":\"question\",\"direction\":\"asc\"}]"
+                            }
+                        },
+                        "list_controls": {
+                            "all": {
+                                "content": "[{\"id\":\"category\",\"type\":\"select\",\"field\":\"category\",\"label\":{\"de-CH\":\"Kategorie\",\"en-GB\":\"Category\"},\"options_from\":\"data\"}]"
+                            }
+                        },
+                        "quick_actions": {
+                            "all": {
+                                "content": "[]"
                             }
                         },
                         "own_entries_only": {
                             "all": {
                                 "content": "0"
                             }
+                        },
+                        "allow_create": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "allow_update": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "allow_delete": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "show_history": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "label_add": {
+                            "de-CH": {
+                                "content": "Frage hinzufügen"
+                            },
+                            "en-GB": {
+                                "content": "Add question"
+                            }
+                        },
+                        "label_empty": {
+                            "de-CH": {
+                                "content": "Noch keine Fragen."
+                            },
+                            "en-GB": {
+                                "content": "No questions yet."
+                            }
+                        },
+                        "label_search": {
+                            "de-CH": {
+                                "content": "Fragen durchsuchen"
+                            },
+                            "en-GB": {
+                                "content": "Search questions"
+                            }
+                        },
+                        "label_confirm_delete": {
+                            "de-CH": {
+                                "content": "Diese Frage löschen?"
+                            },
+                            "en-GB": {
+                                "content": "Delete this question?"
+                            }
                         }
                     },
                     "children": [
                         {
-                            "section_name": "faq-form-category",
-                            "style_name": "select",
+                            "section_name": "faq-form",
+                            "style_name": "form-record",
                             "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "category"
-                                    }
-                                },
-                                "label": {
+                                "alert_success": {
                                     "de-CH": {
-                                        "content": "Kategorie"
+                                        "content": "Frage gespeichert."
                                     },
                                     "en-GB": {
-                                        "content": "Category"
+                                        "content": "Question saved."
                                     }
                                 },
-                                "options": {
-                                    "all": {
-                                        "content": "[{\"value\":\"account\",\"sort\":1},{\"value\":\"mobile\",\"sort\":2},{\"value\":\"privacy\",\"sort\":3},{\"value\":\"studies\",\"sort\":4},{\"value\":\"compatibility\",\"sort\":5}]"
-                                    }
-                                },
-                                "option_labels": {
+                                "btn_save_label": {
                                     "de-CH": {
-                                        "content": "{\"account\":\"Konto\",\"mobile\":\"Mobile Nutzung\",\"privacy\":\"Datenschutz\",\"studies\":\"Studienteilnahme\",\"compatibility\":\"Kompatibilität\"}"
+                                        "content": "Speichern"
                                     },
                                     "en-GB": {
-                                        "content": "{\"account\":\"Account\",\"mobile\":\"Mobile use\",\"privacy\":\"Privacy\",\"studies\":\"Study participation\",\"compatibility\":\"Compatibility\"}"
+                                        "content": "Save"
                                     }
                                 },
-                                "is_required": {
-                                    "all": {
-                                        "content": "1"
+                                "btn_update_label": {
+                                    "de-CH": {
+                                        "content": "Aktualisieren"
+                                    },
+                                    "en-GB": {
+                                        "content": "Update"
                                     }
                                 }
-                            }
-                        },
-                        {
-                            "section_name": "faq-form-question",
-                            "style_name": "text-input",
-                            "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "question"
+                            },
+                            "children": [
+                                {
+                                    "section_name": "faq-form-category",
+                                    "style_name": "select",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "category"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Kategorie"
+                                            },
+                                            "en-GB": {
+                                                "content": "Category"
+                                            }
+                                        },
+                                        "is_required": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "options": {
+                                            "all": {
+                                                "content": "[{\"value\":\"Account\",\"sort\":1},{\"value\":\"Mobile\",\"sort\":2},{\"value\":\"Privacy\",\"sort\":3},{\"value\":\"Studies\",\"sort\":4},{\"value\":\"Compatibility\",\"sort\":5}]"
+                                            }
+                                        },
+                                        "option_labels": {
+                                            "de-CH": {
+                                                "content": "{\"Account\":\"Konto\",\"Mobile\":\"Mobile Nutzung\",\"Privacy\":\"Datenschutz\",\"Studies\":\"Studienteilnahme\",\"Compatibility\":\"Kompatibilität\"}"
+                                            },
+                                            "en-GB": {
+                                                "content": "{\"Account\":\"Account\",\"Mobile\":\"Mobile use\",\"Privacy\":\"Privacy\",\"Studies\":\"Study participation\",\"Compatibility\":\"Compatibility\"}"
+                                            }
+                                        },
+                                        "value": {
+                                            "all": {
+                                                "content": "Account"
+                                            }
+                                        }
                                     }
                                 },
-                                "label": {
-                                    "de-CH": {
-                                        "content": "Frage"
-                                    },
-                                    "en-GB": {
-                                        "content": "Question"
+                                {
+                                    "section_name": "faq-form-question",
+                                    "style_name": "text-input",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "question"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Frage"
+                                            },
+                                            "en-GB": {
+                                                "content": "Question"
+                                            }
+                                        },
+                                        "is_required": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "translatable": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        }
                                     }
                                 },
-                                "is_required": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "translatable": {
-                                    "all": {
-                                        "content": "1"
+                                {
+                                    "section_name": "faq-form-answer",
+                                    "style_name": "textarea",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "answer"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Antwort"
+                                            },
+                                            "en-GB": {
+                                                "content": "Answer"
+                                            }
+                                        },
+                                        "description": {
+                                            "de-CH": {
+                                                "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
+                                            },
+                                            "en-GB": {
+                                                "content": "Translatable — enter a separate text per language."
+                                            }
+                                        },
+                                        "translatable": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "rows": {
+                                            "all": {
+                                                "content": "5"
+                                            }
+                                        },
+                                        "is_required": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        {
-                            "section_name": "faq-form-answer",
-                            "style_name": "textarea",
-                            "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "answer"
-                                    }
-                                },
-                                "label": {
-                                    "de-CH": {
-                                        "content": "Antwort"
-                                    },
-                                    "en-GB": {
-                                        "content": "Answer"
-                                    }
-                                },
-                                "description": {
-                                    "de-CH": {
-                                        "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
-                                    },
-                                    "en-GB": {
-                                        "content": "Translatable — enter a separate text per language."
-                                    }
-                                },
-                                "translatable": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "rows": {
-                                    "all": {
-                                        "content": "5"
-                                    }
-                                },
-                                "is_required": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                }
-                            }
+                            ]
                         }
                     ]
                 }
-            ],
-            "cms_app_role": "form"
+            ]
         },
         {
             "keyword": "faq",
@@ -370,7 +433,7 @@
                             "fields": {
                                 "gap": {
                                     "all": {
-                                        "content": "xs"
+                                        "content": "sm"
                                     }
                                 },
                                 "spacing": {
@@ -379,7 +442,45 @@
                                     }
                                 }
                             },
+                            "global_fields": {
+                                "css": "relative overflow-hidden rounded-3xl px-6 py-10 md:px-10 md:py-14 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950 border border-sky-100/80 dark:border-slate-800 shadow-sm",
+                                "css_mobile": "flex flex-col gap-2 mb-6"
+                            },
                             "children": [
+                                {
+                                    "section_name": "faq-hero-eyebrow",
+                                    "style_name": "badge",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Hilfe"
+                                            },
+                                            "en-GB": {
+                                                "content": "Help"
+                                            }
+                                        },
+                                        "variant": {
+                                            "all": {
+                                                "content": "light"
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "teal"
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "xl"
+                                            }
+                                        }
+                                    }
+                                },
                                 {
                                     "section_name": "faq-hero-title",
                                     "style_name": "title",
@@ -397,6 +498,9 @@
                                                 "content": "1"
                                             }
                                         }
+                                    },
+                                    "global_fields": {
+                                        "css": "tracking-tight text-4xl md:text-5xl font-semibold text-slate-900 dark:text-white max-w-3xl"
                                     }
                                 },
                                 {
@@ -405,15 +509,10 @@
                                     "fields": {
                                         "text": {
                                             "de-CH": {
-                                                "content": "Antworten auf die häufigsten Fragen — gepflegt im Admin-Bereich, ohne Code."
+                                                "content": "Antworten auf die häufigsten Fragen, gepflegt im Admin-Bereich."
                                             },
                                             "en-GB": {
-                                                "content": "Answers to the most common questions — maintained in the admin area, no code required."
-                                            }
-                                        },
-                                        "color": {
-                                            "all": {
-                                                "content": "dimmed"
+                                                "content": "Answers to the most common questions, maintained in the admin area."
                                             }
                                         },
                                         "size": {
@@ -421,12 +520,12 @@
                                                 "content": "lg"
                                             }
                                         }
+                                    },
+                                    "global_fields": {
+                                        "css": "max-w-2xl text-slate-600 dark:text-slate-300 leading-relaxed"
                                     }
                                 }
-                            ],
-                            "global_fields": {
-                                "css_mobile": "flex flex-col gap-2 mb-6"
-                            }
+                            ]
                         },
                         {
                             "section_name": "faq-accordion",
@@ -527,173 +626,11 @@
                 }
             ],
             "cms_app_role": "public_list"
-        },
-        {
-            "keyword": "cms-faq",
-            "surface": "cms",
-            "page_access_type": "mobile_and_web",
-            "headless": false,
-            "open_access": false,
-            "url": "/cms/faq",
-            "parent_keyword": null,
-            "is_system": false,
-            "fields": [
-                {
-                    "name": "title",
-                    "display": true,
-                    "translations": [
-                        {
-                            "language_code": "de-CH",
-                            "content": "FAQ verwalten"
-                        },
-                        {
-                            "language_code": "en-GB",
-                            "content": "Manage FAQ"
-                        }
-                    ]
-                }
-            ],
-            "routes": [
-                {
-                    "path_pattern": "/cms/faq",
-                    "requirements": null,
-                    "is_canonical": true,
-                    "is_active": true,
-                    "priority": 0
-                }
-            ],
-            "sections": [
-                {
-                    "section_name": "cms-faq-page",
-                    "style_name": "container",
-                    "fields": {
-                        "size": {
-                            "all": {
-                                "content": "lg"
-                            }
-                        },
-                        "spacing": {
-                            "all": {
-                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
-                            }
-                        }
-                    },
-                    "children": [
-                        {
-                            "section_name": "cms-faq-table",
-                            "style_name": "entry-table",
-                            "fields": {
-                                "title": {
-                                    "de-CH": {
-                                        "content": "Alle Fragen"
-                                    },
-                                    "en-GB": {
-                                        "content": "All questions"
-                                    }
-                                },
-                                "data_table": {
-                                    "all": {
-                                        "content": "@section:faq-form"
-                                    }
-                                },
-                                "own_entries_only": {
-                                    "all": {
-                                        "content": "0"
-                                    }
-                                },
-                                "delete_entry": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_sortable": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_searching": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_paginate": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_info": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "csv_export": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "fields_map": {
-                                    "all": {
-                                        "content": "[\"category\",\"question\",\"answer\"]"
-                                    }
-                                },
-                                "add_url": {
-                                    "all": {
-                                        "content": "/cms/faq/form"
-                                    }
-                                },
-                                "edit_url": {
-                                    "all": {
-                                        "content": "/cms/faq/{record_id}"
-                                    }
-                                },
-                                "empty_text": {
-                                    "de-CH": {
-                                        "content": "Noch keine Fragen — mit «Neu hinzufügen» die erste Frage anlegen."
-                                    },
-                                    "en-GB": {
-                                        "content": "No questions yet — click \"Add new\" to create the first one."
-                                    }
-                                },
-                                "delete_modal_title": {
-                                    "de-CH": {
-                                        "content": "Frage löschen?"
-                                    },
-                                    "en-GB": {
-                                        "content": "Delete question?"
-                                    }
-                                },
-                                "delete_modal_body": {
-                                    "de-CH": {
-                                        "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
-                                    },
-                                    "en-GB": {
-                                        "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
-                                    }
-                                },
-                                "show_language_preview": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "fields_map_labels": {
-                                    "en-GB": {
-                                        "content": "{\"category\":\"Category\",\"question\":\"Question\",\"answer\":\"Answer\"}"
-                                    },
-                                    "de-CH": {
-                                        "content": "{\"category\":\"Kategorie\",\"question\":\"Frage\",\"answer\":\"Antwort\"}"
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                }
-            ],
-            "cms_app_role": "cms_list"
         }
     ],
     "cms_app": {
         "name": "FAQ accordion",
         "slug": "faq",
-        "description": null
+        "description": "An accordion FAQ with categories and a managed list."
     }
 }
