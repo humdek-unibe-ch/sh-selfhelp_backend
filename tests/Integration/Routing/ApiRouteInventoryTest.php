@@ -86,6 +86,11 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'form_list_compare_v1',
         'form_list_restore_v1',
         'form_list_version_file_v1',
+        // Current-file delivery for list / data-view / entry-list / entry-record
+        // (F165): page ACL, list boundary and files_public checked per request,
+        // same pattern as form_list_version_file_v1. Seeded by
+        // migrations/Version20261114191922.php.
+        'form_list_current_file_v1',
         // Public frontend reads (page ACL handled per-page; lookups/languages
         // and CSS classes are public catalogue data).
         'frontend_css_classes_get_all_v1',
