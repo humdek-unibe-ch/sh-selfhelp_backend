@@ -109,6 +109,9 @@ class ApiRouteRepository extends ServiceEntityRepository
         $groupedRoutes = [];
         foreach ($routes as $route) {
             $version = $route->getVersion();
+            if ($version === null) {
+                continue;
+            }
             if (!isset($groupedRoutes[$version])) {
                 $groupedRoutes[$version] = [];
             }

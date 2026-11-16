@@ -22,7 +22,8 @@ use PHPUnit\Framework\TestCase;
  * label of a code through the hydrated token `{{scope._field_label}}`. A data
  * view shows the stored value as it is, so a template whose data view shows a
  * field uses free text for it, not a code; a field that only the managers see
- * (the status of a testimonial) may stay an option input.
+ * (publish status on news/team-members, or the status of a testimonial) may stay
+ * an option input without a public composition token.
  */
 final class CmsInCmsEnumBundleContractTest extends TestCase
 {
@@ -142,8 +143,18 @@ final class CmsInCmsEnumBundleContractTest extends TestCase
             $labelSuffix = $isMultiple ? '_labels' : '_label';
             $labelColumn = '_' . $fieldName . $labelSuffix;
             // Accept unscoped `{{_role_label}}` or scoped `{{team_member._role_label}}`.
+            $labelTokenPattern = '/\{\{(?:[A-Za-z0-9_]+\.)?' . preg_quote($labelColumn, '/') . '\}\}/';
+            $rawTokenPattern = '/\{\{(?:[A-Za-z0-9_]+\.)?' . preg_quote($fieldName, '/') . '\}\}/';
+            // Publish/moderation fields (draft/published) often stay on the CMS list
+            // and filters only; they need codes + labels, not a public composition token.
+            if (
+                preg_match($labelTokenPattern, $bundleJson) !== 1
+                && preg_match($rawTokenPattern, $bundleJson) !== 1
+            ) {
+                continue;
+            }
             self::assertMatchesRegularExpression(
-                '/\{\{(?:[A-Za-z0-9_]+\.)?' . preg_quote($labelColumn, '/') . '\}\}/',
+                $labelTokenPattern,
                 $bundleJson,
                 sprintf('%s must interpolate hydrated option labels via %s.', $id, $labelColumn),
             );

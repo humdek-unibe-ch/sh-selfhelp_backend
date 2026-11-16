@@ -50,9 +50,11 @@ final class AdminNavigationMenuItemLimitPublicTruncateTest extends QaWebTestCase
         $adminOverview = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/admin/navigation', null, $admin),
         );
-        $adminHeader = $adminOverview['menus'][LookupService::NAVIGATION_MENU_KEY_WEB_HEADER] ?? null;
+        $adminMenus = $adminOverview['menus'] ?? null;
+        self::assertIsArray($adminMenus);
+        $adminHeader = $adminMenus[LookupService::NAVIGATION_MENU_KEY_WEB_HEADER] ?? null;
         self::assertIsArray($adminHeader);
-        $adminRoots = $this->rootItems($adminHeader['items'] ?? []);
+        $adminRoots = $this->rootItems($adminHeader['items'] ?? null);
         self::assertGreaterThanOrEqual(
             4,
             count($adminRoots),
@@ -62,10 +64,12 @@ final class AdminNavigationMenuItemLimitPublicTruncateTest extends QaWebTestCase
         $public = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/navigation', null, $admin),
         );
-        $publicHeader = $public['menus'][LookupService::NAVIGATION_MENU_KEY_WEB_HEADER] ?? null;
+        $publicMenus = $public['menus'] ?? null;
+        self::assertIsArray($publicMenus);
+        $publicHeader = $publicMenus[LookupService::NAVIGATION_MENU_KEY_WEB_HEADER] ?? null;
         self::assertIsArray($publicHeader);
         self::assertSame(3, $publicHeader['item_limit'] ?? null);
-        $publicRoots = $publicHeader['items'] ?? [];
+        $publicRoots = $publicHeader['items'] ?? null;
         self::assertIsArray($publicRoots);
         self::assertLessThanOrEqual(
             3,
@@ -83,8 +87,6 @@ final class AdminNavigationMenuItemLimitPublicTruncateTest extends QaWebTestCase
     }
 
     /**
-     * @param list<mixed> $items
-     *
      * @return list<array<string, mixed>>
      */
     private function rootItems(mixed $items): array
@@ -100,7 +102,13 @@ final class AdminNavigationMenuItemLimitPublicTruncateTest extends QaWebTestCase
             }
             // Admin overview is a flat list with parent_item_id; public is already roots.
             if (($item['parent_item_id'] ?? null) === null) {
-                $roots[] = $item;
+                $normalized = [];
+                foreach ($item as $key => $value) {
+                    if (is_string($key)) {
+                        $normalized[$key] = $value;
+                    }
+                }
+                $roots[] = $normalized;
             }
         }
 

@@ -2182,9 +2182,11 @@ class AdminUserService extends BaseService
         $existingRoleIds = $replace ? [] : $this->getExistingRoleIds($user);
 
         foreach ($roles as $role) {
-            if (!isset($existingRoleIds[$role->getId()])) {
-                $user->addRole($role);
+            $roleId = $role->getId();
+            if ($roleId === null || isset($existingRoleIds[$roleId])) {
+                continue;
             }
+            $user->addRole($role);
         }
     }
 

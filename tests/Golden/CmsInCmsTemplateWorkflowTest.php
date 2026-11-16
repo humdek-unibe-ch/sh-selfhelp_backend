@@ -50,8 +50,9 @@ final class CmsInCmsTemplateWorkflowTest extends QaWebTestCase
     /**
      * What a manager types for a new record of each template; `shown` is the text a
      * reader finds on the public page, `renamed` what the manager changes it to.
+     * Optional `publish` is the quick-action id that turns a draft into a public record.
      *
-     * @var array<string, array{values: array<string, string>, shown: string, rename: string, renamed: string, public: bool}>
+     * @var array<string, array{values: array<string, string>, shown: string, rename: string, renamed: string, public: bool, publish?: string}>
      */
     private const RECORDS = [
         // News and team start as draft: absent from the public page until Publish.
@@ -150,7 +151,7 @@ final class CmsInCmsTemplateWorkflowTest extends QaWebTestCase
 
         $version = 1;
         $publishAction = $record['publish'] ?? null;
-        if (is_string($publishAction) && $publishAction !== '') {
+        if (is_string($publishAction)) {
             self::assertFalse($this->publicShows($app, $record['shown']), $id . ': a draft is absent from the public page.');
             $published = $this->assertEnvelopeSuccess($this->action($admin, $app['cms'], $app['list'], $recordId, $publishAction, $version));
             $version = self::coerceInt($published['version'] ?? ($version + 1));
@@ -160,12 +161,13 @@ final class CmsInCmsTemplateWorkflowTest extends QaWebTestCase
         // Edit; a save based on an old version is refused.
         $changed = $record['values'];
         $changed[$record['rename']] = $record['renamed'];
-        if (isset($changed['status']) && $publishAction) {
+        if (isset($changed['status'], $record['publish'])) {
             $changed['status'] = 'published';
         }
         $updated = $this->assertEnvelopeSuccess($this->update($admin, $app['cms'], $app['form'], $recordId, $changed, $version));
-        self::assertSame($version + 1, $updated['version'] ?? null);
-        $afterEditVersion = self::coerceInt($updated['version'] ?? ($version + 1));
+        self::assertArrayHasKey('version', $updated);
+        self::assertSame($version + 1, $updated['version']);
+        $afterEditVersion = self::coerceInt($updated['version']);
         // After Publish the public page follows; a still-pending testimonial stays hidden.
         $visibleAfterEdit = $publishAction ? true : $record['public'];
         self::assertSame($visibleAfterEdit, $this->publicShows($app, $record['renamed']), $id . ': the public page follows the edit.');
