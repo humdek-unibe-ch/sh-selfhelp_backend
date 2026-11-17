@@ -82,8 +82,8 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
             ], $admin);
             $bundle = $this->assertEnvelopeSuccess($export, 200);
 
-            $formHolder = $this->findBundleSectionByStyle($bundle['pages'] ?? [], 'form-record');
-            self::assertNotNull($formHolder, 'The exported bundle must carry the form inside the CMS list.');
+            $formHolder = $this->findBundleSectionByStyle($bundle['pages'] ?? [], 'entry-form-list');
+            self::assertNotNull($formHolder, 'The exported bundle must carry the CMS list that is the form.');
             $ownerName = self::coerceString($formHolder['section_name'] ?? null);
 
             foreach (['entry-form-list', 'data-view', 'entry-record'] as $style) {
@@ -91,14 +91,14 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
                 self::assertNotNull($section, sprintf('The exported bundle must carry the "%s" section.', $style));
                 $binding = $this->firstFieldContent($section, 'data_table');
                 if ($style === 'entry-form-list') {
-                    // The list reads the table of its own form: no binding to carry.
-                    self::assertNull($binding, 'The CMS list needs no data_table: its inline form owns the table.');
+                    // The list owns its table: no binding to carry.
+                    self::assertNull($binding, 'The CMS list needs no data_table: it owns the table.');
                     continue;
                 }
                 self::assertSame(
                     '@section:' . $ownerName,
                     $binding,
-                    sprintf('The "%s" data_table binding must be exported as the owner token of the inline form, not a numeric id.', $style)
+                    sprintf('The "%s" data_table binding must be exported as the owner token of the list, not a numeric id.', $style)
                 );
             }
 
@@ -144,11 +144,11 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
                 'The imported detail reads the table of the imported list.'
             );
 
-            $importedFormSectionId = $this->firstSectionIdByStyle($importedCmsListId, 'form-record', $admin);
+            $importedFormSectionId = $this->firstSectionIdByStyle($importedCmsListId, 'entry-form-list', $admin);
             self::assertSame(
                 (string) $importedFormSectionId,
                 $this->dataTableNameById((int) $importedBinding, $admin),
-                'The relinked table must be owned by the form of the imported CMS list.'
+                'The relinked table must be owned by the imported CMS list.'
             );
 
             // Route-prefixed in-content link: the data view's link to the detail moved onto the /qa2 base.
