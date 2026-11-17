@@ -55,7 +55,9 @@ class FormListQuickActionService extends BaseService
     public function run(FormListContext $ctx, string $actionId, int $recordId, int $expectedVersion): array
     {
         $config = $ctx->config;
-        if (!$config->isEditable() || !$config->allowUpdate) {
+        // Quick actions are independent of "Allow edit" (the form modal): a
+        // foreign-table list turns edit off and still runs approve / mark-done.
+        if (!$config->isEditable()) {
             throw new ServiceException('This list does not allow to update entries.', Response::HTTP_FORBIDDEN, ['reason' => 'operation_disabled', 'operation' => 'update']);
         }
         if ($ctx->userId === null) {
