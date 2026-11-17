@@ -103,6 +103,25 @@ final class FormListAsFormTest extends QaWebTestCase
         self::assertSame(404, $envelope['status'] ?? null);
     }
 
+    public function testFirstSubmitSetsDataTableDisplayNameFromListNameField(): void
+    {
+        $token = $this->loginAsQaUser();
+        [$page, $list] = $this->freshListWithInputs('qa_laf_display');
+        $this->pages->setSectionField($list, 'name', 'Participant entries');
+
+        $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+            'page_id' => (int) $page->getId(),
+            'section_id' => (int) $list->getId(),
+            'form_data' => ['title' => 'Hello', 'note' => 'World'],
+        ], $token));
+
+        $display = self::coerceString($this->db->fetchOne(
+            'SELECT display_name FROM data_tables WHERE name = :n',
+            ['n' => (string) $list->getId()],
+        ));
+        self::assertSame('Participant entries', $display);
+    }
+
     public function testRenamingTheListNameRenamesTheTableDisplayName(): void
     {
         $admin = $this->loginAsQaAdmin();
