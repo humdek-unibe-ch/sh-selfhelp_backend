@@ -168,7 +168,8 @@ final class FormListStateTest extends QaWebTestCase
 
         self::assertContains($this->state($page, $view)['status'] ?? null, [401, 403], 'A guest has no access to a private page.');
         $token = $this->loginAsQaUser();
-        self::assertContains($this->state($page, $view, '', $token)['status'] ?? null, [401, 403], 'The subject group has no grant on the page.');
+        // Signed-in without a page grant: same as a missing page (404), not a different leak.
+        self::assertSame(404, $this->state($page, $view, '', $token)['status'] ?? null, 'The subject group has no grant on the page.');
 
         // The kernel was rebooted by the requests: grant through the entities of the live container.
         $em = $this->service(EntityManagerInterface::class);

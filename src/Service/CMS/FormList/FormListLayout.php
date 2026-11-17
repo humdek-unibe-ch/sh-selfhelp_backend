@@ -18,36 +18,52 @@ use App\Service\CMS\Common\StyleNames;
  */
 final class FormListLayout
 {
+    public const FORM_INSIDE_LIST_MESSAGE = 'An Entry List with Form is already a form: put the inputs directly in the list.';
+
     private function __construct()
     {
     }
 
     /**
-     * The form inside a list: its shallowest descendant of a form style, first by
-     * position. A list works with one form; further forms in it are ignored.
+     * The form section of a list. An `entry-form-list` without a foreign
+     * `data_table` is its own form (returns its own id). A `data-view` and a
+     * list bound to another table have no form (null). There is no fallback to
+     * a nested form section.
+     */
+    public static function formSectionIdOf(string $listStyle, int $listSectionId, ?int $foreignDataTableId = null): ?int
+    {
+        if ($foreignDataTableId !== null) {
+            return null;
+        }
+
+        return $listStyle === StyleNames::STYLE_ENTRY_FORM_LIST ? $listSectionId : null;
+    }
+
+    /**
+     * Whether a form-style section sits anywhere below the list (a leftover of
+     * the old two-level setup, or an attempted nest). The list itself is not
+     * counted.
      *
      * @param list<array<array-key, mixed>> $rows
      */
-    public static function inlineFormSectionId(array $rows, int $listSectionId): ?int
+    public static function hasNestedForm(array $rows, int $listSectionId): bool
     {
-        $best = null;
         foreach ($rows as $row) {
             $id = self::int($row['id'] ?? null);
+            if ($id === $listSectionId) {
+                continue;
+            }
             if (!in_array($row['style_name'] ?? null, StyleNames::FORM_STYLE_NAMES, true)) {
                 continue;
             }
             $ids = self::pathIds($row);
             $index = array_search($listSectionId, $ids, true);
-            if ($index === false || $index === count($ids) - 1) {
-                continue; // not below the list
-            }
-            $rank = [self::int($row['level'] ?? null), self::int($row['position'] ?? null), $id];
-            if ($best === null || $rank < $best['rank']) {
-                $best = ['rank' => $rank, 'id' => $id];
+            if ($index !== false && $index < count($ids) - 1) {
+                return true;
             }
         }
 
-        return $best['id'] ?? null;
+        return false;
     }
 
     /**

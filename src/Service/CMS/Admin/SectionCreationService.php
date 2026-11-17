@@ -13,6 +13,7 @@ use App\Entity\PagesSection;
 use App\Entity\SectionsHierarchy;
 use App\Exception\ServiceException;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\FormList\FormListNestingGuard;
 use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
@@ -42,6 +43,7 @@ class SectionCreationService extends BaseService
         private readonly UserContextAwareService $userContextAwareService,
         private readonly TransactionService $transactionService,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly FormListNestingGuard $formListNestingGuard,
     ) {
     }
 
@@ -174,6 +176,8 @@ class SectionCreationService extends BaseService
             if (!$style) {
                 $this->throwNotFound('Style not found');
             }
+
+            $this->formListNestingGuard->assertChildAllowed((int) $pageId, $parentSectionId, (string) $style->getName());
 
             // Create a new section with the specified style
             $childSection = new Section();

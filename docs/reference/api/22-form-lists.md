@@ -3,7 +3,7 @@
 Audience: Developers and integrators (web, mobile, scripts).
 Status: active.
 Applies to: SelfHelp2 Symfony backend with the `entry-form-list` and `data-view` styles (migration `Version20261113120844`).
-Last verified: 2026-11-14.
+Last verified: 2026-11-17.
 Source of truth: `FormListController`, `PageController`, `FormController`, `App\Service\CMS\FormList\*`, and the JSON schemas `config/schemas/api/v1/common/_form_list_state.json`, `_form_list_error.json`, `responses/frontend/form_list_*.json`, `requests/frontend/list_*.json`.
 
 A list shows the records of a form with search, sort, filters and paging. The
@@ -112,8 +112,8 @@ inside the visitor's search, so a link to a record survives narrowing the list.
 - `state.query` is the set of URL parameters that express the served state; clients build links from it and keep unrelated parameters.
 - `capabilities.create` is false for a guest on an own-entries list. `rows[].can_*` are drawing hints, never authorization.
 - `rows[].quick_actions` are the action ids whose condition holds now for that record; `capabilities.quick_actions` carries labels and confirmation texts.
-- `selected` is the open record with `values`, `version`, `can_*`, `quick_actions` and `form_values` (prefill of the inline form; null when the caller cannot edit). Send `selected.version` back as `expected_version`.
-- `list.form_section_id` is the inline form: a normal child section of the list in the page payload, drawn only while `state.mode` is `create` or `edit`.
+- `selected` is the open record with `values`, `version`, `can_*`, `quick_actions` and `form_values` (prefill of the list-as-form; null when the caller cannot edit). Send `selected.version` back as `expected_version`.
+- `list.form_section_id` is the list's own section id when it owns the table (`null` for a foreign `data_table` or a `data-view`). Clients draw the list's input children as the form while `state.mode` is `create` or `edit`.
 - `list.table_exists` is false until the form was first submitted; show the empty state and the add button.
 - `list.layout` is `table`, `cards` or `custom` (`custom` only for `data-view`). With `custom`, `list.has_template` is true when the view holds sections, and then every row carries `sections`: the section payloads of the view (the shape of the sections of a page payload) drawn for that record, with their tokens already replaced by the record's values. Only the configured columns plus `record_id`, `entry_date`, `_index` and the option labels `_<field>_label` are available; a file column is not. `list.row_css` holds the classes of the element around the records (web only; `""` for the other layouts). `rows[].sections` is absent when `has_template` is false (draw cards). A `data-view` carries no children in the page payload: the sections of a record reach a client only here.
 
@@ -124,7 +124,7 @@ the existing endpoints ([17-form-submissions.md](17-form-submissions.md)):
 
 | Operation | Request | Success | Refusals |
 | --- | --- | --- | --- |
-| create | `POST /cms-api/v1/forms/submit` with `section_id` = the inline form | `record_id`, `version` (1) | `403 operation_disabled`, `401` guest on an own-entries list, `400 table_mismatch`, `400 protected_field` / `unknown_field`, `422 invalid_form_data` |
+| create | `POST /cms-api/v1/forms/submit` with `section_id` = the list (when it owns the table) | `record_id`, `version` (1) | `403 operation_disabled`, `401` guest on an own-entries list, `400 table_mismatch`, `400 protected_field` / `unknown_field`, `422 invalid_form_data` |
 | update | `PUT /cms-api/v1/forms/update` with `update_based_on: {record_id}` and `expected_version` | `record_id`, `updated_at`, `version` | `400 expected_version_required` / `invalid_expected_version`, `409 stale_version` (nothing written), `404` outside the dataset, `422 invalid_form_data` |
 | delete | `DELETE /cms-api/v1/forms/delete` with `section_id` = **the list**, `record_id`, `expected_version` | `record_id`, `version` | `400 expected_version_required`, `409 stale_version`, `404` outside the dataset |
 
@@ -178,17 +178,20 @@ viewer; access is decided on the file request.
 
 Body `{page_id, expected_version}` (and `preview` for the draft) and nothing else. Response
 `{record_id, version, action}`. The client names an action; the **author** defined what it
-writes. Check order: operation allowed, signed in, action exists, record inside the
-dataset, caller may update it, the action's `when` still holds, version matches, the value
-the action assigns passes the rules of the form's input (a value the input refuses, for
-example an option it no longer offers, is a `422 invalid_form_data`), then one ordinary
+writes. Check order: signed in, action exists, record inside the dataset, caller may
+change the record (own, or own entries off plus the table update grant — **Allow edit**
+`allow_update` is not required), the action's `when` still holds, version matches, the
+value the action assigns passes the rules of the form's input (a value the input refuses,
+for example an option it no longer offers, is a `422 invalid_form_data`), then one ordinary
 write with source `quick_action`. A refused request changes nothing.
 
 ## History (only when `show_history` is on)
 
 All endpoints need a signed-in caller, the record inside the dataset (otherwise
 `404`), `show_history` (otherwise `403 history_disabled`), and name only fields
-the list or its form shows (`400 field_not_allowed`). A data view has no history.
+the list or its form shows (`400 field_not_allowed`). For someone else's record on
+a shared list (`own_entries_only` off), history also needs **Allow edit** and the
+table update grant (unlike quick actions). A data view has no history.
 
 | Endpoint | Query / body | Result |
 | --- | --- | --- |
@@ -224,7 +227,7 @@ endpoints (`PUT /admin/pages/{page_id}/sections/{section_id}`, section and page
 bundle import). There is no list-specific administration route.
 
 - **Validated on save and import.** A save that touches a list field is checked against the table the list reads. A problem answers `400` with the usual `errors[]` (`field`, `message`), **every** problem in one answer, and nothing is stored. A save that does not touch the list fields is never held up by a list that has become invalid. A `data-view` without a table is refused. A section or bundle import with an invalid list answers `422` with per-node errors before anything is created. Binding a table the editor's role cannot read is refused with `403` (F07).
-- **`list_source` in the section details.** `GET /admin/pages/{page_id}/sections/{section_id}` carries `list_source` for `entry-form-list` and `data-view` sections whose table can be found: `data_table` (`{id, name}`, or `null` while the form inside the list was never submitted), `form_section_id` (the form inside the list when the list reads that form's table), `columns` (`{field, label, type}`: the inputs of the form in form order, then stored columns no input owns) and `row_fields` (`{field, label, type, column, sort, filter}`: entry date, record number and author, with the places a list may use them in). `field` is the immutable column key (`section_<input id>`) that the list's JSON fields store; the editor's pickers draw from this answer, which is exactly the set the save check accepts. It is read per request and never cached, because it follows the inputs of the form.
+- **`list_source` in the section details.** `GET /admin/pages/{page_id}/sections/{section_id}` carries `list_source` for `entry-form-list` and `data-view` sections whose table can be found: `data_table` (`{id, name}`, or `null` while an owning list was never submitted), `form_section_id` (the list's own section id when it owns the table; `null` for a `data-view` or a foreign `data_table` list), `columns` (`{field, label, type}`: the list's own inputs in form order before the first submit, otherwise the table's columns) and `row_fields` (`{field, label, type, column, sort, filter}`: entry date, record number and author, with the places a list may use them in). `field` is the immutable column key (`section_<input id>`) that the list's JSON fields store; the editor's pickers draw from this answer, which is exactly the set the save check accepts. It is read per request and never cached.
 
 ## Errors
 

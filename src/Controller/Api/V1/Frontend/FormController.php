@@ -265,6 +265,15 @@ class FormController extends AbstractController
                 $isOwnRecord = $recordOwnerId !== null && $recordOwnerId === $userId;
 
                 if (!$isOwnRecord) {
+                    // own_entries_only never exposes foreign records, so another
+                    // owner looks like not found (same as delete and the list boundary).
+                    if ($sectionOwnEntriesOnly) {
+                        return $this->apiResponseFormatter->formatError(
+                            'Record not found',
+                            Response::HTTP_NOT_FOUND
+                        );
+                    }
+
                     $hasUpdatePermission = $dataTableId > 0 && $this->dataAccessSecurityService->hasPermission(
                         $userId,
                         'data_table',
@@ -272,12 +281,8 @@ class FormController extends AbstractController
                         DataAccessSecurityService::PERMISSION_UPDATE
                     );
 
-                    // own_entries_only sections never expose foreign records,
-                    // so a foreign target is forbidden outright; shared
-                    // sections defer to the centralized update rule.
-                    $foreignEditAllowed = !$sectionOwnEntriesOnly
-                        && $this->dataAccessSecurityService->canUpdateOwnedRecord(false, $isOwnRecord, $hasUpdatePermission);
-                    if (!$foreignEditAllowed) {
+                    // Shared sections defer to the centralized update rule.
+                    if (!$this->dataAccessSecurityService->canUpdateOwnedRecord(false, $isOwnRecord, $hasUpdatePermission)) {
                         return $this->apiResponseFormatter->formatError(
                             'You do not have permission to update this entry.',
                             Response::HTTP_FORBIDDEN
@@ -432,10 +437,10 @@ class FormController extends AbstractController
             $recordOwnerId = $targetRow->getIdUsers();
             $isOwnRecord = $recordOwnerId !== null && $recordOwnerId === $userId;
             if ($ownEntriesOnly && !$isOwnRecord) {
-                // An own-entries section never reaches another person's entry (the lock decides again).
+                // Another owner looks like not found (same as outside the list boundary).
                 return $this->apiResponseFormatter->formatError(
-                    'Access denied to this record',
-                    Response::HTTP_FORBIDDEN
+                    'Record not found',
+                    Response::HTTP_NOT_FOUND
                 );
             }
             if (!$ownEntriesOnly) {

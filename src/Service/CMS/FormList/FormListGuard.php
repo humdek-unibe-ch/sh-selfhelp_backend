@@ -17,11 +17,12 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * The operation rules of a list, enforced where the write happens.
  *
- * A form that sits inside an `entry-form-list` writes through the ordinary
- * form endpoints (create, update, delete). The list decides what that form may
- * do: the operations it allows, whether it works on the user's own records
- * only, and which table it is bound to. The page may show or hide buttons; this
- * is the check that actually refuses.
+ * An `entry-form-list` is itself the form and writes through the ordinary form
+ * endpoints (create, update, delete). The list decides what it may do: the
+ * operations it allows, whether it works on the user's own records only, and
+ * which table it is bound to. A list with a foreign `data_table` only deletes
+ * and runs quick actions. The page may show or hide buttons; this is the check
+ * that actually refuses.
  *
  * The configuration it checks is the one the effective page holds (published
  * for a visitor, the draft for an authorized preview): the caller reads it with
@@ -44,7 +45,7 @@ class FormListGuard extends BaseService
      * @param FormListConfig $config the list the write goes through, as the effective page holds it
      * @param string $operation one of the OP_* constants
      * @param bool $authenticated whether a user is signed in
-     * @param int|null $formSectionId the inline form that writes; null when a list action writes (a delete or quick action)
+     * @param int|null $formSectionId the form section that writes (the list itself when it owns the table); null when a list action writes (a delete or quick action)
      * @throws ServiceException 401 for a guest on a list of own records, 403 for an operation the list does not offer, 400 for a form bound to another table
      */
     public function assertOperation(FormListConfig $config, string $operation, bool $authenticated, ?int $formSectionId = null): void
@@ -67,6 +68,8 @@ class FormListGuard extends BaseService
             throw new ServiceException('Sign in to work with your entries.', Response::HTTP_UNAUTHORIZED);
         }
 
+        // A foreign data_table list never accepts create/update through the form
+        // endpoints: its table name is not the writing section's id.
         if ($formSectionId !== null && $config->dataTableId !== null) {
             $table = $this->dataTableRepository->find($config->dataTableId);
             if ($table === null || $table->getName() !== (string) $formSectionId) {
@@ -81,17 +84,18 @@ class FormListGuard extends BaseService
 
     /**
      * The table a list reads and writes: its own `data_table`, otherwise the
-     * table of its inline form. Null when neither exists (yet): a list whose
-     * form was never submitted has no records.
+     * table named by the list section id. Null when neither exists (yet): a
+     * list that was never submitted has no records.
      *
-     * @param list<array<array-key, mixed>> $rows the page tree rows
+     * @param list<array<array-key, mixed>> $rows the page tree rows (unused; kept for call-site stability)
      */
     public function tableIdOf(FormListConfig $config, array $rows): ?int
     {
+        unset($rows);
         if ($config->dataTableId !== null) {
             return $config->dataTableId;
         }
-        $formSectionId = FormListLayout::inlineFormSectionId($rows, $config->sectionId);
+        $formSectionId = FormListLayout::formSectionIdOf($config->style, $config->sectionId);
 
         return $formSectionId === null ? null : $this->tableIdOfForm($formSectionId);
     }

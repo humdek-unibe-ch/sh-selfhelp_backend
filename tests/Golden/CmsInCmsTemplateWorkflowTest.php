@@ -803,11 +803,8 @@ final class CmsInCmsTemplateWorkflowTest extends QaWebTestCase
 
     private function childFormId(int $listId): int
     {
-        return self::coerceInt($this->db->fetchOne(
-            'SELECT h.id_child_section FROM rel_sections_hierarchy h JOIN sections s ON s.id = h.id_child_section'
-            . ' JOIN styles st ON st.id = s.id_styles WHERE h.id_parent_section = :l AND st.name = :style',
-            ['l' => $listId, 'style' => 'form-record'],
-        ));
+        // The list is the form: inputs sit directly under the entry-form-list.
+        return $listId;
     }
 
     /**

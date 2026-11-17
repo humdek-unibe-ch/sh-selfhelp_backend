@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: CMS administrators and developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend + frontend Host Admin.
-Last verified: 2026-11-13.
+Last verified: 2026-11-17.
 Source of truth: Runtime `cms_apps` APIs, `CmsAppWizardService::scaffoldCmsApp`, and the linked architecture doc.
 
 This recipe builds a working **list → detail** pattern bound to a data table —
@@ -23,7 +23,7 @@ One dataset, two surfaces, **no input defined twice**. For a base name `team-mem
 
 | Page | URL | Surface | Role | Content |
 |------|-----|---------|------|---------|
-| CMS list | `/cms/team-members` | cms | `cms_list` | one **`entry-form-list`**; its inline form is the only place the inputs are defined and **owns the data table** |
+| CMS list | `/cms/team-members` | cms | `cms_list` | one **`entry-form-list`** that **is** the form: inputs sit directly inside it and it **owns the data table** |
 | Public list | `/team-members` | public | `public_list` | a read-only **`data-view`** of the same table, every row links to its detail page |
 | Public detail | `/team-members/{record_id}` | public | `public_detail` | an `entry-record`, normal shareable page |
 
@@ -78,10 +78,10 @@ under a list `scope`. A `data-view` and a list cell show the stored value as it 
    - **Base name** — lowercase, hyphenated (e.g. `team-members`). Drives the
      keywords and URLs.
    - **Create a new form + data table** (`create_form`) — when on, the CMS list gets
-     an inline form with the fields of the multi-field builder (text, text area, select,
-     checkbox, radio, number) that **creates and owns** the data table; leave **Data table**
+     the fields of the multi-field builder as **direct children** (text, text area, select,
+     checkbox, radio, number) and **creates and owns** the data table; leave **Data table**
      empty. It needs the CMS list (`create_admin`). When off, supply an existing **Data table**:
-     the CMS list then shows and deletes its records but cannot add or edit them.
+     the CMS list then shows, deletes and runs quick actions on those records but cannot add or edit them.
    - **Detail route parameter** — defaults to `record_id` (snake_case).
    - **Additional access groups** — optional groups on top of surface defaults
      (`cms` = admin/editor-only, `public` = public).
@@ -105,11 +105,11 @@ Permissions: `admin.cms_app.*` (separate from `admin.page.*`).
 
 1. **Create the CMS page**: Admin → Pages → New, surface = *cms*, URL `/cms/team-members`.
 2. Add an **entry-form-list** section (**List key** `team`, layout *table*, **Form presentation**
-   *modal*, **List columns**, **History** on). Add a **form-record** (or **form-log**) child with
-   its inputs: this inline form owns the data table and is the table the list reads.
+   *modal*, **List columns**, **History** on). Put the inputs **directly inside** the list (no nested
+   form style): the list owns the data table on first submit.
 3. **Create the public list page**: surface = *public*, URL `/team-members`. Add a **data-view**
    (or an **entry-list** for a composition that filters in SQL). For the data view set **Data table**
-   to the form section of step 2, **List columns**, **Detail URL** `/team-members/{record_id}`.
+   to the list section of step 2, **List columns**, **Detail URL** `/team-members/{record_id}`.
    For a card of your own set **Layout** to *Custom*, put a `card` inside the view with a `title`
    (`{{name}}`) and a `button` to `/team-members/{{record_id}}`, and give **Record container
    classes** such as `grid grid-cols-1 md:grid-cols-3 gap-6`; use 6 to 12 records per page.
@@ -176,7 +176,7 @@ existing modal pages need no change.
 
 Six ready-made CMS-in-CMS templates ship with the CMS — complete apps with
 translated content (de-CH and en-GB) and sample rows. All share the shape above (one CMS
-`entry-form-list` that holds the form, a public page over the same table); each has its
+`entry-form-list` that **is** the form, a public page over the same table); each has its
 own public layout and a feature of its own:
 
 | Template | Pages | Public surface | What it shows |
@@ -201,9 +201,9 @@ own public layout and a feature of its own:
 
 The bundle files live in the **frontend** repo under
 `sh-selfhelp_frontend/examples/cms-in-cms/` (see that repo's
-`examples/README.md`); each is self-contained — the CMS list with its form (which owns the
-table), the public pages, with the list and detail bound through portable
-`fields.data_table` (`@section:<form>`) tokens and sample rows in `data_tables[]`. The
+`examples/README.md`); each is self-contained — the CMS list that owns the
+table (inputs directly inside it), the public pages, with the list and detail bound through portable
+`fields.data_table` (`@section:<slug>-cms-list`) tokens and sample rows in `data_tables[]`. The
 backend keeps byte-identical copies under `tests/fixtures/examples/`; the frontend script
 `scripts/build-cms-example-bundles.mjs` writes both. Nothing is auto-seeded.
 
@@ -212,7 +212,7 @@ Import tab → upload the file → the dialog runs a dry-run validation and show
 any issues → set prefixes if the routes are taken (or enable **skip conflicting
 routes**) → confirm.
 
-The owner token is relinked to the freshly-created form section automatically, so
+The owner token is relinked to the freshly-created list section automatically, so
 the list/detail show the seeded rows immediately; list configuration (columns, sort,
 controls, quick actions, fixed filters) is validated and its field keys relinked by the
 same step. Content fields use the default-install locales `de-CH` and `en-GB`; if your

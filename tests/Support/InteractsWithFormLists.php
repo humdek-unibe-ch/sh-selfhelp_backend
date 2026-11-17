@@ -258,8 +258,9 @@ trait InteractsWithFormLists
     }
 
     /**
-     * An entry-form-list with its form inside, bound to a table of its own that holds `title` and `status`.
+     * An entry-form-list that is its own form, bound to a table of its own that holds `title` and `status`.
      * The page is private; the subject group may read and write it.
+     * The fourth return value is the list itself (kept as `form` for call-site stability).
      *
      * @param array<string, string> $fields section fields of the list that replace the defaults of this fixture
      * @param bool $openAccess whether guests may open the page (the list's own rules still apply)
@@ -269,16 +270,14 @@ trait InteractsWithFormLists
     {
         $page = $this->pages->createPage($prefix, $openAccess);
         $list = $this->pages->createSection($prefix . '_list', 'entry-form-list');
-        $form = $this->pages->createSection($prefix . '_form', 'form-record');
         $this->pages->linkSectionToPage($page, $list, 10);
-        $this->pages->linkSectionToParent($list, $form, 10);
 
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
         $this->pages->grantGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true);
 
-        // The form's table is named after the form section; its columns are `title` and `status`.
-        $tableId = $this->grid->table((string) $form->getId(), ['title' => 'text', 'status' => 'text']);
+        // The list's table is named after the list section; its columns are `title` and `status`.
+        $tableId = $this->grid->table((string) $list->getId(), ['title' => 'text', 'status' => 'text']);
         $defaults = [
             'list_columns' => json_encode([
                 ['field' => 'title', 'label' => 'Title', 'sortable' => true, 'searchable' => true],
@@ -289,12 +288,12 @@ trait InteractsWithFormLists
             $this->pages->setSectionField($list, $name, $content);
         }
 
-        return [$page, $list, $tableId, $form];
+        return [$page, $list, $tableId, $list];
     }
 
     /**
-     * An input of a form: a section of the given style whose `name` field is the
-     * input name. Its key in the form's table is `section_<its id>`.
+     * An input of a form (or list-as-form): a section of the given style whose
+     * `name` field is the input name. Its key in the form's table is `section_<its id>`.
      */
     private function formInput(Section $form, string $sectionName, string $style, string $inputName, int $position = 10): Section
     {
@@ -306,8 +305,9 @@ trait InteractsWithFormLists
     }
 
     /**
-     * An entry list whose form declares its inputs, so the server knows the rules of each one. The table of the form
-     * holds one column per input under the key the server derives for it (`section_<input id>`); the list shows them all.
+     * An entry list that declares its inputs directly, so the server knows the rules of each one. The table of the
+     * list holds one column per input under the key the server derives for it (`section_<input id>`); the list shows them all.
+     * The fourth return value is the list itself (kept as `form` for call-site stability).
      *
      * @param array<string, array{style?: string, fields?: array<string, string>, type?: string}> $inputs
      *        input name => its style (`text-input` when missing), the fields of its section and the value type of its column
@@ -319,9 +319,7 @@ trait InteractsWithFormLists
     {
         $page = $this->pages->createPage($prefix, $openAccess);
         $list = $this->pages->createSection($prefix . '_list', 'entry-form-list');
-        $form = $this->pages->createSection($prefix . '_form', 'form-record');
         $this->pages->linkSectionToPage($page, $list, 10);
-        $this->pages->linkSectionToParent($list, $form, 10);
 
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
@@ -332,7 +330,7 @@ trait InteractsWithFormLists
         $columns = [];
         $position = 10;
         foreach ($inputs as $name => $spec) {
-            $input = $this->formInput($form, $prefix . '_in_' . $name, $spec['style'] ?? 'text-input', $name, $position);
+            $input = $this->formInput($list, $prefix . '_in_' . $name, $spec['style'] ?? 'text-input', $name, $position);
             foreach ($spec['fields'] ?? [] as $field => $content) {
                 $this->pages->setSectionField($input, $field, $content);
             }
@@ -343,13 +341,13 @@ trait InteractsWithFormLists
             $position += 10;
         }
 
-        $tableId = $this->grid->table((string) $form->getId(), $types);
+        $tableId = $this->grid->table((string) $list->getId(), $types);
         $defaults = ['list_columns' => json_encode($columns, JSON_THROW_ON_ERROR)];
         foreach (($fields + $defaults) as $name => $content) {
             $this->pages->setSectionField($list, $name, $content);
         }
 
-        return [$page, $list, $tableId, $form, $keys];
+        return [$page, $list, $tableId, $list, $keys];
     }
 
     /**

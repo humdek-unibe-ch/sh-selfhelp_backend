@@ -88,13 +88,20 @@ final class CmsAppHubSyncService extends BaseService
     }
 
     /**
-     * The form a list on the page holds inline: the form that owns the data table of the app.
+     * The list that is the form on the page: it owns the data table of the app.
      */
     private function resolveListFormSection(Page $page): ?Section
     {
         $rows = $this->sectionRepository->fetchSectionsHierarchicalByPageId((int) $page->getId());
         foreach (FormListLayout::listSectionIds($rows) as $listSectionId) {
-            $formSectionId = FormListLayout::inlineFormSectionId($rows, $listSectionId);
+            $style = null;
+            foreach ($rows as $row) {
+                if (is_numeric($row['id'] ?? null) && (int) $row['id'] === $listSectionId) {
+                    $style = is_string($row['style_name'] ?? null) ? $row['style_name'] : null;
+                    break;
+                }
+            }
+            $formSectionId = FormListLayout::formSectionIdOf($style ?? '', $listSectionId);
             if ($formSectionId !== null) {
                 $section = $this->entityManager->find(Section::class, $formSectionId);
 
@@ -115,12 +122,12 @@ final class CmsAppHubSyncService extends BaseService
                 continue;
             }
             $styleName = $section->getStyle()?->getName();
-            if ($styleName === StyleNames::STYLE_FORM_RECORD || $styleName === StyleNames::STYLE_ENTRY_RECORD_FORM) {
+            if (in_array($styleName, StyleNames::FORM_STYLE_NAMES, true)) {
                 return $section;
             }
         }
 
-        // Fallback: first section on the form page (scaffold always puts form-record first).
+        // Fallback: first section on the page (scaffold puts the list-as-form first).
         foreach ($rels as $rel) {
             $section = $rel->getSection();
             if ($section instanceof Section) {

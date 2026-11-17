@@ -181,7 +181,7 @@ final class FormListAuthoringTest extends QaWebTestCase
         $source = $this->listSource($token, $page, $list);
 
         self::assertSame(['id' => $tableId, 'name' => (string) $form->getId()], $source['data_table']);
-        self::assertSame($form->getId(), $source['form_section_id'], 'The list reads the table of the form inside it.');
+        self::assertSame($form->getId(), $source['form_section_id'], 'The list is the form: form_section_id is the list itself.');
         $types = [];
         foreach ($source['columns'] as $column) {
             $types[$column['field']] = $column['type'];
@@ -209,17 +209,76 @@ final class FormListAuthoringTest extends QaWebTestCase
         sort($fields);
         self::assertSame(['city', 'note', 'published', 'seats', 'starts', 'title'], $fields);
 
-        // A form nobody has submitted yet has no table; the inputs still tell the editor what the list may use.
+        // A list nobody has submitted yet has no table; its own inputs still tell the editor what it may use.
         $page = $this->pages->createPage('qa_la_catalog_fresh', false);
         $list = $this->pages->createSection('qa_la_catalog_fresh_list', 'entry-form-list');
-        $form = $this->pages->createSection('qa_la_catalog_fresh_form', 'form-record');
         $this->pages->linkSectionToPage($page, $list, 10);
-        $this->pages->linkSectionToParent($list, $form, 10);
-        $input = $this->formInput($form, 'qa_la_catalog_fresh_headline', 'input', 'headline', 10);
+        $title = $this->formInput($list, 'qa_la_catalog_fresh_title', 'text-input', 'title', 10);
+        $note = $this->formInput($list, 'qa_la_catalog_fresh_note', 'text-input', 'note', 20);
 
         $fresh = $this->listSource($token, $page, $list);
-        self::assertNull($fresh['data_table'], 'The form was never submitted: no table yet.');
-        self::assertSame([['field' => 'section_' . $input->getId(), 'label' => 'headline', 'type' => 'text']], $fresh['columns']);
+        self::assertNull($fresh['data_table'], 'The list was never submitted: no table yet.');
+        self::assertSame((int) $list->getId(), $fresh['form_section_id']);
+        self::assertSame([
+            ['field' => 'section_' . $title->getId(), 'label' => 'title', 'type' => 'text'],
+            ['field' => 'section_' . $note->getId(), 'label' => 'note', 'type' => 'text'],
+        ], $fresh['columns']);
+    }
+
+    public function testANestedFormStyleUnderAListIsRefusedOnImport(): void
+    {
+        [$page] = $this->formList('qa_la_nest');
+        $token = $this->loginAsQaAdmin();
+        $before = $this->sectionsOnPage($page);
+
+        $envelope = $this->import($token, $page, [
+            'section_name' => 'qa_la_nest_list',
+            'style_name' => 'entry-form-list',
+            'children' => [[
+                'section_name' => 'qa_la_nest_form',
+                'style_name' => 'form-record',
+                'children' => [],
+            ]],
+        ]);
+
+        self::assertSame(422, $envelope['status'] ?? null, (string) json_encode($envelope));
+        self::assertStringContainsString('form_inside_list', json_encode($envelope, JSON_THROW_ON_ERROR));
+        self::assertSame($before, $this->sectionsOnPage($page));
+    }
+
+    public function testQuickActionsOnAForeignTableListUseTheSourceColumns(): void
+    {
+        [$pageA, $listA, $tableId, , $keys] = $this->declaredList('qa_la_src_a', [
+            'title' => [],
+            'status' => [],
+        ]);
+        $pageB = $this->pages->createPage('qa_la_src_b', false);
+        $listB = $this->pages->createSection('qa_la_src_b_list', 'entry-form-list');
+        $this->pages->linkSectionToPage($pageB, $listB, 10);
+        $this->pages->setSectionField($listB, 'data_table', (string) $tableId);
+        $this->pages->setSectionField($listB, 'own_entries_only', '0');
+        $this->pages->setSectionField($listB, 'allow_create', '0');
+        $this->pages->setSectionField($listB, 'allow_update', '0');
+        $this->pages->setSectionField($listB, 'allow_delete', '1');
+        $this->pages->setSectionField($listB, 'list_columns', json_encode([
+            ['field' => $keys['title'], 'label' => 'Title'],
+            ['field' => $keys['status'], 'label' => 'Status'],
+        ], JSON_THROW_ON_ERROR));
+        $token = $this->loginAsQaAdmin();
+
+        $source = $this->listSource($token, $pageB, $listB);
+        self::assertNull($source['form_section_id']);
+        $fields = array_column($source['columns'], 'field');
+        self::assertContains($keys['title'], $fields);
+        self::assertContains($keys['status'], $fields);
+
+        $envelope = $this->save($token, $pageB, $listB, [
+            'quick_actions' => json_encode([
+                ['id' => 'approve', 'label' => 'Approve', 'set' => [$keys['status'] => 'approved']],
+            ], JSON_THROW_ON_ERROR),
+        ]);
+        $this->assertEnvelopeSuccess($envelope);
+        unset($pageA, $listA);
     }
 
     // -- helpers ----------------------------------------------------------------

@@ -146,18 +146,23 @@ final class FormListQuickActionTest extends QaWebTestCase
         self::assertSame(0, $this->jobsOf($watcher));
     }
 
-    public function testAListThatDoesNotAllowEditsRefusesEveryAction(): void
+    public function testAllowUpdateOffStillRunsQuickActions(): void
     {
+        // "Allow edit" only gates the form modal; quick actions stay available
+        // (foreign-table admin lists turn edit off and still approve / mark done).
         [$page, $list, $tableId, $watcher] = $this->listWithWatcher('qa_lqa_readonly', ['allow_update' => '0']);
         $mine = $this->grid->row($tableId, $this->userId('qa.user@selfhelp.test'), ['title' => 'Mine', 'status' => 'open']);
         $token = $this->loginAsQaUser();
-        $before = $this->snapshot($mine, $watcher);
 
-        $envelope = $this->act($token, $page, $list, $mine, 'done', 1);
+        $data = $this->assertEnvelopeSuccess($this->act($token, $page, $list, $mine, 'done', 1));
 
-        self::assertSame(403, $envelope['status'] ?? null);
-        self::assertSame('operation_disabled', $this->at($envelope, 'data')['reason'] ?? null);
-        self::assertSame($before, $this->snapshot($mine, $watcher));
+        self::assertSame(2, $data['version'] ?? null);
+        self::assertSame('done', $this->cell($mine, 'status'));
+        self::assertSame(1, $this->jobsOf($watcher));
+        $state = $this->assertEnvelopeSuccess($this->state($page, $list, '', $token));
+        $row = $this->listOf($state, 'rows')[0] ?? [];
+        self::assertFalse($row['can_update'] ?? true, 'Allow edit stays off.');
+        self::assertSame([], $row['quick_actions'] ?? null, 'The action no longer applies after status changed.');
     }
 
     public function testAGuestIsAskedToSignInAndNothingRuns(): void

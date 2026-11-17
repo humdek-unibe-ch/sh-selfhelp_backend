@@ -11,8 +11,8 @@ namespace App\Service\CMS\FormList;
 
 use App\Entity\SectionsFieldsTranslation;
 use App\Repository\DataTableRepository;
+use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\FormFieldKeyResolver;
-use Doctrine\DBAL\ParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -134,8 +134,8 @@ class FormListPortability
 
     /**
      * The form section whose inputs are the columns of the list: the owner of the
-     * table named by `data_table`, otherwise the form inside the list. Null when
-     * `data_table` is not (yet) a table id of this install or no form is found.
+     * table named by `data_table`, otherwise the list itself. Null when
+     * `data_table` is not (yet) a table id of this install.
      */
     private function ownerFormSectionId(int $listSectionId): ?int
     {
@@ -149,33 +149,7 @@ class FormListPortability
             return $table !== null && ctype_digit((string) $table->getName()) ? (int) $table->getName() : null;
         }
 
-        return FormListLayout::inlineFormSectionId($this->descendantsOf($listSectionId), $listSectionId);
-    }
-
-    /**
-     * The sections below a list in the shape {@see FormListLayout} reads:
-     * `id`, `style_name`, `level`, `position` and `path` (section ids from the
-     * list down to the row).
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function descendantsOf(int $listSectionId): array
-    {
-        $sql = 'WITH RECURSIVE subtree (node_id, node_level, node_position, node_path) AS ('
-            . ' SELECT h.id_child_section, 1, COALESCE(h.position, 0), CAST(CONCAT(h.id_parent_section, \',\', h.id_child_section) AS CHAR(2000))'
-            . ' FROM rel_sections_hierarchy h WHERE h.id_parent_section = :root'
-            . ' UNION ALL'
-            . ' SELECT h.id_child_section, t.node_level + 1, COALESCE(h.position, 0), CAST(CONCAT(t.node_path, \',\', h.id_child_section) AS CHAR(2000))'
-            . ' FROM rel_sections_hierarchy h JOIN subtree t ON h.id_parent_section = t.node_id'
-            . ' WHERE t.node_level < 20'
-            . ' ) SELECT t.node_id AS id, st.name AS style_name, t.node_level AS level, t.node_position AS position, t.node_path AS path'
-            . ' FROM subtree t JOIN sections s ON s.id = t.node_id JOIN styles st ON st.id = s.id_styles';
-
-        return $this->entityManager->getConnection()->fetchAllAssociative(
-            $sql,
-            ['root' => $listSectionId],
-            ['root' => ParameterType::INTEGER],
-        );
+        return FormListLayout::formSectionIdOf(StyleNames::STYLE_ENTRY_FORM_LIST, $listSectionId);
     }
 
     /**

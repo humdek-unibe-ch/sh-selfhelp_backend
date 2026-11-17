@@ -56,10 +56,10 @@ final class CmsAppWizardTest extends QaWebTestCase
             sort($roles);
             self::assertSame(['cms_list', 'public_detail', 'public_list'], $roles);
 
-            // CMS surface: ONE entry-form-list; the form inside it is the only place that defines the inputs.
+            // CMS surface: ONE entry-form-list that is the form (inputs sit directly inside it).
             $cmsBody = $this->sectionsBody($byRole['cms_list'], $admin);
             self::assertStringContainsString('entry-form-list', $cmsBody);
-            self::assertStringContainsString('form-record', $cmsBody);
+            self::assertStringNotContainsString('form-record', $cmsBody);
             self::assertStringContainsString('text-input', $cmsBody);
             self::assertStringNotContainsString('entry-table', $cmsBody);
             self::assertStringNotContainsString('entry-record-form', $cmsBody);
@@ -72,7 +72,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             self::assertSame('1', $cmsField('allow_update'));
             self::assertSame('1', $cmsField('allow_delete'));
             self::assertSame('1', $cmsField('show_history'));
-            self::assertNull($cmsField('data_table'), 'The list reads the table of its own form; it names no table.');
+            self::assertNull($cmsField('data_table'), 'The list owns its table; it names no foreign data_table.');
             $cmsColumns = $this->jsonField($byRole['cms_list'], 'entry-form-list', 'list_columns', $admin);
             self::assertCount(1, $cmsColumns);
             self::assertStringStartsWith('section_', self::coerceString($cmsColumns[0]['field'] ?? null), 'The import turned the input name into the key of the new input.');
@@ -89,14 +89,14 @@ final class CmsAppWizardTest extends QaWebTestCase
             self::assertSame('/' . self::BASE . '/{record_id}', $publicField('detail_url'));
             self::assertSame('0', $publicField('own_entries_only'));
 
-            $formSectionId = $this->firstSectionIdByStyle($byRole['cms_list'], 'form-record', $admin);
+            $formSectionId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
             self::assertGreaterThan(0, $formSectionId);
             $tableId = self::coerceInt($this->service(EntityManagerInterface::class)->getConnection()->fetchOne(
                 'SELECT id FROM data_tables WHERE name = :name',
                 ['name' => (string) $formSectionId],
             ));
-            self::assertGreaterThan(0, $tableId, 'The form owns a data table named after its section.');
-            self::assertSame((string) $tableId, $publicField('data_table'), 'The public view reads the table of the form.');
+            self::assertGreaterThan(0, $tableId, 'The list owns a data table named after its section.');
+            self::assertSame((string) $tableId, $publicField('data_table'), 'The public view reads the table of the list.');
             self::assertSame(
                 (string) $tableId,
                 $this->sectionFieldValue($byRole['public_detail'], 'entry-record', 'data_table', $admin),
@@ -117,7 +117,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             self::assertNull($this->sectionFieldValue($byRole['public_detail'], 'entry-record', 'filter', $admin));
             self::assertNull($this->sectionFieldValue($byRole['public_detail'], 'entry-record', 'url_param', $admin));
 
-            // Hub sync: the form of the app is the inline form of the CMS list.
+            // Hub sync: the form of the app is the CMS list itself.
             $appDetail = $this->assertEnvelopeSuccess(
                 $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin)
             );
@@ -257,7 +257,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             self::assertTrue($statusColumnFound, 'CMS list must return the declared status column before any save.');
 
             // Submit only title — status may still lack a cell; public eq published matches nothing.
-            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'form-record', $admin);
+            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
             $created = $this->assertEnvelopeSuccess($this->jsonRequest(
                 'POST',
                 '/cms-api/v1/forms/submit',
@@ -389,7 +389,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             $downloadsText = (string) $this->fieldContentOf($byRole['public_detail'], $downloadsId, 'text', $admin);
             self::assertStringContainsString('__links', $downloadsText);
 
-            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'form-record', $admin);
+            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
             $listId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
             // Minimal PDF headers so the extension/content check accepts them.
             $pdfA = "%PDF-1.1\n1 0 obj<< /Title (one) >>endobj\ntrailer<<>>\n%%EOF\n";
@@ -512,7 +512,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             $em->flush();
 
             $listId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
-            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'form-record', $admin);
+            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
             $viewId = $this->firstSectionIdByStyle($byRole['public_list'], 'data-view', $admin);
             $detailSectionId = $this->firstSectionIdByStyle($byRole['public_detail'], 'entry-record', $admin);
             $columns = $this->jsonField($byRole['cms_list'], 'entry-form-list', 'list_columns', $admin);
@@ -688,7 +688,7 @@ final class CmsAppWizardTest extends QaWebTestCase
 
         try {
             $listId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
-            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'form-record', $admin);
+            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
             $viewId = $this->firstSectionIdByStyle($byRole['public_list'], 'data-view', $admin);
             self::assertGreaterThan(0, $listId);
             self::assertGreaterThan(0, $formId);
@@ -783,7 +783,7 @@ final class CmsAppWizardTest extends QaWebTestCase
         $secondPageIds = [];
 
         try {
-            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'form-record', $admin);
+            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
             $created = $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
                 'page_id' => $byRole['cms_list'],
                 'section_id' => $formId,
@@ -953,7 +953,7 @@ final class CmsAppWizardTest extends QaWebTestCase
 
         try {
             $listPageId = $byRole['cms_list'];
-            $formSectionId = $this->firstSectionIdByStyle($listPageId, 'form-record', $admin);
+            $formSectionId = $this->firstSectionIdByStyle($listPageId, 'entry-form-list', $admin);
             self::assertGreaterThan(0, $formSectionId);
 
             $detail = $this->assertEnvelopeSuccess(

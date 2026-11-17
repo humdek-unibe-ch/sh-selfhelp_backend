@@ -95,8 +95,8 @@ the same change wave:
 - raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
   adopts it.
 
-> **Current floor (2026-11-13):** **frontend `>=0.1.71` ⇄ core `>=0.1.44`** (the
-> core 0.1.44 entry-list wave below; 0.1.71 is the first frontend of that wave).
+> **Current floor (2026-11-17):** **frontend `>=0.1.72` ⇄ core `>=0.1.45`** (the
+> list-is-the-form wave; 0.1.72 is the first frontend of that wave).
 > The floor before it was frontend `>=0.1.70` ⇄ core `>=0.1.43` (the 0.1.43 wave).
 > Historical note, kept for context: the earlier floor
 > was the **core 0.1.17** style-schema contract
@@ -659,16 +659,16 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.44` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.45` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.24.0` | npm (1.21.x wave + rate-limit helpers / `alert_rate_limited` in 1.22.0 + `files_public` in 1.22.1; entry-list types, URL grammar and form-error helpers in 1.24.0). Not published yet: the consumers already pin `1.24.0`, so a registry-backed `npm ci` fails with a 404 until it is published. Do not use staged git tags `v2*` / `v3*` from this branch. |
 | `sh-selfhelp_frontend` | `0.1.71` | entry lists (`entry-form-list`, `data-view`), record history and conflict handling, visual list editors |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.24.0` (not on npm yet) | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` + rate-limit helpers + `files_public`; 1.24.0 adds the entry-list types, URL grammar and form-error helpers |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.44 <0.2.0` | core 0.1.44 wave (entry lists, record versions, the structured query engine, F127/F04/F05/F07) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.71 <0.2.0` | frontend 0.1.71 adopts the core 0.1.44 wave |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.45 <0.2.0` | core 0.1.45 wave (list is the form) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.72 <0.2.0` | frontend 0.1.72 adopts the core 0.1.45 wave |
 | `sh-selfhelp_backend` → manager (`release-manifest.json` `supports.manager`) | `>=1.7.0` | manager that backs up form_files/assets/plugin volumes (registry `requiresManager` raised at publish) |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.35` | entry lists on the phone; floor-neutral for manager |
-| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.44 <0.2.0` | list state route, `expected_version` on form writes; pair via `supports.core` |
+| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.45 <0.2.0` | list is the form; pair via `supports.core` |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
 | `sh-selfhelp_mobile` | `0.1.35` | `entry-form-list` / `data-view` renderer, participant create/edit/delete, history and conflict handling, uploads |
 | `sh-selfhelp_mobile` → `@selfhelp/shared` | `1.24.0` (not on npm yet) | strict menu payload + active-trail helpers + entry-table style types + `buildPagesResolveUrl` (pinned via `overrides`; SurveyJS mobile peer raised to `^1.22.1`); 1.24.0 adds the entry-list types, URL grammar and form-error helpers |
