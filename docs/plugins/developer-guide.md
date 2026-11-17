@@ -617,6 +617,21 @@ per role, next to pages, data tables, assets and groups:
 Removing the entry from the manifest, or purging the plugin, deletes the
 lookup row; the database removes its grants with it.
 
+### Checking a field value when a section is authored (H7)
+
+A plugin field can point at one of the plugin's resources: a survey section
+stores which survey it shows. Like binding a data table (F07), the editor may
+place only what they may use, checked when the section is saved or imported,
+never when it is shown.
+
+Subscribe to `App\Plugin\Event\SectionFieldBindingEvent`. It is dispatched by
+`SectionTableBindingGuard` once for every non-empty field value of a section
+save or import, with `fieldName`, `fieldTypeName`, `value` and `userId`. When
+the value is yours and the editor may not use it, call
+`$event->deny('message')`: the save or import answers 403 and writes nothing.
+The event is not dispatched for system actors (no signed-in user). The core
+does not exempt the admin role: the plugin decides for its own resources.
+
 Field renderers, page-lifecycle hooks, and other surfaces from
 earlier proposals are **not** consumed by the host. Do not register
 tags such as `selfhelp.plugin.field_renderer` — nothing iterates

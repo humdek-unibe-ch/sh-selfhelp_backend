@@ -15,7 +15,9 @@ use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\UserContextAwareService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Plugin\Event\SectionFieldBindingEvent;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Author-time check for binding a data table into a section (F07, decided in
@@ -29,6 +31,11 @@ use Doctrine\ORM\EntityManagerInterface;
  * A section binds a table in two ways, and both go through this guard:
  *  - a field of type `select-data_table` (the `data_table` property), by id;
  *  - a `table` entry in the section's `data_config`, by name.
+ *
+ * A plugin field can bind one of the plugin's resources the same way (a survey
+ * in a survey section). For every non-empty field value the guard dispatches
+ * {@see SectionFieldBindingEvent}; the plugin that owns the field refuses when
+ * the editor may not use the resource (H7).
  *
  * Clearing a binding is always allowed. A reference that resolves to no table
  * binds nothing and is allowed; the reader finds no data for it. Requests with
@@ -45,6 +52,7 @@ class SectionTableBindingGuard extends BaseService
         private readonly DataService $dataService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly UserContextAwareService $userContextAwareService,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -69,9 +77,11 @@ class SectionTableBindingGuard extends BaseService
 
         $fields = $this->entityManager->getRepository(Field::class)->findBy(['id' => array_keys($valuesByFieldId)]);
         foreach ($fields as $field) {
+            $value = $valuesByFieldId[(int) $field->getId()] ?? null;
             if ($field->getType()?->getName() === self::TABLE_FIELD_TYPE) {
-                $this->assertCanBindTableId($this->asInt($valuesByFieldId[(int) $field->getId()] ?? null));
+                $this->assertCanBindTableId($this->asInt($value));
             }
+            $this->assertPluginBindable($field, $value);
         }
     }
 
@@ -91,9 +101,7 @@ class SectionTableBindingGuard extends BaseService
         }
 
         foreach ($this->entityManager->getRepository(Field::class)->findBy(['name' => $names]) as $field) {
-            if ($field->getType()?->getName() !== self::TABLE_FIELD_TYPE) {
-                continue;
-            }
+            $isTable = $field->getType()?->getName() === self::TABLE_FIELD_TYPE;
             $fieldName = $field->getName();
             if ($fieldName === null || !array_key_exists($fieldName, $fields)) {
                 continue;
@@ -103,11 +111,15 @@ class SectionTableBindingGuard extends BaseService
                 continue;
             }
             foreach ($localeData as $translation) {
-                if (is_array($translation)) {
+                if (!is_array($translation)) {
+                    continue;
+                }
+                if ($isTable) {
                     // Owner tokens such as `@section:<name>` point at a table the
                     // import itself creates; they read as 0 and bind nothing yet.
                     $this->assertCanBindTableId($this->asInt($translation['content'] ?? null));
                 }
+                $this->assertPluginBindable($field, $translation['content'] ?? null);
             }
         }
     }
@@ -158,6 +170,26 @@ class SectionTableBindingGuard extends BaseService
             if (is_array($entry) && is_string($entry['table'] ?? null)) {
                 $this->assertCanBindTableName($entry['table']);
             }
+        }
+    }
+
+    /**
+     * Let the plugin that owns a field refuse the value (H7). Empty values bind
+     * nothing; system actors (no signed-in user) are trusted.
+     */
+    private function assertPluginBindable(Field $field, mixed $value): void
+    {
+        $text = is_scalar($value) ? trim((string) $value) : '';
+        $user = $this->userContextAwareService->getCurrentUser();
+        if ($text === '' || $user === null || $field->getName() === null) {
+            return;
+        }
+
+        $event = new SectionFieldBindingEvent($field->getName(), $field->getType()?->getName(), $text, (int) $user->getId());
+        $this->eventDispatcher->dispatch($event);
+        $denial = $event->getDenial();
+        if ($denial !== null) {
+            $this->throwForbidden($denial);
         }
     }
 

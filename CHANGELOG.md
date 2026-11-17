@@ -1,5 +1,12 @@
 # Unreleased
 
+**Plugins check their field values when a section is authored (SurveyJS
+upgrade wave 6, H7).** `SectionTableBindingGuard` dispatches the new
+`App\Plugin\Event\SectionFieldBindingEvent` for every non-empty field value of
+a section save or import; a plugin refuses a value pointing at a resource the
+editor may not use (a survey) and the request answers 403 before anything is
+written, the same rule as binding a data table (F07).
+
 **Excel export of data tables (SurveyJS upgrade wave 4, H5).** The single and
 bulk export endpoints accept `format=xlsx` next to `csv` and `json`, for every
 data table: one sheet with the CSV's header and rows; text stays text, numbers
