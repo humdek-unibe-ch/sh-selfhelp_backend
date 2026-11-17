@@ -70,6 +70,7 @@ class FormListConfigValidator extends BaseService
         private readonly FormFieldKeyResolver $keyResolver,
         private readonly SectionRepository $sectionRepository,
         private readonly EntityManagerInterface $entityManager,
+        private readonly FormListNestingGuard $nestingGuard,
     ) {
     }
 
@@ -113,6 +114,15 @@ class FormListConfigValidator extends BaseService
         }
 
         $problems = $this->problems($sectionId, $style, $raw);
+        if ($style === StyleNames::STYLE_ENTRY_FORM_LIST) {
+            foreach ($this->sectionRepository->getPageIdsContainingSection($sectionId) as $pageId) {
+                $rows = $this->sectionRepository->fetchSectionsHierarchicalByPageId($pageId);
+                if (FormListLayout::hasNestedForm($rows, $sectionId)) {
+                    $problems[] = ['field' => 'children', 'message' => FormListLayout::FORM_INSIDE_LIST_MESSAGE];
+                    break;
+                }
+            }
+        }
         if ($problems !== []) {
             throw new FormListConfigException($problems);
         }
@@ -123,9 +133,10 @@ class FormListConfigValidator extends BaseService
      * yet (the sections are created by the import), so only the shape is checked.
      *
      * @param array<array-key, mixed> $fields imported fields: field name => locale => `{content, ...}`
+     * @param array<array-key, mixed>|null $section the full section (for nested-form checks); null skips them
      * @return list<array{field: string, message: string}>
      */
-    public function importProblems(string $style, array $fields): array
+    public function importProblems(string $style, array $fields, ?array $section = null): array
     {
         if (!in_array($style, StyleNames::LIST_STYLE_NAMES, true)) {
             return [];
@@ -140,7 +151,7 @@ class FormListConfigValidator extends BaseService
             $translation = $localeData['all'] ?? ($localeData === [] ? null : reset($localeData));
             if (is_array($translation) && array_key_exists('content', $translation)) {
                 $content = $this->textOf($translation['content']);
-                // A bundle names the table by its owner form (`@section:<form name>`); the import turns that into a table id.
+                // A bundle names the table by its owner list (`@section:<list name>`); the import turns that into a table id.
                 if ($name === 'data_table' && $this->isOwnerToken($content)) {
                     $content = '1';
                 }
@@ -148,13 +159,26 @@ class FormListConfigValidator extends BaseService
             }
         }
 
+        $problems = [];
         try {
-            $this->reader->parse(0, $style, $raw, 1);
+            $config = $this->reader->parse(0, $style, $raw, 1);
+            if ($style === StyleNames::STYLE_ENTRY_FORM_LIST && $config->dataTableId !== null) {
+                if ($config->allowCreate) {
+                    $problems[] = ['field' => 'allow_create', 'message' => 'A list that reads another table cannot add records; turn Allow add off.'];
+                }
+                if ($config->allowUpdate) {
+                    $problems[] = ['field' => 'allow_update', 'message' => 'A list that reads another table cannot edit records; turn Allow edit off.'];
+                }
+            }
         } catch (FormListConfigException $e) {
             return $e->errors();
         }
 
-        return [];
+        if ($section !== null) {
+            $problems = [...$problems, ...$this->nestingGuard->nestedFormProblems($section)];
+        }
+
+        return $problems;
     }
 
     /**
@@ -171,29 +195,42 @@ class FormListConfigValidator extends BaseService
             return $e->errors();
         }
 
+        $problems = [];
+        if ($style === StyleNames::STYLE_ENTRY_FORM_LIST && $config->dataTableId !== null) {
+            if ($config->allowCreate) {
+                $problems[] = ['field' => 'allow_create', 'message' => 'A list that reads another table cannot add records; turn Allow add off.'];
+            }
+            if ($config->allowUpdate) {
+                $problems[] = ['field' => 'allow_update', 'message' => 'A list that reads another table cannot edit records; turn Allow edit off.'];
+            }
+            if ($this->nestingGuard->hasInputDescendants($sectionId)) {
+                $problems[] = ['field' => 'children', 'message' => 'A list that reads another table cannot hold form inputs; it only deletes and runs quick actions.'];
+            }
+        }
+
         $source = $this->sourceOf($config);
         if ($source === null) {
-            return [];
+            return $problems;
         }
 
         $columns = $this->columnsOf($source['tableId'], $source['tableName']);
         if ($columns === []) {
-            return [];
+            return $problems;
         }
 
-        return $this->tableProblems($config, $source['tableId'] ?? 0, $columns);
+        return [...$problems, ...$this->tableProblems($config, $source['tableId'] ?? 0, $columns)];
     }
 
     /**
-     * The table the list reads: its own `data_table`, otherwise the table of the
-     * form inside it. The table row may not exist yet (the form was never
-     * submitted); its name is the form section's id.
+     * The table the list reads: its own `data_table`, otherwise the table named
+     * by the list section id. The table row may not exist yet (never submitted);
+     * its name is the list section's id.
      *
      * @return array{tableId: ?int, tableName: ?string}|null
      */
     private function sourceOf(FormListConfig $config): ?array
     {
-        return $this->sourceFor($config->sectionId, $config->dataTableId);
+        return $this->sourceFor($config->sectionId, $config->style, $config->dataTableId);
     }
 
     /**
@@ -201,7 +238,7 @@ class FormListConfigValidator extends BaseService
      *
      * @return array{tableId: ?int, tableName: ?string}|null
      */
-    private function sourceFor(int $sectionId, ?int $dataTableId): ?array
+    private function sourceFor(int $sectionId, string $style, ?int $dataTableId): ?array
     {
         if ($dataTableId !== null) {
             $table = $this->dataService->getDataTableById($dataTableId);
@@ -209,15 +246,12 @@ class FormListConfigValidator extends BaseService
             return $table === null ? null : ['tableId' => (int) $table->getId(), 'tableName' => (string) $table->getName()];
         }
 
-        foreach ($this->sectionRepository->getPageIdsContainingSection($sectionId) as $pageId) {
-            $rows = $this->sectionRepository->fetchSectionsHierarchicalByPageId($pageId);
-            $formSectionId = FormListLayout::inlineFormSectionId($rows, $sectionId);
-            if ($formSectionId !== null) {
-                return ['tableId' => $this->guard->tableIdOfForm($formSectionId), 'tableName' => (string) $formSectionId];
-            }
+        $formSectionId = FormListLayout::formSectionIdOf($style, $sectionId);
+        if ($formSectionId === null) {
+            return null;
         }
 
-        return null;
+        return ['tableId' => $this->guard->tableIdOfForm($formSectionId), 'tableName' => (string) $formSectionId];
     }
 
     /**
@@ -246,7 +280,7 @@ class FormListConfigValidator extends BaseService
         $sectionId = (int) $section->getId();
         $tableText = trim($this->reader->rawFields($sectionId)['data_table'][1] ?? '');
         $explicitTable = ctype_digit($tableText) && (int) $tableText > 0 ? (int) $tableText : null;
-        $source = $this->sourceFor($sectionId, $explicitTable);
+        $source = $this->sourceFor($sectionId, $style, $explicitTable);
         if ($source === null) {
             return null;
         }
