@@ -71,8 +71,8 @@ final class FormListTemplatePortabilityTest extends QaWebTestCase
         self::assertStringContainsString('"set":{"status":"done"}', $this->bundleField($list, 'quick_actions'));
         self::assertStringContainsString('"column":"status"', $this->bundleField($list, 'quick_actions'), 'The condition of a quick action is rewritten too.');
 
-        // The form inside the list owns the table: its columns and rows travel in the bundle.
-        $owner = $this->bundleOwner($bundle, 'qa_lp_src_form');
+        // The list owns the table: its columns and rows travel in the bundle.
+        $owner = $this->bundleOwner($bundle, 'qa_lp_src_list');
         self::assertEqualsCanonicalizing(['title', 'seats', 'status'], $owner['columns']);
         self::assertCount(4, $owner['rows']);
 
@@ -121,7 +121,7 @@ final class FormListTemplatePortabilityTest extends QaWebTestCase
         $bundle = $this->export([(int) $source['page']->getId(), (int) $viewPage->getId()], $admin);
 
         $exportedView = $this->bundleSection($bundle, 'data-view');
-        self::assertSame('@section:qa_lp_view_form', $this->bundleField($exportedView, 'data_table'), 'The table is named by the form that owns it.');
+        self::assertSame('@section:qa_lp_view_list', $this->bundleField($exportedView, 'data_table'), 'The table is named by the list that owns it.');
         self::assertStringNotContainsString('section_', $this->bundleField($exportedView, 'list_columns'));
 
         $imported = $this->import($bundle, $admin, ['importData' => true]);
@@ -164,8 +164,8 @@ final class FormListTemplatePortabilityTest extends QaWebTestCase
     public function testAnExportRefusesAFormWhoseNameAnotherSectionAlsoHas(): void
     {
         $source = $this->sourceApp('qa_lp_dup');
-        // A second section with the name of the form: the owner token / owner name would be ambiguous.
-        $twin = $this->pages->createSection('qa_lp_dup_form', 'container');
+        // A second section with the name of the list: the owner token / owner name would be ambiguous.
+        $twin = $this->pages->createSection('qa_lp_dup_list', 'container');
         $this->pages->linkSectionToPage($source['page'], $twin, 20);
         $this->pages->invalidatePageScopedCaches();
         $admin = $this->loginAsQaAdmin();
@@ -247,7 +247,7 @@ final class FormListTemplatePortabilityTest extends QaWebTestCase
         self::assertNotContains('form', $roles, $id . ' keeps no second page for the form.');
         self::assertNotContains('cms_detail', $roles, $id . ' edits records inside the list.');
         self::assertSame(1, $this->countStyle($bundle, 'entry-form-list'), $id . ' has exactly one participant list.');
-        self::assertSame(1, $this->countStyle($bundle, 'form-record'), $id . ' defines its inputs once.');
+        self::assertSame(0, $this->countStyle($bundle, 'form-record'), $id . ' puts inputs on the list (no nested form-record).');
         self::assertSame(0, $this->countStyle($bundle, 'entry-table'), $id . ' no longer uses a table that edits through a second form.');
         $tables = is_array($bundle['data_tables'] ?? null) ? array_values($bundle['data_tables']) : [];
         self::assertCount(1, $tables, $id . ' ships one dataset.');
@@ -349,7 +349,7 @@ final class FormListTemplatePortabilityTest extends QaWebTestCase
     // -- fixtures ---------------------------------------------------------------
 
     /**
-     * A private page with a participant list, the form inside it (inputs title,
+     * A private page with a participant list that is the form (inputs title,
      * seats, status) and four saved records, one of them archived. The list names
      * its columns by input key in every place that can.
      *
@@ -359,13 +359,11 @@ final class FormListTemplatePortabilityTest extends QaWebTestCase
     {
         $page = $this->pages->createPage($prefix, false);
         $list = $this->pages->createSection($prefix . '_list', 'entry-form-list');
-        $form = $this->pages->createSection($prefix . '_form', 'form-record');
         $this->pages->linkSectionToPage($page, $list, 10);
-        $this->pages->linkSectionToParent($list, $form, 10);
         $inputs = [
-            'title' => $this->formInput($form, $prefix . '_title', 'text-input', 'title', 10),
-            'seats' => $this->formInput($form, $prefix . '_seats', 'number-input', 'seats', 20),
-            'status' => $this->formInput($form, $prefix . '_status', 'text-input', 'status', 30),
+            'title' => $this->formInput($list, $prefix . '_title', 'text-input', 'title', 10),
+            'seats' => $this->formInput($list, $prefix . '_seats', 'number-input', 'seats', 20),
+            'status' => $this->formInput($list, $prefix . '_status', 'text-input', 'status', 30),
         ];
         $keys = array_map(static fn (Section $input): string => 'section_' . $input->getId(), $inputs);
 
@@ -396,11 +394,11 @@ final class FormListTemplatePortabilityTest extends QaWebTestCase
 
         $data = $this->service(DataService::class);
         foreach ([['Alpha', '5', 'open'], ['Beta', '15', 'done'], ['Gamma', '10', 'open'], ['Delta', '20', 'archived']] as [$title, $seats, $status]) {
-            $data->saveData((string) $form->getId(), ['title' => $title, 'seats' => $seats, 'status' => $status], LookupService::TRANSACTION_BY_BY_USER, null, false);
+            $data->saveData((string) $list->getId(), ['title' => $title, 'seats' => $seats, 'status' => $status], LookupService::TRANSACTION_BY_BY_USER, null, false);
         }
         $this->pages->invalidatePageScopedCaches();
 
-        return ['page' => $page, 'list' => $list, 'form' => $form, 'keys' => $keys];
+        return ['page' => $page, 'list' => $list, 'form' => $list, 'keys' => $keys];
     }
 
     /**
@@ -531,11 +529,8 @@ final class FormListTemplatePortabilityTest extends QaWebTestCase
 
     private function childFormId(int $listId): int
     {
-        return self::coerceInt($this->db->fetchOne(
-            'SELECT h.id_child_section FROM rel_sections_hierarchy h JOIN sections s ON s.id = h.id_child_section'
-            . ' JOIN styles st ON st.id = s.id_styles WHERE h.id_parent_section = :l AND st.name = :style',
-            ['l' => $listId, 'style' => 'form-record'],
-        ));
+        // The list is the form: inputs sit directly under the entry-form-list.
+        return $listId;
     }
 
     /**
