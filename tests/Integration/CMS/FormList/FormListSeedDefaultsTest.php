@@ -59,7 +59,16 @@ final class FormListSeedDefaultsTest extends QaKernelTestCase
     #[DataProvider('styles')]
     public function testTheStyleOffersNoFieldTheCodeIgnores(string $style): void
     {
-        $known = array_merge(array_keys(FormListConfig::defaultsFor($style)), ['title', 'spacing', 'data_table']);
+        // Form authoring fields on entry-form-list are read by the ordinary form
+        // path (EffectiveFormFactory / FormStyle), not by FormListConfig.
+        $formFields = $style === StyleNames::STYLE_ENTRY_FORM_LIST ? [
+            'name', 'btn_save_label', 'btn_save_color', 'btn_update_label', 'btn_update_color',
+            'btn_cancel_label', 'btn_cancel_color', 'alert_success', 'alert_success_title',
+            'alert_error', 'alert_error_title', 'confirm_submit', 'confirm_message',
+            'buttons_size', 'buttons_radius', 'buttons_variant', 'buttons_position',
+            'buttons_order', 'redirect_at_end',
+        ] : [];
+        $known = array_merge(array_keys(FormListConfig::defaultsFor($style)), ['title', 'spacing', 'data_table'], $formFields);
 
         foreach (array_keys($this->seededDefaults($style)) as $field) {
             self::assertContains($field, $known, sprintf('The style "%s" offers the field "%s" but nothing reads it.', $style, $field));
@@ -111,6 +120,7 @@ final class FormListSeedDefaultsTest extends QaKernelTestCase
             'form_list_version' => ['/lists/{section_id}/records/{record_id}/versions/{version}', 'GET'],
             'form_list_compare' => ['/lists/{section_id}/records/{record_id}/compare', 'GET'],
             'form_list_restore' => ['/lists/{section_id}/records/{record_id}/restore', 'POST'],
+            'form_list_current_file' => ['/lists/{section_id}/records/{record_id}/files/{field_key}', 'GET'],
             'form_list_version_file' => ['/lists/{section_id}/records/{record_id}/versions/{version}/files/{field_key}', 'GET'],
         ];
 
