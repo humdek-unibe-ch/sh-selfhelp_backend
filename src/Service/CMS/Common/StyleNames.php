@@ -55,8 +55,9 @@ final class StyleNames
     /**
      * The participant-facing list over one data table: a server-rendered page
      * of records with search / sort / filters, and the create, view, edit and
-     * delete workflow around them (see App\Service\CMS\FormList). Its children
-     * hold the inline form.
+     * delete workflow around them (see App\Service\CMS\FormList). The list is
+     * itself the form: its input children are the form body and it owns the
+     * data table (unless `data_table` points at another table).
      */
     public const STYLE_ENTRY_FORM_LIST = 'entry-form-list';
 
@@ -88,12 +89,14 @@ final class StyleNames
     public const STYLE_VERSION = 'version';
 
     /**
-     * Styles that are allowed to be used for submitting data
+     * Styles that may submit data (standalone forms and the entry list that is
+     * its own form). A form-style section below an `entry-form-list` is refused.
      */
     public const FORM_STYLE_NAMES = [
         'form-record',
         'form-log',
         'entry-record-form',
+        self::STYLE_ENTRY_FORM_LIST,
     ];
 
     /**
