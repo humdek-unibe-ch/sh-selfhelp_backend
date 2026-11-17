@@ -1,5 +1,10 @@
 # Unreleased
 
+**Excel export of data tables (SurveyJS upgrade wave 4, H5).** The single and
+bulk export endpoints accept `format=xlsx` next to `csv` and `json`, for every
+data table: one sheet with the CSV's header and rows; text stays text, numbers
+are numbers. Written with ZipArchive, no new dependency.
+
 **Plugin extension points for public section endpoints and data access
 (SurveyJS upgrade, wave 3).**
 

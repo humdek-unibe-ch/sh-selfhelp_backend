@@ -13,13 +13,14 @@ use App\Entity\DataTable;
 use App\Service\CMS\DataService;
 
 /**
- * Admin export of one generic-store table as JSON or CSV.
+ * Admin export of one generic-store table as JSON, CSV or Excel (xlsx).
  *
  * The rows are read in stable batches ({@see DataService::getDataInBatches()})
  * and written to the output as they arrive, so a table of any size is never held
  * in memory as a list of row arrays. The files are the same as the ones the
  * single read produced: JSON is the pretty-printed list of rows, CSV has one
  * header row with every column that appears in any row and one line per row.
+ * Excel has the same header and rows as the CSV, in one sheet.
  */
 final class DataTableExportService
 {
@@ -84,6 +85,128 @@ final class DataTableExportService
      */
     public function csv(iterable $batches): string
     {
+        $spooled = $this->spool($batches);
+        if ($spooled === null) {
+            return '';
+        }
+        [$headers, $spool] = $spooled;
+
+        $out = $this->buffer();
+        fputcsv($out, $headers, escape: '');
+        foreach ($this->spooledRows($spool) as $row) {
+            $line = [];
+            foreach ($headers as $column) {
+                $value = $row[$column] ?? null;
+                $line[] = is_scalar($value) ? (string) $value : '';
+            }
+            fputcsv($out, $line, escape: '');
+        }
+
+        return $this->contents($out);
+    }
+
+    /**
+     * Excel workbook (xlsx) with one sheet: the CSV's header and rows. Text
+     * stays text (an id like `007` keeps its zeros, a value starting with `=`
+     * is never a formula); only integer and decimal values become numbers. A
+     * table without rows gives a sheet without rows.
+     *
+     * Written with ZipArchive: an xlsx file is a zip of a few XML parts, and
+     * the export needs no styles, so no spreadsheet library is involved.
+     *
+     * @param iterable<array<array-key, mixed>> $batches
+     */
+    public function xlsx(iterable $batches): string
+    {
+        $sheet = $this->buffer();
+        fwrite($sheet, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>');
+
+        $spooled = $this->spool($batches);
+        if ($spooled !== null) {
+            [$headers, $spool] = $spooled;
+            fwrite($sheet, $this->xlsxRow($headers));
+            foreach ($this->spooledRows($spool) as $row) {
+                $line = [];
+                foreach ($headers as $column) {
+                    $value = $row[$column] ?? null;
+                    $line[] = is_scalar($value) ? $value : '';
+                }
+                fwrite($sheet, $this->xlsxRow($line));
+            }
+        }
+        fwrite($sheet, '</sheetData></worksheet>');
+
+        $file = tempnam(sys_get_temp_dir(), 'sh_xlsx_');
+        if ($file === false) {
+            throw new \RuntimeException('Could not create a temporary file for the export.');
+        }
+        try {
+            $zip = new \ZipArchive();
+            if ($zip->open($file, \ZipArchive::OVERWRITE) !== true) {
+                throw new \RuntimeException('Could not create the Excel file.');
+            }
+            $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                . '<Default Extension="xml" ContentType="application/xml"/>'
+                . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+                . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                . '</Types>');
+            $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+                . '</Relationships>');
+            $zip->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                . '<sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>');
+            $zip->addFromString('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+                . '</Relationships>');
+            $zip->addFromString('xl/worksheets/sheet1.xml', $this->contents($sheet));
+            $zip->close();
+
+            return (string) file_get_contents($file);
+        } finally {
+            @unlink($file);
+        }
+    }
+
+    /**
+     * One worksheet row: numbers as numbers, everything else as inline text.
+     *
+     * @param list<bool|float|int|string> $values
+     */
+    private function xlsxRow(array $values): string
+    {
+        $cells = '';
+        foreach ($values as $value) {
+            if ((is_int($value) || is_float($value)) && is_finite((float) $value)) {
+                $cells .= '<c><v>' . $value . '</v></c>';
+                continue;
+            }
+            $text = is_bool($value) ? ($value ? '1' : '0') : (string) $value;
+            // XML 1.0 has no place for most control characters; drop them.
+            $text = (string) preg_replace('/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u', '', $text);
+            $cells .= '<c t="inlineStr"><is><t xml:space="preserve">'
+                . htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8')
+                . '</t></is></c>';
+        }
+
+        return '<row>' . $cells . '</row>';
+    }
+
+    /**
+     * Writes every row to a spool (memory first, then a temporary file) and
+     * collects the header: every column that appears in any row, in the order
+     * the columns first appear. Null when there are no rows.
+     *
+     * @param iterable<array<array-key, mixed>> $batches
+     * @return array{0: list<string>, 1: resource}|null
+     */
+    private function spool(iterable $batches): ?array
+    {
         $spool = $this->buffer();
         $headers = [];
         $count = 0;
@@ -103,29 +226,28 @@ final class DataTableExportService
         if ($count === 0) {
             fclose($spool);
 
-            return '';
+            return null;
         }
 
-        $headers = array_keys($headers);
-        $out = $this->buffer();
-        fputcsv($out, $headers, escape: '');
+        return [array_map('strval', array_keys($headers)), $spool];
+    }
 
+    /**
+     * Reads the spooled rows back and closes the spool.
+     *
+     * @param resource $spool
+     * @return \Generator<int, array<array-key, mixed>>
+     */
+    private function spooledRows($spool): \Generator
+    {
         rewind($spool);
         while (($frame = fgets($spool)) !== false) {
             $row = json_decode($frame, true, 512, JSON_THROW_ON_ERROR);
-            if (!is_array($row)) {
-                continue;
+            if (is_array($row)) {
+                yield $row;
             }
-            $line = [];
-            foreach ($headers as $column) {
-                $value = $row[$column] ?? null;
-                $line[] = is_scalar($value) ? (string) $value : '';
-            }
-            fputcsv($out, $line, escape: '');
         }
         fclose($spool);
-
-        return $this->contents($out);
     }
 
     /**

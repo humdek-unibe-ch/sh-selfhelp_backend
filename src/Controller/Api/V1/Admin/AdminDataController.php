@@ -36,6 +36,8 @@ class AdminDataController extends AbstractController
 {
     use RequestValidatorTrait;
 
+    private const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
     public function __construct(
         private readonly DataService $dataService,
         private readonly DataTableService $dataTableService,
@@ -467,8 +469,8 @@ class AdminDataController extends AbstractController
     }
 
     /**
-     * Export a single data table as CSV or JSON (raw, no envelope).
-     * Query params: format=csv|json, user_id (optional), language_id (optional, default 1), exclude_deleted (optional, default true)
+     * Export a single data table as CSV, JSON or Excel (raw, no envelope).
+     * Query params: format=csv|json|xlsx, user_id (optional), language_id (optional, default 1), exclude_deleted (optional, default true)
      */
     public function exportTable(Request $request, string $tableName): Response
     {
@@ -488,8 +490,8 @@ class AdminDataController extends AbstractController
             }
 
             $format = strtolower((string) $request->query->get('format', 'csv'));
-            if (!in_array($format, ['csv', 'json'], true)) {
-                return $this->responseFormatter->formatError('format must be csv or json', Response::HTTP_BAD_REQUEST);
+            if (!in_array($format, ['csv', 'json', 'xlsx'], true)) {
+                return $this->responseFormatter->formatError('format must be csv, json or xlsx', Response::HTTP_BAD_REQUEST);
             }
 
             $userId = $request->query->has('user_id') ? (int) $request->query->get('user_id') : null;
@@ -504,6 +506,17 @@ class AdminDataController extends AbstractController
 
             $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? $tableName;
             $filename = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) . '.' . $format;
+
+            if ($format === 'xlsx') {
+                return new Response(
+                    $this->exports->xlsx($batches),
+                    Response::HTTP_OK,
+                    [
+                        'Content-Type' => self::XLSX_CONTENT_TYPE,
+                        'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                    ]
+                );
+            }
 
             if ($format === 'json') {
                 return new Response(
@@ -633,9 +646,11 @@ class AdminDataController extends AbstractController
                 $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? '';
                 $entryName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) . '.' . $format;
 
-                $content = $format === 'json'
-                    ? $this->exports->json($batches)
-                    : $this->exports->csv($batches);
+                $content = match ($format) {
+                    'json' => $this->exports->json($batches),
+                    'xlsx' => $this->exports->xlsx($batches),
+                    default => $this->exports->csv($batches),
+                };
 
                 $zip->addFromString($entryName, $content);
             }
