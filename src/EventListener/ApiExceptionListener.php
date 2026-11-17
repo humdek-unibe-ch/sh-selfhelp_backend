@@ -82,9 +82,12 @@ class ApiExceptionListener
             $statusCode = ($code >= 100 && $code <= 599)
                 ? $code
                 : Response::HTTP_INTERNAL_SERVER_ERROR;
+            // Keep the domain payload (`reason`, field errors, …) that
+            // formatException would carry when a controller catches the same exception.
             $response = $this->apiResponseFormatter->formatError(
                 $exception->getMessage() ?: 'An error occurred',
-                $statusCode
+                $statusCode,
+                $exception->getData(),
             );
             $event->setResponse($response);
             return;
