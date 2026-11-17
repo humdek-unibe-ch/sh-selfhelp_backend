@@ -204,8 +204,8 @@ final class FormListWorkflowTest extends QaWebTestCase
         $theirs = $this->grid->row($tableId, $this->userId('qa.admin@selfhelp.test'), ['title' => 'Theirs', 'status' => 'open']);
         $token = $this->loginAsQaUser();
 
-        self::assertSame(403, $this->update($token, $page, $form, $theirs, ['title' => 'Mine now', 'status' => 'open'], null)['status'] ?? null);
-        self::assertSame(403, $this->delete($token, $page, $list, $theirs, null)['status'] ?? null);
+        self::assertSame(404, $this->update($token, $page, $form, $theirs, ['title' => 'Mine now', 'status' => 'open'], null)['status'] ?? null, 'The record is not in the visitor\'s dataset.');
+        self::assertSame(404, $this->delete($token, $page, $list, $theirs, null)['status'] ?? null, 'The record is not in the visitor\'s dataset.');
         self::assertSame(404, $this->action($token, $page, $list, $theirs, 'done', 1)['status'] ?? null, 'The record is not in the visitor\'s dataset.');
         self::assertSame(404, $this->jsonRequest('GET', $this->url($list, '/records/' . $theirs . '/history', $page), null, $token)['status'] ?? null);
         self::assertSame(404, $this->jsonRequest('GET', $this->url($list, '/records/' . $theirs . '/versions/1', $page), null, $token)['status'] ?? null);
