@@ -432,10 +432,10 @@ class FormController extends AbstractController
             $recordOwnerId = $targetRow->getIdUsers();
             $isOwnRecord = $recordOwnerId !== null && $recordOwnerId === $userId;
             if ($ownEntriesOnly && !$isOwnRecord) {
-                // An own-entries section never reaches another person's entry (the lock decides again).
+                // Another owner looks like not found (same as outside the list boundary).
                 return $this->apiResponseFormatter->formatError(
-                    'Access denied to this record',
-                    Response::HTTP_FORBIDDEN
+                    'Record not found',
+                    Response::HTTP_NOT_FOUND
                 );
             }
             if (!$ownEntriesOnly) {
