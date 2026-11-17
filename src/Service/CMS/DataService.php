@@ -68,6 +68,7 @@ class DataService extends BaseService
         private readonly DataTableFilterService $dataTableFilterService,
         private readonly DataRevisionService $dataRevisionService,
         private readonly DataRestoreService $dataRestoreService,
+        private readonly DataTableService $dataTableService,
     ) {
     }
 
@@ -818,6 +819,8 @@ class DataService extends BaseService
             $this->entityManager->persist($dataTable);
             $this->entityManager->flush(); // Flush to get the ID
         }
+
+        $this->dataTableService->backfillAutoDisplayNameFromOwningSection($dataTable);
 
         return $dataTable;
     }
