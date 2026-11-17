@@ -174,7 +174,7 @@ final class CmsAppWorkflowTest extends QaWebTestCase
             $em->flush();
 
             $listId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
-            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'form-record', $admin);
+            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
             $viewId = $this->firstSectionIdByStyle($byRole['public_list'], 'data-view', $admin);
 
             $created = $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
