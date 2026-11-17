@@ -337,7 +337,8 @@ class FormListHistoryService extends BaseService
         }
 
         $isOwn = $this->asIntOrNull($row['id_users'] ?? null) === $ctx->userId;
-        $mayUpdateForeign = !$config->ownEntriesOnly && !$isOwn
+        // Foreign history still needs Allow edit; quick actions do not (see FormListStateService).
+        $mayUpdateForeign = !$config->ownEntriesOnly && !$isOwn && $config->allowUpdate
             && $this->security->hasPermission($ctx->userId, 'data_table', $ctx->tableId, DataAccessSecurityService::PERMISSION_UPDATE);
         if (!($config->ownEntriesOnly || $isOwn || $mayUpdateForeign)) {
             throw new ServiceException('You do not have permission to see the history of this entry.', Response::HTTP_FORBIDDEN);
