@@ -10,8 +10,12 @@ namespace App\Service\CMS\Common;
 use App\Service\Core\InterpolationService;
 
 /**
- * Validates and normalizes SQL filter fragments passed to
- * `get_data_table_filtered` (concatenated after `WHERE 1=1`).
+ * Validates and normalizes the filter fragments authors write (`data_config`
+ * filters, entry-list `filter`) before
+ * {@see \App\Service\CMS\DataQuery\LegacyFilterTranslator} turns them into the
+ * structured filter of the data query engine. A fragment is never pasted into
+ * SQL any more (the engine binds every value and allowlists every column); these
+ * checks stay as the first line of defence and keep the same refusals.
  */
 class DataTableFilterService
 {
@@ -154,12 +158,7 @@ class DataTableFilterService
     }
 
     /**
-     * Last-line guard before a filter reaches `get_data_table_filtered*`.
-     * Callers should already have run {@see prepareFilter()}; this rejects
-     * unresolved tokens and over-length fragments.
-     */
-    /**
-     * Normalize a comma-separated column subset for `get_data_table_filtered`.
+     * Normalize a comma-separated column subset (the projection of a read).
      * Rejects unknown characters and over-length payloads.
      */
     public function sanitizeSelectedColumns(string $raw): string
@@ -194,6 +193,12 @@ class DataTableFilterService
         return implode(',', array_values(array_unique($safe)));
     }
 
+    /**
+     * Last-line guard before a filter reaches the legacy translator of the data
+     * query engine (the name is kept from the stored-procedure era). Callers
+     * should already have run {@see prepareFilter()}; this rejects unresolved
+     * tokens and over-length fragments.
+     */
     public function guardForStoredProcedure(string $filter): string
     {
         $filter = trim($filter);

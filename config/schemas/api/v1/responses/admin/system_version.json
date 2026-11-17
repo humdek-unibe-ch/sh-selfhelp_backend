@@ -30,6 +30,16 @@
             },
             "required": ["id", "version", "compatible"]
           }
+        },
+        "frameworks": {
+          "type": "array",
+          "description": "PHP, Symfony, MySQL and Redis with their exact versions (a version is null only when it cannot be read).",
+          "items": { "$ref": "../../common/_about_item.json" }
+        },
+        "libraries": {
+          "type": "array",
+          "description": "The direct production dependencies of the backend with their exact installed versions and licences, sorted by name.",
+          "items": { "$ref": "../../common/_about_item.json" }
         }
       },
       "required": [
@@ -43,7 +53,9 @@
         "deployment",
         "safe_mode",
         "maintenance_mode",
-        "installed_plugins"
+        "installed_plugins",
+        "frameworks",
+        "libraries"
       ]
     }
   },

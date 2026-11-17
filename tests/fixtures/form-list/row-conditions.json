@@ -1,0 +1,585 @@
+{
+  "scenario": "A data view with the layout custom, three records of the page (en-GB). The sections of the record template depend on the record (seats, city) and on the visitor; the SERVER decided which sections each record draws and shipped exactly those, each with the condition it was decided by, as the author wrote it. A client draws what a row carries, evaluates nothing, and never shows a section of one record inside another record. Mirrors FormListRowTemplateTest::testASectionOfTheLayoutCanDependOnTheRecordItDraws; the record number in the texts is written #N.",
+  "drawn": [
+    [
+      "Bern | #N | row 0",
+      "Still reads the visitor"
+    ],
+    [
+      "Basel | #N | row 1",
+      "Roomy: 15 seats",
+      "Held in Basel",
+      "Not in Bern",
+      "Roomy and not Zurich",
+      "Still reads the visitor",
+      "Stored as text",
+      "Roomy banner"
+    ],
+    [
+      "Zurich | #N | row 2",
+      "Roomy: 25 seats",
+      "Not in Bern",
+      "Still reads the visitor",
+      "Roomy banner"
+    ]
+  ],
+  "neverDrawn": [
+    "Reads a private column",
+    "internal note"
+  ],
+  "state": {
+    "list": {
+      "section_id": 40,
+      "page_id": 7,
+      "key": "events",
+      "style": "data-view",
+      "layout": "custom",
+      "form_presentation": "page",
+      "form_section_id": null,
+      "table_exists": true,
+      "labels": {},
+      "row_css": "grid gap-4",
+      "has_template": true
+    },
+    "columns": [
+      {
+        "field": "title",
+        "label": "Title",
+        "format": "text",
+        "sortable": true,
+        "searchable": true
+      },
+      {
+        "field": "city",
+        "label": "City",
+        "format": "text",
+        "sortable": true,
+        "searchable": true
+      },
+      {
+        "field": "seats",
+        "label": "Seats",
+        "format": "number",
+        "sortable": true,
+        "searchable": false
+      }
+    ],
+    "controls": [],
+    "state": {
+      "page": 1,
+      "page_size": 3,
+      "q": null,
+      "sort": [
+        {
+          "field": "title",
+          "direction": "asc"
+        }
+      ],
+      "filters": {},
+      "record": null,
+      "mode": null,
+      "query": {}
+    },
+    "capabilities": {
+      "create": false,
+      "search": true,
+      "history": false,
+      "quick_actions": []
+    },
+    "rows": [
+      {
+        "record_id": 101,
+        "entry_date": "2026-01-01 10:00:00",
+        "version": 1,
+        "values": {
+          "title": "Event 01",
+          "city": "Bern",
+          "seats": "5"
+        },
+        "is_own": false,
+        "can_update": false,
+        "can_delete": false,
+        "can_view_history": false,
+        "quick_actions": [],
+        "detail_url": null,
+        "sections": [
+          {
+            "id": 5000,
+            "section_name": "events_card",
+            "id_styles": 85,
+            "style_name": "container",
+            "can_have_children": 1,
+            "condition": null,
+            "css": "qa-card p-4",
+            "css_mobile": null,
+            "debug": 0,
+            "data_config": null,
+            "position": 10,
+            "level": 1,
+            "path": "5000",
+            "children": [
+              {
+                "id": 5001,
+                "section_name": "events_title",
+                "id_styles": 127,
+                "style_name": "title",
+                "can_have_children": 0,
+                "condition": null,
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 10,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "content": {
+                  "content": "Event 01",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5002,
+                "section_name": "events_line_0_0",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": null,
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 20,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Bern | #N | row 0",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5003,
+                "section_name": "events_line_0_1",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\"==\":[{\"var\":\"language\"},3]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 30,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Still reads the visitor",
+                  "meta": null
+                },
+                "section_data": []
+              }
+            ],
+            "section_data": []
+          }
+        ]
+      },
+      {
+        "record_id": 103,
+        "entry_date": "2026-01-01 10:00:00",
+        "version": 1,
+        "values": {
+          "title": "Event 03",
+          "city": "Basel",
+          "seats": "15"
+        },
+        "is_own": false,
+        "can_update": false,
+        "can_delete": false,
+        "can_view_history": false,
+        "quick_actions": [],
+        "detail_url": null,
+        "sections": [
+          {
+            "id": 5004,
+            "section_name": "events_card",
+            "id_styles": 85,
+            "style_name": "container",
+            "can_have_children": 1,
+            "condition": null,
+            "css": "qa-card p-4",
+            "css_mobile": null,
+            "debug": 0,
+            "data_config": null,
+            "position": 10,
+            "level": 1,
+            "path": "5004",
+            "children": [
+              {
+                "id": 5005,
+                "section_name": "events_title",
+                "id_styles": 127,
+                "style_name": "title",
+                "can_have_children": 0,
+                "condition": null,
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 10,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "content": {
+                  "content": "Event 03",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5006,
+                "section_name": "events_line_1_0",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": null,
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 20,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Basel | #N | row 1",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5007,
+                "section_name": "events_line_1_1",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\">\":[{\"var\":\"{{seats}}\"},10]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 30,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Roomy: 15 seats",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5008,
+                "section_name": "events_line_1_2",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\"==\":[\"{{city}}\",\"Basel\"]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 40,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Held in Basel",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5009,
+                "section_name": "events_line_1_3",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\"!=\":[{\"var\":\"{{city}}\"},\"Bern\"]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 50,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Not in Bern",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5010,
+                "section_name": "events_line_1_4",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\"and\":[{\">\":[{\"var\":\"{{seats}}\"},10]},{\"!=\":[\"{{city}}\",\"Zurich\"]}]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 60,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Roomy and not Zurich",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5011,
+                "section_name": "events_line_1_5",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\"==\":[{\"var\":\"language\"},3]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 70,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Still reads the visitor",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5012,
+                "section_name": "events_line_1_6",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "\"{\\\"==\\\":[\\\"{{city}}\\\",\\\"Basel\\\"]}\"",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 80,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Stored as text",
+                  "meta": null
+                },
+                "section_data": []
+              }
+            ],
+            "section_data": []
+          },
+          {
+            "id": 5013,
+            "section_name": "events_banner",
+            "id_styles": 139,
+            "style_name": "text",
+            "can_have_children": 0,
+            "condition": "{\">\":[{\"var\":\"{{seats}}\"},10]}",
+            "css": null,
+            "css_mobile": null,
+            "debug": 0,
+            "data_config": null,
+            "position": 30,
+            "level": 1,
+            "path": "5013",
+            "children": [],
+            "text": {
+              "content": "Roomy banner",
+              "meta": null
+            },
+            "section_data": []
+          }
+        ]
+      },
+      {
+        "record_id": 105,
+        "entry_date": "2026-01-01 10:00:00",
+        "version": 1,
+        "values": {
+          "title": "Event 05",
+          "city": "Zurich",
+          "seats": "25"
+        },
+        "is_own": false,
+        "can_update": false,
+        "can_delete": false,
+        "can_view_history": false,
+        "quick_actions": [],
+        "detail_url": null,
+        "sections": [
+          {
+            "id": 5014,
+            "section_name": "events_card",
+            "id_styles": 85,
+            "style_name": "container",
+            "can_have_children": 1,
+            "condition": null,
+            "css": "qa-card p-4",
+            "css_mobile": null,
+            "debug": 0,
+            "data_config": null,
+            "position": 10,
+            "level": 1,
+            "path": "5014",
+            "children": [
+              {
+                "id": 5015,
+                "section_name": "events_title",
+                "id_styles": 127,
+                "style_name": "title",
+                "can_have_children": 0,
+                "condition": null,
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 10,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "content": {
+                  "content": "Event 05",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5016,
+                "section_name": "events_line_2_0",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": null,
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 20,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Zurich | #N | row 2",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5017,
+                "section_name": "events_line_2_1",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\">\":[{\"var\":\"{{seats}}\"},10]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 30,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Roomy: 25 seats",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5018,
+                "section_name": "events_line_2_2",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\"!=\":[{\"var\":\"{{city}}\"},\"Bern\"]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 40,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Not in Bern",
+                  "meta": null
+                },
+                "section_data": []
+              },
+              {
+                "id": 5019,
+                "section_name": "events_line_2_3",
+                "id_styles": 139,
+                "style_name": "text",
+                "can_have_children": 0,
+                "condition": "{\"==\":[{\"var\":\"language\"},3]}",
+                "css": null,
+                "css_mobile": null,
+                "debug": 0,
+                "data_config": null,
+                "position": 50,
+                "level": 2,
+                "path": "",
+                "children": [],
+                "text": {
+                  "content": "Still reads the visitor",
+                  "meta": null
+                },
+                "section_data": []
+              }
+            ],
+            "section_data": []
+          },
+          {
+            "id": 5020,
+            "section_name": "events_banner",
+            "id_styles": 139,
+            "style_name": "text",
+            "can_have_children": 0,
+            "condition": "{\">\":[{\"var\":\"{{seats}}\"},10]}",
+            "css": null,
+            "css_mobile": null,
+            "debug": 0,
+            "data_config": null,
+            "position": 30,
+            "level": 1,
+            "path": "5020",
+            "children": [],
+            "text": {
+              "content": "Roomy banner",
+              "meta": null
+            },
+            "section_data": []
+          }
+        ]
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "page_size": 3,
+      "total": 15,
+      "total_pages": 5
+    },
+    "selected": null
+  }
+}

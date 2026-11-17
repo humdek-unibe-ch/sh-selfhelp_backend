@@ -25,6 +25,12 @@ use App\Service\Cache\Core\CacheService;
 use App\Service\Core\UserContextAwareService;
 use App\Repository\SectionRepository;
 use App\Service\CMS\Common\DataTableFilterService;
+use App\Service\CMS\DataQuery\DataQueryException;
+use App\Service\CMS\DataRevision\DataRestoreService;
+use App\Service\CMS\DataRevision\DataRevisionService;
+use App\Service\CMS\DataRevision\LockedRecord;
+use App\Service\CMS\DataRevision\RecordWriteContext;
+use App\Service\CMS\DataRevision\RestorePlan;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -36,7 +42,12 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class DataService extends BaseService
 {
-
+    /**
+     * Key under which hydrated legacy rows (the prefill of a record form, the rows of an entry
+     * table) carry the record's current version. Underscore-prefixed, so no input name (they
+     * start with a letter) can collide with it, and never part of the form data a client sends back.
+     */
+    public const RECORD_VERSION_KEY = '_version';
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -47,7 +58,6 @@ class DataService extends BaseService
         private readonly UserContextAwareService $userContextAwareService,
         private readonly CacheService $cache,
         private readonly SectionRepository $sectionRepository,
-        private readonly FormFileUploadService $formFileUploadService,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly ActionContextBuilderService $actionContextBuilderService,
         private readonly ActionOrchestratorService $actionOrchestratorService,
@@ -56,6 +66,8 @@ class DataService extends BaseService
         private readonly LoggerInterface $logger,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly DataTableFilterService $dataTableFilterService,
+        private readonly DataRevisionService $dataRevisionService,
+        private readonly DataRestoreService $dataRestoreService,
     ) {
     }
 
@@ -70,6 +82,9 @@ class DataService extends BaseService
      * @param array<string, string|null>|null $fieldLabels Optional field_key => human label
      *   map. Used to auto-populate `data_cols.display_name` (never overwrites a
      *   manually curated label). Form fields and SurveyJS question titles flow in here.
+     * @param RecordWriteContext|null $context How the write was reached (history source) and the
+     *   record version the caller based an update on. A stale version is refused with 409 before
+     *   anything is written. Null: a person's form save when `$transactionBy` is `by_user`, else the platform.
      * @return int|false The record ID on success or false on failure
      * @throws ServiceException
      *
@@ -82,18 +97,26 @@ class DataService extends BaseService
         string $transactionBy = LookupService::TRANSACTION_BY_BY_USER,
         ?array $updateBasedOn = null,
         bool $ownEntriesOnly = true,
-        ?array $fieldLabels = null
+        ?array $fieldLabels = null,
+        ?RecordWriteContext $context = null
     ): int|false {
-        // Core CMS forms submit values keyed by the human input *name*. Remap
-        // those to the immutable storage key (`section_<input section id>`) so a
-        // later rename only updates the column's display_name instead of forking
-        // a new column (issue #56). The human name travels along as the auto
-        // display label. Non-form tables (SurveyJS `sh2_surveyjs_*`,
-        // `user_validation_inputs`) are left untouched and keep their own keys.
-        [$data, $derivedLabels] = $this->mapFormFieldKeys($tableName, $data);
-        if ($derivedLabels !== []) {
-            // An explicit caller-supplied label wins over the auto-derived one.
-            $fieldLabels = array_merge($derivedLabels, $fieldLabels ?? []);
+        $context ??= RecordWriteContext::forTransactionBy($transactionBy);
+        if ($context->interactive) {
+            // A person's request is untrusted: it can neither set row metadata nor aim at a record by anything but its number.
+            $this->assertInteractiveWrite($data, $updateBasedOn);
+        } else {
+            // Core CMS forms submit values keyed by the human input *name*. Remap
+            // those to the immutable storage key (`section_<input section id>`) so a
+            // later rename only updates the column's display_name instead of forking
+            // a new column (issue #56). The human name travels along as the auto
+            // display label. Non-form tables (SurveyJS `sh2_surveyjs_*`,
+            // `user_validation_inputs`) are left untouched and keep their own keys.
+            // An interactive caller resolved the names against the effective form already.
+            [$data, $derivedLabels] = $this->mapFormFieldKeys($tableName, $data);
+            if ($derivedLabels !== []) {
+                // An explicit caller-supplied label wins over the auto-derived one.
+                $fieldLabels = array_merge($derivedLabels, $fieldLabels ?? []);
+            }
         }
 
         // Validate submitted field keys up-front (before opening a transaction)
@@ -113,7 +136,7 @@ class DataService extends BaseService
             // owner (a foreign editor updating a shared record would silently
             // steal ownership) — only an explicit id_users (system/job flows
             // acting on behalf of a user) may.
-            $reassignOwnerOnUpdate = isset($data['id_users']);
+            $reassignOwnerOnUpdate = !$context->interactive && isset($data['id_users']);
             if (!$reassignOwnerOnUpdate) {
                 $data['id_users'] = $currentUser ? $currentUser->getId() : null;
             }
@@ -131,22 +154,23 @@ class DataService extends BaseService
 
             // Check for existing record to update
             if ($updateBasedOn !== null) {
-                // Special handling for record_id - look up directly by DataRow ID
+                // Special handling for record_id - the row is looked up INSIDE the
+                // table this save targets (F127): a record of another table, a
+                // missing record and a deleted record are all "not found".
                 if (isset($updateBasedOn['record_id'])) {
                     $recordId = $this->asInt($updateBasedOn['record_id']);
-                    $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
+                    $dataRow = $this->findRecordInTable((int) $dataTable->getId(), $recordId);
 
                     if ($dataRow) {
                         // Check ownership if required
                         if ($ownEntriesOnly) {
                             if (!$currentUser || $dataRow->getIdUsers() !== $currentUser->getId()) {
-                                $this->entityManager->rollback();
                                 throw new ServiceException('Access denied to this record', Response::HTTP_FORBIDDEN);
                             }
                         }
 
                         // Update the existing record
-                        $updatedRecordId = $this->updateExistingRecord($recordId, $data, $transactionBy, $fieldLabels, $reassignOwnerOnUpdate);
+                        $updatedRecordId = $this->updateExistingRecord($dataRow, $data, $transactionBy, $fieldLabels, $reassignOwnerOnUpdate, $context, $ownEntriesOnly);
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
@@ -163,12 +187,12 @@ class DataService extends BaseService
 
                         return $updatedRecordId;
                     } else {
-                        // Record not found
-                        $this->entityManager->rollback();
+                        // Record not found in this table
+                        $this->rollbackQuietly();
                         return false;
                     }
                 } else {
-                    // Handle other types of update filters using the stored procedure
+                    // Other update filters are read through the data query engine
                     $filter = '';
                     foreach ($updateBasedOn as $key => $value) {
                         $predicate = $this->dataTableFilterService->buildStringEqualityPredicate(
@@ -182,10 +206,18 @@ class DataService extends BaseService
                         $filter .= $predicate;
                     }
 
-                    $existingRecord = $this->getData((int) $dataTable->getId(), $filter, $ownEntriesOnly, $currentUser?->getId(), true);
+                    if ($filter === '' && $context->interactive) {
+                        // Never "the first record of the table": a selection the predicate builder refuses selects nothing.
+                        throw new ServiceException('The entry cannot be selected that way.', Response::HTTP_BAD_REQUEST, ['reason' => 'unsupported_target_selection']);
+                    }
 
-                    if ($existingRecord) {
-                        $recordId = $this->updateExistingRecord($this->asInt($existingRecord['record_id']), $data, $transactionBy, $fieldLabels, $reassignOwnerOnUpdate);
+                    $existingRecord = $this->getData((int) $dataTable->getId(), $filter, $ownEntriesOnly, $currentUser?->getId(), true);
+                    $existingRow = $existingRecord
+                        ? $this->findRecordInTable((int) $dataTable->getId(), $this->asInt($existingRecord['record_id']))
+                        : null;
+
+                    if ($existingRow) {
+                        $recordId = $this->updateExistingRecord($existingRow, $data, $transactionBy, $fieldLabels, $reassignOwnerOnUpdate, $context, $ownEntriesOnly);
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
@@ -203,14 +235,14 @@ class DataService extends BaseService
                         return $recordId;
                     } elseif (count($updateBasedOn) > 0) {
                         // Trying to update non-existent record
-                        $this->entityManager->rollback();
+                        $this->rollbackQuietly();
                         return false;
                     }
                 }
             }
 
             // Create new record
-            $recordId = $this->createNewRecord($dataTable, $data, $transactionBy, $fieldLabels);
+            $recordId = $this->createNewRecord($dataTable, $data, $transactionBy, $fieldLabels, $context);
 
             $this->entityManager->commit();
 
@@ -228,8 +260,13 @@ class DataService extends BaseService
 
             return $recordId;
 
+        } catch (ServiceException $e) {
+            // A deliberate refusal (forbidden, not found, validation) keeps its own
+            // status; it must not be re-labelled as a 500 save failure.
+            $this->rollbackQuietly();
+            throw $e;
         } catch (\Throwable $e) {
-            $this->entityManager->rollback();
+            $this->rollbackQuietly();
             throw new ServiceException(
                 'Failed to save form data: ' . $e->getMessage(),
                 Response::HTTP_INTERNAL_SERVER_ERROR,
@@ -238,30 +275,107 @@ class DataService extends BaseService
         }
     }
 
-    public function getRecordOwnerId(int $recordId): ?int
+    /**
+     * Find a record INSIDE one data table (F127). A record that does not exist,
+     * that belongs to another table, or that is soft-deleted all come back as
+     * null, so callers can answer them identically ("not found") and never touch
+     * a row through a section that is bound to a different table.
+     *
+     * @param bool $includeDeleted true only for flows that restore or inspect deleted rows
+     */
+    public function findRecordInTable(int $dataTableId, int $recordId, bool $includeDeleted = false): ?DataRow
     {
+        if ($dataTableId <= 0 || $recordId <= 0) {
+            return null;
+        }
+
         $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
+        if (!$dataRow instanceof DataRow || $dataRow->getDataTable()?->getId() !== $dataTableId) {
+            return null;
+        }
+
+        if (!$includeDeleted && $this->isDeletedRow($dataRow)) {
+            return null;
+        }
+
+        return $dataRow;
+    }
+
+    /**
+     * The record's current version (1 when created, +1 for every persisted change).
+     * Clients send it back as `expected_version` so a stale save is refused.
+     */
+    public function getRecordVersion(int $recordId): int
+    {
+        return $this->dataRevisionService->currentVersion($recordId);
+    }
+
+    /**
+     * Add the record's current version to every row that names a record (`record_id`), under
+     * {@see self::RECORD_VERSION_KEY}. The version is read live, in one query, after the cached
+     * rows were read, so the client sends back exactly the version it was shown: a record changed in
+     * between is refused with 409 and the person's draft is kept.
+     *
+     * @param array<array-key, mixed> $rows
+     * @return array<array-key, mixed>
+     */
+    public function withRecordVersions(array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            if (is_array($row) && is_numeric($row['record_id'] ?? null)) {
+                $ids[] = (int) $row['record_id'];
+            }
+        }
+        if ($ids === []) {
+            return $rows;
+        }
+
+        $versions = $this->dataRevisionService->currentVersions($ids);
+        foreach ($rows as $key => $row) {
+            if (is_array($row) && is_numeric($row['record_id'] ?? null) && isset($versions[(int) $row['record_id']])) {
+                $row[self::RECORD_VERSION_KEY] = $versions[(int) $row['record_id']];
+                $rows[$key] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Owner of a record of the given table; null when the record is not in that
+     * table (see {@see findRecordInTable()}) or has no owner.
+     */
+    public function getRecordOwnerId(int $dataTableId, int $recordId): ?int
+    {
+        $dataRow = $this->findRecordInTable($dataTableId, $recordId);
+
         return $dataRow ? $dataRow->getIdUsers() : null;
     }
 
     /**
      * Delete form data record
      *
+     * @param int $dataTableId The table the caller is authorized for; the record must belong to it (F127)
      * @param int $recordId The ID of the record to delete
      * @param bool $ownEntriesOnly Whether to restrict to user's own entries
+     * @param RecordWriteContext|null $context History source and the record version the delete was based on (a stale version is refused with 409)
      * @return bool Success status
      * @throws ServiceException
      *
      * Queued action jobs linked to the deleted record are cleaned up after commit
      * through the same action orchestration pipeline used for save/update events.
+     * The record is only marked deleted and its history is kept, so the uploaded
+     * files stay too; explicit user-data erasure removes both.
      */
-    public function deleteData(int $recordId, bool $ownEntriesOnly = true): bool
+    public function deleteData(int $dataTableId, int $recordId, bool $ownEntriesOnly = true, ?RecordWriteContext $context = null): bool
     {
+        $context ??= RecordWriteContext::forTransactionBy(LookupService::TRANSACTION_BY_BY_USER);
         $this->entityManager->beginTransaction();
         $currentUser = $this->userContextService->getCurrentUser();
 
         try {
-            $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
+            $dataRow = $this->findRecordInTable($dataTableId, $recordId);
             if (!$dataRow) {
                 $this->throwNotFound('Record not found');
             }
@@ -278,16 +392,18 @@ class DataService extends BaseService
                 $this->throwNotFound('Data table not found for record');
             }
 
-            // Extract file data before marking as deleted
-            $fileData = $this->extractFileDataFromRecord($dataRow);
+            // Take the record lock and refuse a delete based on an older version or of a record that left the caller's dataset.
+            $currentVersion = $this->lockAndGuard($dataRow, $context, $ownEntriesOnly)->version;
+            $stateBefore = $this->dataRevisionService->liveState($recordId);
 
-            // Mark as deleted instead of physical deletion
+            // Mark as deleted instead of physical deletion. The history and the
+            // uploaded files stay: they are removed only by explicit erasure.
             $deletedTriggerType = $this->lookupService->getLookupIdByValue('actionTriggerTypes', LookupService::ACTION_TRIGGER_TYPES_DELETED);
             $dataRow->setIdActionTriggerTypes($deletedTriggerType);
             $deletedValues = $this->extractRecordValues($dataRow);
 
             // Log transaction
-            $this->transactionService->logTransaction(
+            $transaction = $this->transactionService->logTransaction(
                 'delete',
                 LookupService::TRANSACTION_BY_BY_USER,
                 'data_tables',
@@ -295,20 +411,18 @@ class DataService extends BaseService
             );
 
             $this->entityManager->flush();
+            $newVersion = $this->dataRevisionService->recordChange(
+                $recordId,
+                (int) $dataTable->getId(),
+                $currentVersion,
+                $stateBefore,
+                $stateBefore,
+                $context,
+                $transaction->getId(),
+                LookupService::DATA_REVISION_OPERATIONS_DELETE,
+            );
+            $dataRow->setVersion($newVersion ?? $currentVersion);
             $this->entityManager->commit();
-
-            // Clean up associated files after successful database deletion
-            if (!empty($fileData)) {
-                try {
-                    $this->formFileUploadService->deleteFiles($fileData);
-                } catch (\Exception $e) {
-                    // Log file cleanup error but don't fail the deletion
-                    $this->logger->warning(
-                        "File cleanup failed for record {$recordId}: " . $e->getMessage(),
-                        ['exception' => $e]
-                    );
-                }
-            }
 
             // Invalidate data table cache after deleting record
             $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
@@ -324,8 +438,12 @@ class DataService extends BaseService
 
             return true;
 
+        } catch (ServiceException $e) {
+            // A deliberate refusal (not found, forbidden) keeps its own status.
+            $this->rollbackQuietly();
+            throw $e;
         } catch (\Throwable $e) {
-            $this->entityManager->rollback();
+            $this->rollbackQuietly();
             throw new ServiceException(
                 'Failed to delete record: ' . $e->getMessage(),
                 Response::HTTP_INTERNAL_SERVER_ERROR,
@@ -335,48 +453,274 @@ class DataService extends BaseService
     }
 
     /**
-     * Extract file data from a data record
+     * What restoring an earlier version of a record would do right now, and what
+     * stands in the way ({@see RestorePlan}). Reads only; nothing is written.
      *
-     * @param DataRow $dataRow The data row to extract files from
-     * @return array<string, mixed> Array of file paths keyed by field name
+     * @param list<string>|null $fieldKeys restore only these fields; null: every field that differs
+     * @throws ServiceException 404 record/version unknown, 403 when `$ownEntriesOnly` and the record is not the caller's
      */
-    private function extractFileDataFromRecord(DataRow $dataRow): array
+    public function previewRestore(int $dataTableId, int $recordId, int $fromVersion, ?array $fieldKeys, bool $ownEntriesOnly = true): RestorePlan
     {
-        $fileData = [];
+        $dataRow = $this->findRecordInTable($dataTableId, $recordId);
+        if (!$dataRow) {
+            $this->throwNotFound('Record not found');
+        }
+        $this->assertMayWriteRecord($dataRow, $ownEntriesOnly);
 
-        // Get all data cells for this row (across all languages)
-        $dataCells = $this->entityManager->getRepository(DataCell::class)->findBy([
-            'dataRow' => $dataRow
-        ]);
+        return $this->dataRestoreService->plan($recordId, $fromVersion, $fieldKeys);
+    }
 
-        foreach ($dataCells as $dataCell) {
-            $fieldName = $this->asString($dataCell->getDataCol()?->getFieldKey());
-            $fieldValue = $dataCell->getValue();
+    /**
+     * Restore an earlier version of a record as a NEW revision.
+     *
+     * The fields of `$fromVersion` are written back, fields the record has now but
+     * that version lacked are removed, and everything else (the owner, the
+     * remaining fields) stays. The history is appended to, never rewound: the
+     * versions between the old state and now stay readable. Like every write it
+     * takes the record lock and refuses (409) a save based on an older version, so
+     * `$context->expectedVersion` is REQUIRED: the person saw version N and chose
+     * to replace it.
+     *
+     * Nothing is applied partially: a field that cannot be restored today (its
+     * column or language is gone, the value is invalid for its column type, a file
+     * it names was erased) makes the whole restore fail with 422 and the list of
+     * blockers; the caller may then restore an explicit subset (`$fieldKeys`).
+     * Restoring what the record already holds writes nothing and creates no revision.
+     *
+     * @param list<string>|null $fieldKeys restore only these fields; null: every field that differs
+     * @return int the record's version after the restore (unchanged when nothing differed)
+     * @throws ServiceException 400 without expected version, 404 unknown record/version, 409 stale, 422 blocked
+     */
+    public function restoreRecord(
+        int $dataTableId,
+        int $recordId,
+        int $fromVersion,
+        ?array $fieldKeys,
+        bool $ownEntriesOnly,
+        RecordWriteContext $context
+    ): int {
+        if ($context->expectedVersion === null || $context->expectedVersion < 1) {
+            throw new ServiceException(
+                'expected_version is required to restore a record',
+                Response::HTTP_BAD_REQUEST,
+                ['reason' => 'expected_version_required', 'record_id' => $recordId],
+            );
+        }
+        $context = $context->restoringFrom($fromVersion);
 
-            // Check if this field contains file information
-            if ($this->formFileUploadService->isFileInputField($fieldName, (string) $dataRow->getDataTable()?->getName())) {
-                try {
-                    // Try to decode as JSON (for multiple files)
-                    $decoded = json_decode((string) $fieldValue, true);
-                    if (is_array($decoded)) {
-                        // Multiple files
-                        $fileData[$fieldName] = array_filter($decoded, function ($path) {
-                            return is_string($path) && str_contains($path, 'uploads/form-files/');
-                        });
-                    } elseif (is_string($fieldValue) && str_contains($fieldValue, 'uploads/form-files/')) {
-                        // Single file
-                        $fileData[$fieldName] = $fieldValue;
-                    }
-                } catch (\Exception $e) {
-                    // If JSON parsing fails, check if it's a direct file path
-                    if (is_string($fieldValue) && str_contains($fieldValue, 'uploads/form-files/')) {
-                        $fileData[$fieldName] = $fieldValue;
-                    }
+        $this->entityManager->beginTransaction();
+        $currentUser = $this->userContextService->getCurrentUser();
+
+        try {
+            $dataRow = $this->findRecordInTable($dataTableId, $recordId);
+            if (!$dataRow) {
+                $this->throwNotFound('Record not found');
+            }
+            $this->assertMayWriteRecord($dataRow, $ownEntriesOnly);
+
+            $dataTable = $dataRow->getDataTable();
+            if (!$dataTable) {
+                $this->throwNotFound('Data table not found for record');
+            }
+
+            // The record lock first, then the plan: the plan must describe the state
+            // this restore is going to replace.
+            $currentVersion = $this->lockAndGuard($dataRow, $context, $ownEntriesOnly)->version;
+            $plan = $this->dataRestoreService->plan($recordId, $fromVersion, $fieldKeys);
+            if (!$plan->isRestorable()) {
+                throw new ServiceException(
+                    'Version ' . $fromVersion . ' cannot be restored as it is: some of its fields no longer fit this form.',
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                    ['reason' => 'restore_blocked', 'record_id' => $recordId, 'from_version' => $fromVersion, 'blockers' => $plan->blockers]
+                );
+            }
+            // What the restore would write must also satisfy the form as it is now (a rule that changed since
+            // the old version, a field that is required today). Refused as a whole, before anything is written.
+            if ($context->planGuard !== null) {
+                ($context->planGuard)($plan);
+            }
+            if ($plan->changes === []) {
+                $this->entityManager->commit();
+
+                return $currentVersion;
+            }
+
+            $stateBefore = $this->dataRevisionService->liveState($recordId);
+            $this->dataRestoreService->apply($plan);
+
+            // The owner is not touched: a restore changes what the record says, not whose it is.
+            $dataRow->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+            $dataRow->setIdActionTriggerTypes($this->getTriggerTypeId(['trigger_type' => LookupService::ACTION_TRIGGER_TYPES_UPDATED]));
+
+            $transaction = $this->transactionService->logTransaction(
+                'update',
+                LookupService::TRANSACTION_BY_BY_USER,
+                'data_tables',
+                $dataTable->getId()
+            );
+            $this->entityManager->flush();
+
+            $stateAfter = $this->dataRevisionService->liveState($recordId);
+            $newVersion = $this->dataRevisionService->recordChange(
+                $recordId,
+                (int) $dataTable->getId(),
+                $currentVersion,
+                $stateBefore,
+                $stateAfter,
+                $context,
+                $transaction->getId(),
+                LookupService::DATA_REVISION_OPERATIONS_RESTORE,
+            );
+            $dataRow->setVersion($newVersion ?? $currentVersion);
+            $this->entityManager->commit();
+
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+
+            // Actions see the record as it is after the restore, like after any update.
+            $values = ['record_id' => $recordId, 'id_users' => $dataRow->getIdUsers()];
+            foreach ($stateAfter as $field) {
+                if ($field->languageId === 1) {
+                    $values[$field->key] = $field->value;
+                    continue;
+                }
+                $existing = $values[$field->key] ?? [];
+                $values[$field->key] = [...(is_array($existing) ? $existing : []), ['language_id' => $field->languageId, 'value' => $field->value]];
+            }
+            $this->runActionOrchestration(
+                $dataTable,
+                $recordId,
+                $values,
+                LookupService::ACTION_TRIGGER_TYPES_UPDATED,
+                $currentUser ? $currentUser->getId() : $dataRow->getIdUsers(),
+                LookupService::TRANSACTION_BY_BY_USER
+            );
+
+            return $newVersion ?? $currentVersion;
+        } catch (ServiceException $e) {
+            $this->rollbackQuietly();
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->rollbackQuietly();
+            throw new ServiceException(
+                'Failed to restore record: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'recordId' => $recordId]
+            );
+        }
+    }
+
+    /**
+     * A person's request is untrusted: the owner of a record, its trigger type and the other row metadata are
+     * derived by the server, and the record an update changes is named by its number, nothing else.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed>|null $updateBasedOn
+     * @throws ServiceException 400 a protected field or a target that is not `record_id`
+     */
+    private function assertInteractiveWrite(array $data, ?array $updateBasedOn): void
+    {
+        foreach (array_keys($data) as $key) {
+            $key = (string) $key;
+            if ($this->dataColumnService->isReservedKey($key) || in_array($key, ['timestamp', 'version'], true)) {
+                throw new ServiceException(
+                    sprintf('The field "%s" is not a value a person can set.', $key),
+                    Response::HTTP_BAD_REQUEST,
+                    ['reason' => 'protected_field', 'fields' => [$key]],
+                );
+            }
+        }
+
+        if ($updateBasedOn === null) {
+            return;
+        }
+
+        // The entry an update changes is named either by its number or by field values (the documented
+        // alternative selection), never by both and never by an empty or malformed selection: an empty
+        // selection must not fall back to "the first record of the table".
+        $invalid = fn (string $message): ServiceException => new ServiceException(
+            $message,
+            Response::HTTP_BAD_REQUEST,
+            ['reason' => 'unsupported_target_selection'],
+        );
+        if ($updateBasedOn === []) {
+            throw $invalid('An update names the entry it changes.');
+        }
+        if (array_key_exists('record_id', $updateBasedOn)) {
+            $recordId = $updateBasedOn['record_id'];
+            $number = is_int($recordId) ? $recordId : (is_string($recordId) && ctype_digit($recordId) ? (int) $recordId : 0);
+            if (count($updateBasedOn) !== 1 || $number < 1) {
+                throw $invalid('An update names the entry by its record_id alone, or by field values.');
+            }
+
+            return;
+        }
+        foreach ($updateBasedOn as $key => $value) {
+            $key = (string) $key;
+            if (preg_match('/^[A-Za-z0-9_]{1,255}$/', $key) !== 1 || $this->dataColumnService->isReservedKey($key) || !is_scalar($value)) {
+                throw $invalid(sprintf('The entry cannot be selected by "%s".', $key));
+            }
+        }
+    }
+
+    /**
+     * Take the record lock and run the checks that must see the record as it is under it.
+     *
+     * Everything that was decided before the transaction (the caller's right to the record, the
+     * dataset of the list, the version the caller saw) is decided again here for an interactive write,
+     * because the record may have changed while the request waited for the lock:
+     *  1. a record that was deleted meanwhile is not found;
+     *  2. a caller restricted to its own records still owns it;
+     *  3. the version the caller saw is the version the record has (409 otherwise; an interactive write
+     *     that names none is refused with 400, a trusted system write may name none);
+     *  4. the guard of the context accepts the record (the dataset boundary of a list).
+     *
+     * @throws ServiceException 404, 403, 400, 409 as above
+     */
+    private function lockAndGuard(DataRow $dataRow, RecordWriteContext $context, bool $ownEntriesOnly): LockedRecord
+    {
+        $recordId = (int) $dataRow->getId();
+        $locked = $this->dataRevisionService->lockRecord($recordId);
+
+        if ($context->interactive) {
+            if ($locked->tableId !== (int) $dataRow->getDataTable()?->getId() || $this->isDeletedTrigger($locked->triggerTypeId)) {
+                $this->throwNotFound('Record not found');
+            }
+            if ($ownEntriesOnly) {
+                $currentUser = $this->userContextService->getCurrentUser();
+                if (!$currentUser || $locked->ownerId !== $currentUser->getId()) {
+                    $this->throwForbidden('Access denied to this record');
                 }
             }
         }
 
-        return $fileData;
+        $this->dataRevisionService->assertExpectedVersion($recordId, $locked->version, $context->expectedVersion, $context->interactive);
+
+        if ($context->targetGuard !== null) {
+            ($context->targetGuard)($locked);
+        }
+
+        return $locked;
+    }
+
+    private function isDeletedTrigger(?int $triggerTypeId): bool
+    {
+        $deletedId = $this->lookupService->getLookupIdByValue('actionTriggerTypes', LookupService::ACTION_TRIGGER_TYPES_DELETED);
+
+        return $deletedId !== null && $triggerTypeId === $deletedId;
+    }
+
+    /**
+     * The caller must be the record's owner when the access is own-entries-only.
+     */
+    private function assertMayWriteRecord(DataRow $dataRow, bool $ownEntriesOnly): void
+    {
+        if (!$ownEntriesOnly) {
+            return;
+        }
+        $currentUser = $this->userContextService->getCurrentUser();
+        if (!$currentUser || $dataRow->getIdUsers() !== $currentUser->getId()) {
+            $this->throwForbidden('Access denied to this record');
+        }
     }
 
     /**
@@ -479,29 +823,54 @@ class DataService extends BaseService
     }
 
     /**
+     * Roll the open transaction back, tolerating the case where it is already
+     * closed (a refusal thrown after an explicit rollback must not mask itself
+     * with a "no active transaction" error).
+     */
+    private function rollbackQuietly(): void
+    {
+        if ($this->entityManager->getConnection()->isTransactionActive()) {
+            $this->entityManager->rollback();
+        }
+    }
+
+    /**
+     * Whether a row carries the `deleted` action trigger type (soft delete).
+     */
+    private function isDeletedRow(DataRow $dataRow): bool
+    {
+        $deletedId = $this->lookupService->getLookupIdByValue('actionTriggerTypes', LookupService::ACTION_TRIGGER_TYPES_DELETED);
+
+        return $deletedId !== null && $dataRow->getIdActionTriggerTypes() === $deletedId;
+    }
+
+    /**
      * Update existing record
      * 
-     * @param int $recordId The ID of the record to update
+     * @param DataRow $dataRow The record to update (already resolved INSIDE the target table, see {@see findRecordInTable()})
      * @param array<string, mixed> $data New data
      * @param string $transactionBy Transaction initiator
      * @param array<string, string|null>|null $fieldLabels Optional field_key => label map
      * @param bool $reassignOwner Whether $data['id_users'] was explicitly provided
      *                            by the caller; when false the existing owner is
      *                            preserved (a foreign editor must not steal the row)
+     * @param RecordWriteContext $context History source and the version the caller based the update on
+     * @param bool $ownEntriesOnly the caller may change only its own records (checked again under the lock)
      * @return int Record ID
      */
-    private function updateExistingRecord(int $recordId, array $data, string $transactionBy, ?array $fieldLabels = null, bool $reassignOwner = true): int
+    private function updateExistingRecord(DataRow $dataRow, array $data, string $transactionBy, ?array $fieldLabels, bool $reassignOwner, RecordWriteContext $context, bool $ownEntriesOnly): int
     {
-
-        $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
-        if (!$dataRow) {
-            $this->throwNotFound('Record not found');
-        }
-
         $dataTable = $dataRow->getDataTable();
         if (!$dataTable) {
             $this->throwNotFound('Data table not found for record');
         }
+
+        // The record lock serialises the writers of this record. A save based on
+        // an older version stops here, before anything is written, and so does a
+        // record that left the caller's dataset while the request waited.
+        $recordId = (int) $dataRow->getId();
+        $currentVersion = $this->lockAndGuard($dataRow, $context, $ownEntriesOnly)->version;
+        $stateBefore = $this->dataRevisionService->liveState($recordId);
 
         // Update timestamp and trigger type (use UTC for consistency)
         $dataRow->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
@@ -569,7 +938,7 @@ class DataService extends BaseService
         }
 
         // Log transaction
-        $this->transactionService->logTransaction(
+        $transaction = $this->transactionService->logTransaction(
             'update',
             $transactionBy,
             'data_tables',
@@ -578,7 +947,22 @@ class DataService extends BaseService
 
         $this->entityManager->flush();
 
-        return (int) $dataRow->getId();
+        // History: one revision, and the version moves forward by one, only when a value really changed.
+        $newVersion = $this->dataRevisionService->recordChange(
+            $recordId,
+            (int) $dataTable->getId(),
+            $currentVersion,
+            $stateBefore,
+            $this->dataRevisionService->liveState($recordId),
+            $context,
+            $transaction->getId(),
+            $context->restoredFromVersion !== null
+                ? LookupService::DATA_REVISION_OPERATIONS_RESTORE
+                : LookupService::DATA_REVISION_OPERATIONS_UPDATE,
+        );
+        $dataRow->setVersion($newVersion ?? $currentVersion);
+
+        return $recordId;
     }
 
     /**
@@ -590,7 +974,7 @@ class DataService extends BaseService
      * @param array<string, string|null>|null $fieldLabels Optional field_key => label map
      * @return int Record ID
      */
-    private function createNewRecord(DataTable $dataTable, array $data, string $transactionBy, ?array $fieldLabels = null): int
+    private function createNewRecord(DataTable $dataTable, array $data, string $transactionBy, ?array $fieldLabels, RecordWriteContext $context): int
     {
         // Create data row
         $dataRow = new DataRow();
@@ -649,7 +1033,7 @@ class DataService extends BaseService
         }
 
         // Log transaction
-        $this->transactionService->logTransaction(
+        $transaction = $this->transactionService->logTransaction(
             'insert',
             $transactionBy,
             'data_tables',
@@ -658,7 +1042,17 @@ class DataService extends BaseService
 
         $this->entityManager->flush();
 
-        return (int) $dataRow->getId();
+        // History: version 1 of the record, with every value it starts with.
+        $recordId = (int) $dataRow->getId();
+        $this->dataRevisionService->recordCreated(
+            $recordId,
+            (int) $dataTable->getId(),
+            $this->dataRevisionService->liveState($recordId),
+            $context,
+            $transaction->getId(),
+        );
+
+        return $recordId;
     }
 
     /**
@@ -778,7 +1172,22 @@ class DataService extends BaseService
             $mapped = [];
             foreach ($record as $key => $value) {
                 $key = (string) $key;
-                $mapped[$keyToName[$key] ?? $key] = $value;
+                if (isset($keyToName[$key])) {
+                    $mapped[$keyToName[$key]] = $value;
+                    continue;
+                }
+                // Contract 3 suffixes built before remap (data-view row tokens):
+                // section_12__url / __files / __links → portrait__url / …
+                foreach (['__url', '__files', '__links'] as $suffix) {
+                    if (str_ends_with($key, $suffix)) {
+                        $base = substr($key, 0, -strlen($suffix));
+                        if (isset($keyToName[$base])) {
+                            $mapped[$keyToName[$base] . $suffix] = $value;
+                            continue 2;
+                        }
+                    }
+                }
+                $mapped[$key] = $value;
             }
             $out[$index] = $mapped;
         }
@@ -895,8 +1304,9 @@ class DataService extends BaseService
 
         // Records are stored keyed by the immutable section-id field_key; rename
         // them back to the current human input name for prefill (issue #56).
-        // Applied after the cache read so a rename reflects immediately.
-        return $this->remapRecordKeysToInputNames($dataTableName, $records);
+        // Applied after the cache read so a rename reflects immediately. The same goes for the
+        // record version the person's next save must name (`expected_version`).
+        return $this->withRecordVersions($this->remapRecordKeysToInputNames($dataTableName, $records));
     }
 
     /**
@@ -912,9 +1322,12 @@ class DataService extends BaseService
      * holds UPDATE permission on the form's data table. A record the user may
      * not edit prefills nothing (empty array).
      *
+     * @param bool $withVersion Add the record's current version to every row (`_version`, see
+     *   {@see self::withRecordVersions()}); a caller that already knows the version (an entry list)
+     *   passes false and saves the query
      * @return array<array-key, mixed>
      */
-    public function getFormRecordDataForRecord(string $dataTableName, int $recordId, bool $ownEntriesOnly): array
+    public function getFormRecordDataForRecord(string $dataTableName, int $recordId, bool $ownEntriesOnly, bool $withVersion = true): array
     {
         $dataTable = $this->dataTableRepository->findOneBy(['name' => $dataTableName]);
         if (!$dataTable || $recordId <= 0) {
@@ -929,7 +1342,8 @@ class DataService extends BaseService
             return []; // No user, no record prefill
         }
 
-        $recordOwnerId = $this->getRecordOwnerId($recordId);
+        // Table-bound lookup (F127): a record of another table never prefills here.
+        $recordOwnerId = $this->getRecordOwnerId($dataTableId, $recordId);
         $isOwnRecord = $recordOwnerId !== null && $recordOwnerId === $userId;
         if (!$isOwnRecord) {
             $hasUpdatePermission = $this->dataAccessSecurityService->hasPermission(
@@ -962,12 +1376,15 @@ class DataService extends BaseService
                 );
             });
 
-        return $this->remapRecordKeysToInputNames($dataTableName, $records);
+        $records = $this->remapRecordKeysToInputNames($dataTableName, $records);
+
+        return $withVersion ? $this->withRecordVersions($records) : $records;
     }
 
     /**
-     * Fetch data records from a data table using the legacy stored procedure behavior.
-     * Mirrors the old get_data($dataTableId, $filter, $own_entries_only, $user_id, $db_first, $exclude_deleted) logic.
+     * Fetch data records from a data table with the legacy filter-fragment behavior.
+     * Mirrors the old get_data($dataTableId, $filter, $own_entries_only, $user_id, $db_first, $exclude_deleted) logic;
+     * the fragment is translated to the structured filter of the data query engine and never pasted into SQL.
      *
      * - If the filter contains dynamic placeholders ("{{"), it will be ignored
      * - When ownEntriesOnly is true and userId is not provided, current user is used (or -1 if not available)
@@ -1004,12 +1421,17 @@ class DataService extends BaseService
 
             $selectedColumns = $this->dataTableFilterService->sanitizeSelectedColumns($selectedColumns);
 
-            // Resolve user id as per legacy rules
+            // Resolve whose records are read. A visitor who is not signed in has no
+            // records of their own, so an own-entries read returns nothing (the stored
+            // procedures read every record for them).
             $resolvedUserId = $userId;
             if ($resolvedUserId === null) {
                 if ($ownEntriesOnly) {
                     $currentUser = $this->userContextService->getCurrentUser();
-                    $resolvedUserId = $currentUser ? (int) $currentUser->getId() : -1;
+                    if ($currentUser === null) {
+                        return [];
+                    }
+                    $resolvedUserId = (int) $currentUser->getId();
                 } else {
                     $resolvedUserId = -1; // all users
                 }
@@ -1030,6 +1452,11 @@ class DataService extends BaseService
             }
 
             return $rows;
+        } catch (DataQueryException $e) {
+            // A stored filter that has no structured form reads nothing, like an unsafe or unresolved one.
+            $this->logger->warning('Data read skipped: ' . $e->getMessage(), ['dataTableId' => $dataTableId]);
+
+            return [];
         } catch (\Throwable $e) {
             throw new ServiceException(
                 'Failed to fetch data: ' . $e->getMessage(),
@@ -1084,6 +1511,116 @@ class DataService extends BaseService
             );
 
             return $rows;
+        } catch (DataQueryException $e) {
+            // A stored filter that has no structured form reads nothing, like an unsafe or unresolved one.
+            $this->logger->warning('Data read skipped: ' . $e->getMessage(), ['dataTableId' => $dataTableId]);
+
+            return [];
+        } catch (\Throwable $e) {
+            throw new ServiceException(
+                'Failed to fetch data with user group filter: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'dataTableId' => $dataTableId]
+            );
+        }
+    }
+
+    /**
+     * The records {@see getData()} returns for an unfiltered read of a table, in
+     * stable batches: exports and background work read a table of any size
+     * without collecting it in memory. Records, order and shape are those of
+     * the single read; the caller decides which users' records it may read.
+     *
+     * @param int|null $userId only this user's records; null (or below one) reads every user's
+     * @return \Generator<int, list<array<string, mixed>>>
+     */
+    public function getDataInBatches(
+        int $dataTableId,
+        ?int $userId = null,
+        bool $excludeDeleted = true,
+        int $languageId = 1,
+        int $batchSize = 500,
+    ): \Generator {
+        try {
+            yield from $this->dataTableRepository->batchesWithFilter(
+                $dataTableId,
+                $userId ?? -1,
+                '',
+                $excludeDeleted,
+                $languageId,
+                $this->cmsPreferenceService->getDefaultTimezoneCode(),
+                '',
+                $batchSize,
+            );
+        } catch (DataQueryException $e) {
+            $this->logger->warning('Data read skipped: ' . $e->getMessage(), ['dataTableId' => $dataTableId]);
+        } catch (\Throwable $e) {
+            throw new ServiceException(
+                'Failed to fetch data: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'dataTableId' => $dataTableId]
+            );
+        }
+    }
+
+    /**
+     * The rows {@see getDataWithAllLanguages()} returns for an unfiltered read of a
+     * table: one row per record and language, in stable batches. Exports read a
+     * table of any size with its translated cells, without collecting it in memory.
+     *
+     * @param int|null $userId only this user's records; null (or below one) reads every user's
+     * @return \Generator<int, list<array<string, mixed>>>
+     */
+    public function getDataInBatchesWithAllLanguages(
+        int $dataTableId,
+        ?int $userId = null,
+        bool $excludeDeleted = true,
+        int $batchSize = 500,
+    ): \Generator {
+        try {
+            yield from $this->dataTableRepository->batchesWithAllLanguages(
+                $dataTableId,
+                $userId ?? -1,
+                '',
+                $excludeDeleted,
+                $this->cmsPreferenceService->getDefaultTimezoneCode(),
+                $batchSize,
+            );
+        } catch (DataQueryException $e) {
+            $this->logger->warning('Data read skipped: ' . $e->getMessage(), ['dataTableId' => $dataTableId]);
+        } catch (\Throwable $e) {
+            throw new ServiceException(
+                'Failed to fetch data with all languages: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'dataTableId' => $dataTableId]
+            );
+        }
+    }
+
+    /**
+     * The records {@see getDataWithUserGroupFilter()} returns, in stable batches.
+     *
+     * @return \Generator<int, list<array<string, mixed>>>
+     */
+    public function getDataInBatchesWithUserGroupFilter(
+        int $dataTableId,
+        int $currentUserId,
+        bool $excludeDeleted = true,
+        int $languageId = 1,
+        int $batchSize = 500,
+    ): \Generator {
+        try {
+            yield from $this->dataTableRepository->batchesWithUserGroupFilter(
+                $dataTableId,
+                $currentUserId,
+                '',
+                $excludeDeleted,
+                $languageId,
+                $this->cmsPreferenceService->getDefaultTimezoneCode(),
+                $batchSize,
+            );
+        } catch (DataQueryException $e) {
+            $this->logger->warning('Data read skipped: ' . $e->getMessage(), ['dataTableId' => $dataTableId]);
         } catch (\Throwable $e) {
             throw new ServiceException(
                 'Failed to fetch data with user group filter: ' . $e->getMessage(),
@@ -1129,12 +1666,17 @@ class DataService extends BaseService
                 return $dbFirst ? [] : [];
             }
 
-            // Resolve user id as per legacy rules
+            // Resolve whose records are read. A visitor who is not signed in has no
+            // records of their own, so an own-entries read returns nothing (the stored
+            // procedures read every record for them).
             $resolvedUserId = $userId;
             if ($resolvedUserId === null) {
                 if ($ownEntriesOnly) {
                     $currentUser = $this->userContextService->getCurrentUser();
-                    $resolvedUserId = $currentUser ? (int) $currentUser->getId() : -1;
+                    if ($currentUser === null) {
+                        return [];
+                    }
+                    $resolvedUserId = (int) $currentUser->getId();
                 } else {
                     $resolvedUserId = -1; // all users
                 }
@@ -1153,6 +1695,11 @@ class DataService extends BaseService
             }
 
             return $rows;
+        } catch (DataQueryException $e) {
+            // A stored filter that has no structured form reads nothing, like an unsafe or unresolved one.
+            $this->logger->warning('Data read skipped: ' . $e->getMessage(), ['dataTableId' => $dataTableId]);
+
+            return [];
         } catch (\Throwable $e) {
             throw new ServiceException(
                 'Failed to fetch data with all languages: ' . $e->getMessage(),

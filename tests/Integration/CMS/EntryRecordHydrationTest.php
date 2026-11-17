@@ -106,7 +106,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
 
         $this->pages->invalidatePageScopedCaches();
 
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $resolve = $this->jsonRequest(
             'GET',
             '/cms-api/v1/pages/resolve?path=' . rawurlencode(self::DETAIL_PATH_PREFIX . '/' . $recordId) . '&preview=true',
@@ -178,7 +178,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
 
         $this->pages->invalidatePageScopedCaches();
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
 
         // Symfony route requirements reject non-digit segments before hydration.
         $badResolve = $this->jsonRequest(
@@ -257,7 +257,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
 
         $this->pages->invalidatePageScopedCaches();
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
 
         $matchData = $this->assertEnvelopeSuccess($this->jsonRequest(
             'GET',
@@ -314,7 +314,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
 
         $this->pages->invalidatePageScopedCaches();
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess($this->jsonRequest(
             'GET',
             '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-legacy/' . $recordId) . '&preview=true',
@@ -371,7 +371,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
 
         $this->pages->invalidatePageScopedCaches();
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess($this->jsonRequest(
             'GET',
             '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-wrong/' . $recordId) . '&preview=true',
@@ -442,7 +442,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
 
         $this->pages->invalidatePageScopedCaches();
-        $token = $this->loginAsQaUser();
+        $token = $this->loginAsQaAdmin();
         $data = $this->assertEnvelopeSuccess($this->jsonRequest(
             'GET',
             '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-no-filter/' . $recordId) . '&preview=true',

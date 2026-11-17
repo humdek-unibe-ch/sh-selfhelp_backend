@@ -46,16 +46,14 @@ class UserRepository extends ServiceEntityRepository
     }
 
     /**
-     * Create query builder for active users (non-intern, active status)
+     * Create query builder for active users (active status)
      *
      * @return QueryBuilder
      */
     public function createActiveUsersQueryBuilder(): QueryBuilder
     {
         return $this->createQueryBuilder('u')
-            ->where('u.intern = :intern')
-            ->andWhere('u.id_status > 0')
-            ->setParameter('intern', false);
+            ->where('u.id_status > 0');
     }
 
     /**
@@ -259,7 +257,7 @@ class UserRepository extends ServiceEntityRepository
     /**
      * @param list<string> $groupNames
      * @return int[]
-     *   Active, non-intern user ids that belong to one of the given group names.
+     *   Active (not blocked) user ids that belong to one of the given group names.
      */
     public function findIdsByGroupNames(array $groupNames): array
     {
@@ -274,10 +272,8 @@ class UserRepository extends ServiceEntityRepository
             ->innerJoin('ug.group', 'g')
             ->andWhere('g.name IN (:groupNames)')
             ->andWhere('u.blocked = :blocked')
-            ->andWhere('u.intern = :intern')
             ->setParameter('groupNames', $groupNames)
             ->setParameter('blocked', false)
-            ->setParameter('intern', false)
             ->orderBy('u.id', 'ASC')
             ->getQuery()
             ->getScalarResult();

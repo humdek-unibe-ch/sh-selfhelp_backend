@@ -3,7 +3,7 @@
 Audience: Developers and maintainers (backend, shared, frontend, mobile).
 Status: active (architecture reference).
 Applies to: the 90 core CMS styles (no plugin styles).
-Last verified: 2026-06-23.
+Last verified: 2026-11-13.
 Source of truth: live DB catalog (`admin/styles/schema`), `@selfhelp/shared` `BASE_STYLE_REGISTRY` (web Mantine targets), the installed `heroui-native@1.0.2` export list (mobile targets), the frontend `BasicStyle` + mobile `styleImpls` dispatch maps. The machine-readable form is [`style-field-audit.generated.json`](./style-field-audit.generated.json).
 
 > One row per style: where it renders, what it maps to on each platform, and how
@@ -37,6 +37,7 @@ There is deliberately **no** `pages.id_platform`; page targeting stays on
   registry, the web renderer, and the mobile renderer (90 / 90 / 90 / 90).
 - So the open work is *field-level* (scope, drift, `mobile_*`, spacing
   consolidation) and *render-target assignment*, not missing renderers.
+- **Added 2026-11-13:** `entry-form-list` and `data-view` (migration `Version20261113120844`), both `render_target = both`. The counts above predate them. Mobile draws participant create/edit/delete, quick actions and public data views from the server-rendered list state; it never offers CMS administration.
 
 ## Legend — "mobile fit"
 
@@ -154,6 +155,8 @@ There is deliberately **no** `pages.id_platform`; page targeting stays on
 | `progress-root` | yes | `Progress.Root` | RN `View` | adapted | both |
 | `progress-section` | no | `Progress.Section` | RN `View` | adapted | both |
 | `entry-table` | no | data table | RN list/cards (not a table) | web-first | both — mobile must not copy the desktop table |
+| `entry-form-list` | yes | server-rendered record list + inline form (table/cards, modal/page) | RN list/cards + full-screen participant form | adapted | both — own entries by default; no CMS administration on mobile |
+| `data-view` | yes | read-only record list (table/cards, or the sections of one record drawn per record) | RN list/cards, or the section renderer for each record | adapted | both — read only, public or signed-in; children only with the layout `custom` |
 
 ## composite / collection / data
 

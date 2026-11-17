@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin Data Record Compare Response",
+  "description": "The differences between two versions of a data-browser record.",
+  "allOf": [
+    {
+      "$ref": "../../common/_response_envelope.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["from_version", "to_version", "current_version", "changes"],
+          "properties": {
+            "from_version": { "type": "integer", "minimum": 1 },
+            "to_version": { "type": "integer", "minimum": 1 },
+            "current_version": { "type": "integer", "minimum": 1 },
+            "changes": { "type": "array", "items": { "type": "object" } }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

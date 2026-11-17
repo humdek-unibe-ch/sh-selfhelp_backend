@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Form List Quick Action Response",
+  "description": "A quick action of a list ran on one record.",
+  "allOf": [
+    {
+      "$ref": "../common/_response_envelope.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["record_id", "version", "action"],
+          "properties": {
+            "record_id": { "type": "integer", "minimum": 1 },
+            "version": { "type": "integer", "minimum": 1, "description": "The record's version after the action." },
+            "action": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

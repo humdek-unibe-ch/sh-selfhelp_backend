@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-10-28.
+Last verified: 2026-11-14.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository (form storage keys resolved by `App\Service\CMS\DataColumnService`).
 
 ## Overview
@@ -80,6 +80,8 @@ The file part's name must be the `name` of a `file-input` in that form (here `at
 }
 ```
 
+The success `data` also returns `record_id`, `section_id`, `page_id`, `submitted_at`, `user_authenticated` and the new record's `version` (`1`); see `responses/frontend/form_submitted.json`.
+
 ### Update Form Submission
 
 Modify an existing form submission.
@@ -98,12 +100,43 @@ Modify an existing form submission.
     "email": "john.smith@example.com"
   },
   "update_based_on": {
-    "email": "john@example.com"
-  }
+    "record_id": 123
+  },
+  "expected_version": 3
 }
 ```
 
-**Response:** Update confirmation
+**Response:** Update confirmation (`record_id`, the new `version`).
+
+`update_based_on` names the entry by its number (`{"record_id": 123}`, alone) or by
+field values of the form (`{"email": "john@example.com"}`, plain input names only). An
+update that names no entry, or one the dataset of the section cannot select that way,
+answers `400 unsupported_target_selection`; it never falls back to "the first entry of
+the table" and it never creates an entry.
+
+**`expected_version` (integer, at least 1) is required for every update and delete.** It is
+the record version the caller read (`data_rows.version`; the submit, update and delete
+responses return the new `version`, the list rows carry it). An update without it, or with a
+value that is not a whole number of at least 1 (also as multipart text: digits only, no
+sign, no leading zero), answers `400 expected_version_required` / `invalid_expected_version`
+before anything is stored, uploaded or scheduled. When the stored version differs the
+request answers `409` with `data: {reason: "stale_version", record_id, expected_version, current_version}`
+and nothing is written. Clients always send it ([22-form-lists.md](22-form-lists.md)).
+
+Where a client gets the version for the classic record styles (no list state around them):
+the page payload says it, read when the page is built, so it goes with the record the page
+shows (the cached page is scoped to the form's data table and is rebuilt after every save).
+
+| Style | Where the version is |
+| --- | --- |
+| `form-record`, `entry-record-form` | every row of `section_data` (one per language) carries `_version`, next to `record_id`; it is not a form field and is never sent back inside `form_data` |
+| `entry-table` | every entry that offers edit or delete carries `_version` next to `_can_edit` / `_can_delete` |
+| `entry-record-delete` | the section carries `record_version` (`{content, meta}`, like `record_id`); it is absent when the record no longer exists |
+| `entry-form-list` | `selected.version` and `rows[].version` of the list state |
+
+The form's table must be the table of the section named in `section_id`; a form that belongs to
+a list is also guarded by the list's operation switches (`403 operation_disabled`) and by the
+list's dataset (see [Rules every write follows](#rules-every-write-follows)).
 
 ### Delete Form Submission
 
@@ -118,11 +151,55 @@ Remove a form submission from the system.
 {
   "record_id": 123,
   "page_id": 1,
-  "section_id": 5
+  "section_id": 5,
+  "expected_version": 3
 }
 ```
 
-**Response:** Deletion confirmation
+`section_id` is a section of style `entry-table`, `entry-record-delete` or
+`entry-form-list` on `page_id`; the record must belong to that section's table
+(`400 table_mismatch` otherwise). `expected_version` is required and behaves as for
+updates (`400` when missing or malformed, `409` when stale).
+
+**Response:** Deletion confirmation (`record_id`, `version`). The record is soft deleted;
+its revision history is kept.
+
+### Rules every write follows
+
+These rules are the same for a submit, an update, a delete and, for an *Entry List with
+Form*, for a quick action and a restore of an earlier version. A refused write is complete:
+no entry, no revision, no stored upload and no scheduled action is left behind.
+
+- **The body is untrusted.** `form_data` may only carry values for the inputs of the form
+  as the page is served: the published version of the page, or the draft when a signed-in
+  person who may read the draft sends `"preview": true` for the draft they are looking at.
+  A key that is not an input of that form answers `400 unknown_field`; a key that names the
+  owner, the trigger or other internal data (`id`, `id_users`, `id_action_trigger_types`,
+  `triggerType`, `timestamp`, `version`, `record_id`, anything starting with `__`, …)
+  answers `400 protected_field`. The owner is always the signed-in person and the trigger is
+  always the one of the route. (A form that declares no input at all keeps accepting plain
+  keys; every form built with the page builder declares its inputs.)
+- **The rules of the inputs apply.** Required, range (`min`/`max`), length, format (e-mail,
+  web address), the offered options, dates and time, read-only inputs, inputs a condition
+  hides from the person, and the accepted file types and counts are checked against the
+  input definitions of the same effective page. A violation answers
+  `422 invalid_form_data` with `errors: [{field, key, rule, message}]`; the value a quick
+  action assigns and the fields a restore brings back answer to the same rules (a restore
+  that would bring back a value the form refuses now blocks the whole restore:
+  `422 restore_blocked`).
+- **Records are only reached inside the dataset.** For an *Entry List with Form*, a record
+  number only means something inside the list's table, its fixed filter and, for lists of
+  own entries, the person's own records. Anything else answers `404`, like a record that
+  does not exist; for ordinary updates, deletes, alternative selections, quick actions, the
+  history and restores alike. A write may move an entry out of the dataset (a status the
+  filter does not show); the next request then no longer reaches it.
+- **Access.** Page access of the person's groups (`select`) lets a participant read the
+  page and use the operations the list's switches (`allow_create`, `allow_update`,
+  `allow_delete`) offer, on their own entries; changing someone else's entry needs the
+  existing data-table grant. Page `insert`/`update`/`delete` rights are not consulted for
+  these writes.
+- **Published or draft.** A visitor is always served and written through the published
+  configuration of the page. Access rights and the stored data stay live.
 
 ### Download an uploaded file
 
@@ -133,9 +210,9 @@ Return a file uploaded through a form.
 - `field`: the `file-input` name (or its `section_<id>` column key).
 - `index`: which file of a multi-file field (default `0`).
 
-**Authentication:** JWT required unless the field's `files_public` switch is on (then anyone). Otherwise allowed for the user who submitted the record, or a user with READ on the form's data table (admins always). No route-level permission; access is checked per record.
+**Authentication:** JWT required. Allowed for the user who submitted the record, or a user with READ on the form's data table (admins always). The field's `files_public` switch no longer opens this route to anyone with the link (F165); page viewers use the section-scoped list file route instead ([22-form-lists.md](22-form-lists.md#current-file-of-a-shown-record)). No route-level permission; access is checked per record.
 
-**Response:** the file bytes (not the JSON envelope), with `X-Content-Type-Options: nosniff`, a sandboxing `Content-Security-Policy`, and `Cache-Control: private`. HTML/XML are sent as `attachment`; everything else, including SVG, `inline` so it can be viewed (the sandbox CSP stops any script in it). Errors: `401` anonymous, `403` not allowed, `404` unknown record, non-file field or missing file.
+**Response:** the file bytes (not the JSON envelope), with `X-Content-Type-Options: nosniff`, a sandboxing `Content-Security-Policy`, and `Cache-Control: private, no-store`. HTML/XML are sent as `attachment`; everything else, including SVG, `inline` so it can be viewed (the sandbox CSP stops any script in it). Errors: `401` anonymous, `404` not allowed / unknown record / non-file field / missing file (no `403` that reveals a hidden record).
 
 ### Download several uploaded files as a zip
 

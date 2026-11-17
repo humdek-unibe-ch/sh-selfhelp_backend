@@ -15,6 +15,7 @@ use App\Service\CMS\Admin\AdminSectionService;
 use App\Service\CMS\Admin\DataQueryPreviewService;
 use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\CMS\Common\SectionAccessibleRouteService;
+use App\Service\CMS\DataQuery\LegacyFilterTranslator;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\InterpolationService;
@@ -55,6 +56,7 @@ final class DataQueryPreviewServiceTest extends TestCase
             $dataService,
             $userContext,
             $routeService,
+            new LegacyFilterTranslator(),
         );
 
         $result = $service->preview([
@@ -66,7 +68,46 @@ final class DataQueryPreviewServiceTest extends TestCase
         self::assertSame('AND record_id = 7', $result['prepared_filter']);
         self::assertSame([], $result['errors']);
         $storedProcedure = self::asArray($result['stored_procedure'] ?? null);
-        self::assertStringContainsString('get_data_table_filtered', self::coerceString($storedProcedure['call'] ?? null));
+        self::assertStringContainsString('DataQueryEngine::run', self::coerceString($storedProcedure['call'] ?? null));
+        self::assertStringNotContainsString('CALL', self::coerceString($storedProcedure['call'] ?? null), 'The read is not a stored procedure call any more.');
+    }
+
+    public function testPreviewReportsAFilterThatHasNoStructuredFormBecauseItReadsNothing(): void
+    {
+        $user = $this->createStub(\App\Entity\User::class);
+        $user->method('getId')->willReturn(42);
+
+        $userContext = $this->createStub(UserContextService::class);
+        $userContext->method('getCurrentUser')->willReturn($user);
+
+        $dataTable = $this->createStub(DataTable::class);
+        $dataTable->method('getId')->willReturn(9);
+        $dataTable->method('getName')->willReturn('230');
+        $dataTable->method('getDisplayName')->willReturn('Team members');
+
+        $dataService = $this->createStub(DataService::class);
+        $dataService->method('getDataTableById')->willReturn($dataTable);
+
+        $dataTableService = $this->createStub(DataTableService::class);
+        $dataTableService->method('canAccessDataTable')->willReturn(true);
+        $dataTableService->method('getColumns')->willReturn([]);
+
+        $service = new DataQueryPreviewService(
+            $this->createStub(AdminSectionService::class),
+            new DataTableFilterService(new InterpolationService()),
+            $dataTableService,
+            $dataService,
+            $userContext,
+            $this->createStub(SectionAccessibleRouteService::class),
+            new LegacyFilterTranslator(),
+        );
+
+        // The safety rules accept this comparison, but it is arithmetic: no structured form, so the real read returns nothing.
+        $result = $service->preview(['data_table' => 9, 'filter' => 'AND record_id + 1 = 7']);
+
+        $errors = self::asArray($result['errors'] ?? null);
+        self::assertNotSame([], $errors);
+        self::assertStringContainsString('returns no rows', self::coerceString(reset($errors)));
     }
 
     public function testPreviewDelegatesRouteDiscoveryToAccessibleRouteService(): void
@@ -120,6 +161,7 @@ final class DataQueryPreviewServiceTest extends TestCase
             $dataService,
             $userContext,
             $routeService,
+            new LegacyFilterTranslator(),
         );
 
         $result = $service->preview(['section_id' => 15]);

@@ -48,7 +48,6 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * The created user is:
  *   - status     = active   (id_status -> lookups['userStatus']['active'])
  *   - blocked    = 0
- *   - intern     = 0
  *   - user_type  = user     (id_user_types -> lookups['userTypes']['user'])
  *   - roles      = [admin]   (admin rights come from the role; there is no
  *                            admin group. `--group` adds one if wanted.)
@@ -145,7 +144,6 @@ class CreateAdminUserCommand extends Command
             ->setName($displayName)
             ->setUserName($userName)
             ->setBlocked(false)
-            ->setIntern(false)
             ->setStatus($activeStatus)
             ->setUserType($userType);
 

@@ -13,7 +13,9 @@ use App\Entity\CmsApp;
 use App\Entity\Page;
 use App\Entity\PagesSection;
 use App\Entity\Section;
+use App\Repository\SectionRepository;
 use App\Service\CMS\Common\StyleNames;
+use App\Service\CMS\FormList\FormListLayout;
 use App\Service\Core\BaseService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -29,6 +31,7 @@ final class CmsAppHubSyncService extends BaseService
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly SectionRepository $sectionRepository,
     ) {
     }
 
@@ -53,8 +56,15 @@ final class CmsAppHubSyncService extends BaseService
             }
         }
 
+        // An app keeps its form either on a page of its own (role `form`, the older layout)
+        // or inside its CMS list (the entry list with a form owns the table).
         $formPage = $byRole[CmsAppRole::FORM] ?? null;
-        $app->setFormSection($formPage instanceof Page ? $this->resolveFormSection($formPage) : null);
+        $formSection = $formPage instanceof Page ? $this->resolveFormSection($formPage) : null;
+        if ($formSection === null) {
+            $listPage = $byRole[CmsAppRole::CMS_LIST] ?? null;
+            $formSection = $listPage instanceof Page ? $this->resolveListFormSection($listPage) : null;
+        }
+        $app->setFormSection($formSection);
         $app->setCmsListPage($byRole[CmsAppRole::CMS_LIST] ?? null);
         $app->setCmsDetailPage($byRole[CmsAppRole::CMS_DETAIL] ?? null);
         $app->setPublicListPage($byRole[CmsAppRole::PUBLIC_LIST] ?? null);
@@ -75,6 +85,24 @@ final class CmsAppHubSyncService extends BaseService
         $app->setPublicDetailPage(null);
         $app->touchUpdatedAt();
         $this->entityManager->flush();
+    }
+
+    /**
+     * The form a list on the page holds inline: the form that owns the data table of the app.
+     */
+    private function resolveListFormSection(Page $page): ?Section
+    {
+        $rows = $this->sectionRepository->fetchSectionsHierarchicalByPageId((int) $page->getId());
+        foreach (FormListLayout::listSectionIds($rows) as $listSectionId) {
+            $formSectionId = FormListLayout::inlineFormSectionId($rows, $listSectionId);
+            if ($formSectionId !== null) {
+                $section = $this->entityManager->find(Section::class, $formSectionId);
+
+                return $section instanceof Section ? $section : null;
+            }
+        }
+
+        return null;
     }
 
     private function resolveFormSection(Page $page): ?Section

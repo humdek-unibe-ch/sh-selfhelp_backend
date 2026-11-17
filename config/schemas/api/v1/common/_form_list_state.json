@@ -1,0 +1,533 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Form List State",
+  "description": "The server-rendered state of one list (entry-form-list or data-view) for one visitor and one URL state: the rows of the page, the columns and controls to draw, what the visitor may do, and the open record. Returned by the list state endpoint and embedded as `list_state` in the page payload.",
+  "type": "object",
+  "required": [
+    "list",
+    "columns",
+    "controls",
+    "state",
+    "capabilities",
+    "rows",
+    "pagination",
+    "selected"
+  ],
+  "properties": {
+    "list": {
+      "type": "object",
+      "required": [
+        "section_id",
+        "page_id",
+        "key",
+        "style",
+        "layout",
+        "form_presentation",
+        "form_section_id",
+        "table_exists",
+        "labels",
+        "row_css",
+        "has_template"
+      ],
+      "properties": {
+        "section_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "page_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "description": "The list's name in the URL: <key>.page, <key>.q, ..."
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "entry-form-list",
+            "data-view"
+          ]
+        },
+        "layout": {
+          "type": "string",
+          "enum": [
+            "table",
+            "cards",
+            "custom"
+          ],
+          "description": "custom (a data view only): every row carries `sections`, the author's row template rendered for that record."
+        },
+        "form_presentation": {
+          "type": "string",
+          "enum": [
+            "modal",
+            "page"
+          ]
+        },
+        "form_section_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "The inline form that creates and edits records; null for a data view."
+        },
+        "table_exists": {
+          "type": "boolean",
+          "description": "False while the list's form was never submitted: there is nothing to read yet."
+        },
+        "labels": {
+          "type": "object",
+          "description": "Author text in the visitor's language, keyed add, empty, search, confirm_delete (a data view has empty and search).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "row_css": {
+          "type": "string",
+          "description": "Classes of the element that holds the records of a custom layout (web only); empty otherwise."
+        },
+        "has_template": {
+          "type": "boolean",
+          "description": "True when the author placed sections inside a data view with the layout custom. A custom layout without any falls back to cards."
+        }
+      },
+      "additionalProperties": false
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "field",
+          "label",
+          "format",
+          "sortable",
+          "searchable"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "text",
+              "number",
+              "date",
+              "datetime",
+              "boolean",
+              "badge",
+              "file",
+              "image"
+            ]
+          },
+          "sortable": {
+            "type": "boolean"
+          },
+          "searchable": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "controls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "field",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "select",
+              "multi_select",
+              "boolean",
+              "date_range",
+              "number_range"
+            ]
+          },
+          "field": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "contains",
+              "eq",
+              "starts_with"
+            ]
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "value",
+                "label",
+                "count"
+              ],
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "Records that hold the value inside the visitor's dataset; null for fixed choices."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "state": {
+      "type": "object",
+      "description": "The state that was served: the page after clamping, the order in effect and the URL parameters that express it.",
+      "required": [
+        "page",
+        "page_size",
+        "q",
+        "sort",
+        "filters",
+        "record",
+        "mode",
+        "query"
+      ],
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "q": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sort": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "field",
+              "direction"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "asc",
+                  "desc"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "filters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "record": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "view",
+            "edit",
+            "create",
+            null
+          ]
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "required": [
+        "create",
+        "search",
+        "history",
+        "quick_actions"
+      ],
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "search": {
+          "type": "boolean"
+        },
+        "history": {
+          "type": "boolean"
+        },
+        "quick_actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label",
+              "confirm"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "confirm": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "record_id",
+          "entry_date",
+          "version",
+          "values",
+          "is_own",
+          "can_update",
+          "can_delete",
+          "can_view_history",
+          "quick_actions",
+          "detail_url"
+        ],
+        "properties": {
+          "record_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "entry_date": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "values": {
+            "type": "object",
+            "description": "Configured columns by field key. An uploaded file or image is {files:[{index,name,mime,size,url}]}, never a storage path.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "integer",
+                "null",
+                "array",
+                "object"
+              ]
+            }
+          },
+          "sections": {
+            "type": "array",
+            "description": "Only on the rows of a data view with the layout custom: the sections of the author's row template, rendered for this record (same shape as the sections of the page payload; tokens, conditions and translations are already resolved).",
+            "items": {
+              "type": "object"
+            }
+          },
+          "is_own": {
+            "type": "boolean"
+          },
+          "can_update": {
+            "type": "boolean"
+          },
+          "can_delete": {
+            "type": "boolean"
+          },
+          "can_view_history": {
+            "type": "boolean"
+          },
+          "quick_actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detail_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "required": [
+        "page",
+        "page_size",
+        "total",
+        "total_pages"
+      ],
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_pages": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "selected": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "The record that is open (view or edit); null for the list or a new entry.",
+      "required": [
+        "record_id",
+        "mode",
+        "entry_date",
+        "version",
+        "values",
+        "form_values",
+        "is_own",
+        "can_update",
+        "can_delete",
+        "can_view_history",
+        "quick_actions",
+        "detail_url"
+      ],
+      "properties": {
+        "record_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "view",
+            "edit"
+          ]
+        },
+        "entry_date": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Send it back as expected_version when saving, deleting, running an action or restoring."
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer",
+              "null",
+              "array"
+            ]
+          }
+        },
+        "form_values": {
+          "type": [
+            "array",
+            "object",
+            "null"
+          ],
+          "description": "The prefill the inline form receives on a page load; null when the caller cannot edit the record."
+        },
+        "is_own": {
+          "type": "boolean"
+        },
+        "can_update": {
+          "type": "boolean"
+        },
+        "can_delete": {
+          "type": "boolean"
+        },
+        "can_view_history": {
+          "type": "boolean"
+        },
+        "quick_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "detail_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

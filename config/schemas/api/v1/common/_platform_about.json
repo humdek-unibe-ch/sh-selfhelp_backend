@@ -1,0 +1,39 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Platform About",
+    "description": "The 'about the platform' block the backend adds to every `version` section (mirrors @selfhelp/shared IPlatformAbout). Built for the caller when the page is served, after the page cache, and never cached.",
+    "type": "object",
+    "properties": {
+        "detail": {
+            "type": "boolean",
+            "description": "true only when the caller holds admin.system.read; then the versions are exact. Otherwise every version is null."
+        },
+        "product": {
+            "type": "object",
+            "description": "The SelfHelp product. Its version is always shown.",
+            "properties": {
+                "name": { "type": "string" },
+                "version": { "type": "string" }
+            },
+            "required": ["name", "version"],
+            "additionalProperties": false
+        },
+        "frameworks": {
+            "type": "array",
+            "description": "Server side parts: PHP, Symfony, MySQL, Redis.",
+            "items": { "$ref": "_about_item.json" }
+        },
+        "plugins": {
+            "type": "array",
+            "description": "Installed and enabled plugins with the licence of their manifest.",
+            "items": { "$ref": "_about_item.json" }
+        },
+        "libraries": {
+            "type": "array",
+            "description": "The direct production dependencies of the backend, sorted by name.",
+            "items": { "$ref": "_about_item.json" }
+        }
+    },
+    "required": ["detail", "product", "frameworks", "plugins", "libraries"],
+    "additionalProperties": false
+}

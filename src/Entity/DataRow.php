@@ -13,6 +13,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 #[ORM\Table(name: 'data_rows')]
 #[ORM\Index(name: 'idx_data_rows_id_data_tables', columns: ['id_data_tables'])]
+// Ordered and owner-scoped pages and counts of the data query engine: the index order is
+// `ORDER BY timestamp DESC, id DESC` and the deleted marker is in the index (see the migration).
+#[ORM\Index(name: 'idx_data_rows_table_timestamp', columns: ['id_data_tables', 'timestamp', 'id', 'id_action_trigger_types'])]
+#[ORM\Index(name: 'idx_data_rows_table_user_timestamp', columns: ['id_data_tables', 'id_users', 'timestamp', 'id', 'id_action_trigger_types'])]
 class DataRow
 {
     #[ORM\ManyToOne(targetEntity: DataTable::class, inversedBy: 'dataRows', cascade: ['persist'])]
@@ -44,6 +48,14 @@ class DataRow
 
     #[ORM\Column(name: 'id_action_trigger_types', type: 'integer', nullable: true)]
     private ?int $idActionTriggerTypes = null;
+
+    /**
+     * Version of the record: 1 when created, +1 for every persisted change. It is
+     * advanced only by `DataRevisionService`, with one atomic statement inside the
+     * write transaction, so two saves of the same version can never both succeed.
+     */
+    #[ORM\Column(name: 'version', type: 'integer', options: ['default' => 1])]
+    private int $version = 1;
 
     public function getId(): ?int
     {
@@ -112,6 +124,22 @@ class DataRow
     public function setIdUsers(?int $idUsers): static
     {
         $this->idUsers = $idUsers;
+
+        return $this;
+    }
+
+    public function getVersion(): int
+    {
+        return $this->version;
+    }
+
+    /**
+     * Keep the in-memory copy in step after the database version was advanced
+     * by `DataRevisionService` (the statement, not this setter, is what counts).
+     */
+    public function setVersion(int $version): static
+    {
+        $this->version = $version;
 
         return $this;
     }

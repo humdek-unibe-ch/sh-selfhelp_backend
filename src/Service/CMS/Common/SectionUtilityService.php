@@ -811,6 +811,9 @@ class SectionUtilityService
                     && trim($this->asString($section['edit_url']['content'] ?? '')) !== '';
 
                 if ($deleteEntryEnabled || $editEntryEnabled) {
+                    // A delete is refused without the version of the record it is based on (409 when
+                    // it is old): offer the version every row has right now, next to its flags.
+                    $entries = $this->dataService->withRecordVersions($entries);
                     $currentUser = $this->userContextService->getCurrentUser();
                     $currentUserId = $currentUser ? (int) $currentUser->getId() : 0;
                     // Resolve the data-table DELETE/UPDATE permissions once

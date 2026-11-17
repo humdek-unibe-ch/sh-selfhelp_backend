@@ -22,6 +22,9 @@ class InterpolationService extends BaseService
 {
     private \Mustache\Engine $mustache;
 
+    /** Renders the values of a condition as they are (no HTML escaping); created on first use. */
+    private ?\Mustache\Engine $rawMustache = null;
+
     private ?LoggerInterface $logger;
 
     /**
@@ -49,8 +52,15 @@ class InterpolationService extends BaseService
         // escaping (ENT_COMPAT / UTF-8) for scalar values. Arrays are still
         // usable as Mustache sections ({{#system.user_group}}…{{/…}}); only
         // their scalar `{{ }}` output is neutralised.
+        // Escape by origin, not by looking at the text: only values the server
+        // marked as already-built HTML (ServerBuiltString) skip escaping.
+        // A plain string that happens to look like a URL or an <a> tag is still
+        // escaped — that is user content, and content sniffing was an XSS hole.
         $this->mustache = new \Mustache\Engine([
             'escape' => static function (mixed $value): string {
+                if ($value instanceof ServerBuiltString) {
+                    return $value->value();
+                }
                 if (!is_scalar($value)) {
                     return '';
                 }
@@ -197,6 +207,120 @@ class InterpolationService extends BaseService
         // empty string instead of passing a non-string to interpolate().
         $conditionContent = is_string($originalCondition) ? $originalCondition : '';
         return $this->interpolate($conditionContent, ...$dataArrays);
+    }
+
+    /**
+     * Resolve the `{{tokens}}` of a section condition against the data of its section.
+     *
+     * A condition is JSON Logic. The tokens are resolved in the DECODED structure, one string at a time,
+     * never in the JSON text: a value can only ever become a string in the condition, it can never close
+     * a string, add an operator or change the shape of the condition, whatever it contains. The values are
+     * the raw data (no HTML escaping: they are compared, not drawn).
+     *
+     * A `{"var": "{{token}}"}` is a value, not a variable name: it becomes the string the token stands for.
+     * A value of the data can therefore never pick which system variable (`user_group`, `language`, ...) the
+     * condition reads. A `var` that names a variable without a token stays a variable.
+     *
+     * A condition without a token is returned as it is, so every condition that never used one evaluates
+     * exactly as before. A condition whose whole value is such a `var` is returned as `{"!!": [value]}`.
+     *
+     * @param array<array-key, mixed>|string $condition The condition as the section stores it (array or JSON text)
+     * @param array<array-key, mixed> $data The data of the section: system, globals, route, supporting scopes, the record
+     * @return array<array-key, mixed>|string The condition to evaluate
+     */
+    public function interpolateCondition(array|string $condition, array $data): array|string
+    {
+        if (is_string($condition)) {
+            if (!str_contains($condition, '{{')) {
+                return $condition;
+            }
+            // Conditions are sometimes stored as a JSON string inside a JSON string (see ConditionService).
+            $decoded = json_decode($condition, true);
+            for ($attempt = 0; is_string($decoded) && $attempt < 5; $attempt++) {
+                $next = json_decode($decoded, true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    break;
+                }
+                $decoded = $next;
+            }
+            if (!is_array($decoded)) {
+                return $condition;
+            }
+        } else {
+            $decoded = $condition;
+        }
+
+        if (!$this->conditionHasToken($decoded)) {
+            return $condition;
+        }
+
+        $resolved = $this->resolveConditionNode($decoded, $data);
+
+        return is_array($resolved) ? $resolved : ['!!' => [$resolved]];
+    }
+
+    /**
+     * @param array<array-key, mixed> $node
+     */
+    private function conditionHasToken(array $node): bool
+    {
+        foreach ($node as $value) {
+            if (is_string($value) && str_contains($value, '{{')) {
+                return true;
+            }
+            if (is_array($value) && $this->conditionHasToken($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<array-key, mixed> $data
+     */
+    private function resolveConditionNode(mixed $node, array $data): mixed
+    {
+        if (is_string($node)) {
+            return str_contains($node, '{{') ? $this->renderConditionValue($node, $data) : $node;
+        }
+        if (!is_array($node)) {
+            return $node;
+        }
+
+        if (count($node) === 1 && array_key_exists('var', $node)) {
+            $name = $node['var'];
+            $first = is_array($name) ? ($name[0] ?? null) : $name;
+            if (is_string($first) && str_contains($first, '{{')) {
+                return $this->renderConditionValue($first, $data);
+            }
+        }
+
+        $resolved = [];
+        foreach ($node as $key => $value) {
+            $resolved[$key] = $this->resolveConditionNode($value, $data);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param array<array-key, mixed> $data
+     */
+    private function renderConditionValue(string $template, array $data): string
+    {
+        $this->rawMustache ??= new \Mustache\Engine([
+            'escape' => static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
+        ]);
+
+        try {
+            return $this->rawMustache->render($template, $data);
+        } catch (\Throwable $e) {
+            // Same rule as performInterpolation(): a malformed token must not take the page down.
+            $this->logError('Condition interpolation failed: ' . $e->getMessage());
+
+            return '';
+        }
     }
 
     /**

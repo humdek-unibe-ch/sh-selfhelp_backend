@@ -8,6 +8,7 @@
 namespace App\Controller\Api\V1\Frontend;
 
 use App\Service\Core\ApiResponseFormatter;
+use App\Service\CMS\FormList\FormListPageStateService;
 use App\Service\CMS\Frontend\PageService;
 use App\Service\CMS\Frontend\PageViewTrackerService;
 use App\Service\Core\LookupService;
@@ -49,7 +50,8 @@ class PageController extends AbstractController
     public function __construct(
         private readonly PageService $pageService,
         private readonly ApiResponseFormatter $responseFormatter,
-        private readonly PageViewTrackerService $pageViewTracker
+        private readonly PageViewTrackerService $pageViewTracker,
+        private readonly FormListPageStateService $listStates,
     ) {
     }
 
@@ -104,11 +106,13 @@ class PageController extends AbstractController
 
             $this->trackPageView($page, $mode, $preview, $request);
 
+            $page = $this->withListStates($page, $request, $language_id, $mode, $preview);
             $response = $this->responseFormatter->formatSuccess(
                 $page,
                 'responses/frontend/get_page',
                 Response::HTTP_OK
             );
+            $this->keepListsPrivate($page, $response);
 
             if ($preview) {
                 $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
@@ -163,11 +167,13 @@ class PageController extends AbstractController
 
             $this->trackPageView($page, $mode, $preview, $request);
 
+            $page = $this->withListStates($page, $request, $language_id, $mode, $preview);
             $response = $this->responseFormatter->formatSuccess(
                 $page,
                 'responses/frontend/get_page',
                 Response::HTTP_OK
             );
+            $this->keepListsPrivate($page, $response);
 
             if ($preview) {
                 $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
@@ -183,6 +189,34 @@ class PageController extends AbstractController
                 $e->getMessage(),
                 $statusCode
             );
+        }
+    }
+
+    /**
+     * The state of every list on the page, for this visitor and the list
+     * parameters of the request. Added after the page cache and never stored in
+     * it ({@see FormListPageStateService}).
+     *
+     * @param array<string, mixed> $page
+     * @return array<string, mixed>
+     */
+    private function withListStates(array $page, Request $request, ?int $languageId, string $mode, bool $preview): array
+    {
+        $queryString = $request->server->get('QUERY_STRING', '');
+
+        return $this->listStates->withListStates($page, is_string($queryString) ? $queryString : '', $languageId, $mode, $preview);
+    }
+
+    /**
+     * A page with a list carries the visitor's rows: no shared cache may keep it.
+     *
+     * @param array<string, mixed> $page
+     */
+    private function keepListsPrivate(array $page, JsonResponse $response): void
+    {
+        if ($this->listStates->containsLists($page)) {
+            $response->setPrivate();
+            $response->headers->addCacheControlDirective('no-store');
         }
     }
 

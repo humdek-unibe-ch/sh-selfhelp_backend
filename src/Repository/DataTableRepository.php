@@ -8,41 +8,49 @@
 
 namespace App\Repository;
 
-use App\Service\CMS\Common\DataTableFilterService;
-use App\Service\Cache\Core\CacheService;
-use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
-use Doctrine\DBAL\ParameterType;
-use Doctrine\Persistence\ManagerRegistry;
 use App\Entity\DataTable;
-use App\Entity\User;
+use App\Service\CMS\Common\DataTableFilterService;
+use App\Service\CMS\DataQuery\DataFilter;
+use App\Service\CMS\DataQuery\DataFilterGroup;
+use App\Service\CMS\DataQuery\DataQuery;
+use App\Service\CMS\DataQuery\DataQueryEngine;
+use App\Service\CMS\DataQuery\DataSort;
+use App\Service\CMS\DataQuery\LegacyFilterTranslator;
+use App\Service\CMS\FormFieldKeyResolver;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\Persistence\ManagerRegistry;
 
 /**
+ * Reads of the generic data store in the shape the older callers use: a filter
+ * fragment, a user id, a language and a column list. Every read runs through
+ * the {@see DataQueryEngine}; the filter fragment is turned into a structured
+ * filter by {@see LegacyFilterTranslator} and never reaches SQL as text.
+ *
+ * New code builds a {@see DataQuery} and calls the engine directly.
+ *
  * @extends ServiceEntityRepository<DataTable>
  */
 class DataTableRepository extends ServiceEntityRepository
 {
-    public function __construct(ManagerRegistry $registry, private readonly CacheService $cache, private readonly DataTableFilterService $dataTableFilterService)
-    {
+    public function __construct(
+        ManagerRegistry $registry,
+        private readonly DataTableFilterService $dataTableFilterService,
+        private readonly DataQueryEngine $dataQueryEngine,
+        private readonly LegacyFilterTranslator $legacyFilterTranslator,
+        private readonly FormFieldKeyResolver $formFieldKeyResolver,
+    ) {
         parent::__construct($registry, DataTable::class);
     }
 
     /**
-     * Sanitize filter parameter for use in cache keys by replacing reserved characters
-     */
-    private function sanitizeFilterForCacheKey(string $filter): string
-    {
-        // Replace reserved characters that are not allowed in cache tags
-        return str_replace(
-            ['(', ')', ' ', '=', '>', '<', '!', '&', '|', '*', '?', '{', '}', '[', ']', '@', ':', '/', '\\'],
-            ['_LPAR_', '_RPAR_', '_SPACE_', '_EQ_', '_GT_', '_LT_', '_NOT_', '_AND_', '_OR_', '_STAR_', '_QMARK_', '_LBRACE_', '_RBRACE_', '_LBRACKET_', '_RBRACKET_', '_AT_', '_COLON_', '_SLASH_', '_BSLASH_'],
-            $filter
-        );
-    }
-
-    /**
-     * Calls the stored procedure get_data_table_filtered and returns the result.
+     * Rows of a table, restricted to the records of one user when `$userId` is
+     * above zero and unrestricted otherwise. A caller that must never read other
+     * users' records passes the owner scope through {@see DataQuery} instead of a
+     * magic user id.
      *
+     * @param string $selectedColumns comma-separated column keys; empty reads every column
      * @return list<array<string, mixed>>
+     * @throws \App\Service\CMS\DataQuery\DataQueryException when the filter cannot be read as a structured filter
      */
     public function getDataTableWithFilter(
         int $tableId,
@@ -53,130 +61,273 @@ class DataTableRepository extends ServiceEntityRepository
         string $timezoneCode = 'UTC',
         string $selectedColumns = '',
     ): array {
-        $filter = $this->dataTableFilterService->guardForStoredProcedure($filter);
-        $selectedColumns = $this->dataTableFilterService->sanitizeSelectedColumns($selectedColumns);
-        $cache = $this->cache
-            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
-        if ($userId > 0) {
-            // withEntityScope returns a clone - reassign so the user
-            // scope is actually applied to the cache key.
-            $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
-        }
-
-        // Sanitize the filter parameter for cache key usage
-        $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
-        $sanitizedTimezone = $this->sanitizeFilterForCacheKey($timezoneCode);
-        $sanitizedColumns = $this->sanitizeFilterForCacheKey($selectedColumns);
-
-        /** @var list<array<string, mixed>> $rows */
-        $rows = $cache
-            ->getList("data_table_with_filter_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}_{$sanitizedTimezone}_{$sanitizedColumns}", function () use ($tableId, $userId, $filter, $excludeDeleted, $languageId, $timezoneCode, $selectedColumns) {
-                $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_data_table_filtered(:tableId, :userId, :filter, :excludeDeleted, :languageId, :timezoneCode, :selectedColumns)';
-                $stmt = $conn->prepare($sql);
-                $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
-                $stmt->bindValue('userId', $userId, ParameterType::INTEGER);
-                $stmt->bindValue('filter', $filter, ParameterType::STRING);
-                $stmt->bindValue('excludeDeleted', $excludeDeleted, ParameterType::BOOLEAN);
-                $stmt->bindValue('languageId', $languageId, ParameterType::INTEGER);
-                $stmt->bindValue('timezoneCode', $timezoneCode, ParameterType::STRING);
-                $stmt->bindValue('selectedColumns', $selectedColumns, ParameterType::STRING);
-                $result = $stmt->executeQuery();
-
-                return $result->fetchAllAssociative();
-            });
-
-        return $rows;
+        return $this->read(
+            $tableId,
+            $userId > 0 ? DataQuery::OWNER_USER : DataQuery::OWNER_ANY,
+            $userId > 0 ? $userId : null,
+            $filter,
+            $excludeDeleted,
+            $languageId,
+            $timezoneCode,
+            $selectedColumns,
+            false,
+        );
     }
 
     /**
-     * Calls the stored procedure get_data_table_for_user_groups for group-based user filtering.
-     * Used for non-admin users who should only see data from users in their accessible groups.
-     * The stored procedure internally determines accessible users based on current user's permissions.
+     * Rows written by the users of the groups that the current user's roles may
+     * access. A user with no accessible group reads nothing.
      *
      * @return list<array<string, mixed>>
+     * @throws \App\Service\CMS\DataQuery\DataQueryException when the filter cannot be read as a structured filter
      */
     public function getDataTableWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC'): array
     {
-        $filter = $this->dataTableFilterService->guardForStoredProcedure($filter);
-        $cache = $this->cache
-            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId)            
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $currentUserId);
-
-        $user = $this->getEntityManager()->getRepository(User::class)->find($currentUserId);
-        if ($user) {
-            foreach ($user->getUserRoles() as $role) {
-                $roleId = $role->getId();
-                assert($roleId !== null);
-                // withEntityScope returns a clone - reassign so every
-                // role scope is actually folded into the cache key.
-                $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
-            }
-        }
-
-        // Sanitize the filter parameter for cache key usage
-        $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
-        $sanitizedTimezone = $this->sanitizeFilterForCacheKey($timezoneCode);
-
-        /** @var list<array<string, mixed>> $rows */
-        $rows = $cache
-            ->getList("data_table_with_user_group_filter_{$tableId}_{$currentUserId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}_{$sanitizedTimezone}", function () use ($tableId, $currentUserId, $filter, $excludeDeleted, $languageId, $timezoneCode) {
-                $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_data_table_for_user_groups(:tableId, :currentUserId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
-                $stmt = $conn->prepare($sql);
-                $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
-                $stmt->bindValue('currentUserId', $currentUserId, ParameterType::INTEGER);
-                $stmt->bindValue('filter', $filter, ParameterType::STRING);
-                $stmt->bindValue('excludeDeleted', $excludeDeleted, ParameterType::BOOLEAN);
-                $stmt->bindValue('languageId', $languageId, ParameterType::INTEGER);
-                $stmt->bindValue('timezoneCode', $timezoneCode, ParameterType::STRING);
-                $result = $stmt->executeQuery();
-
-                return $result->fetchAllAssociative();
-            });
-
-        return $rows;
+        return $this->read($tableId, DataQuery::OWNER_GROUPS, $currentUserId, $filter, $excludeDeleted, $languageId, $timezoneCode, '', false);
     }
 
     /**
-     * Calls the stored procedure get_data_table_all_languages and returns the result.
-     * This procedure returns all languages for each record (no language filtering).
+     * One row per record and language, with no language fallback.
      *
      * @return list<array<string, mixed>>
+     * @throws \App\Service\CMS\DataQuery\DataQueryException when the filter cannot be read as a structured filter
      */
     public function getDataTableWithAllLanguages(int $tableId, int $userId, string $filter, bool $excludeDeleted, string $timezoneCode = 'UTC'): array
     {
-        $filter = $this->dataTableFilterService->guardForStoredProcedure($filter);
-        $cache = $this->cache
-            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-            ->withEntityScope(entityType: CacheService::ENTITY_SCOPE_DATA_TABLE, entityId: $tableId);
-        if ($userId > 0) {
-            $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+        return $this->read(
+            $tableId,
+            $userId > 0 ? DataQuery::OWNER_USER : DataQuery::OWNER_ANY,
+            $userId > 0 ? $userId : null,
+            $filter,
+            $excludeDeleted,
+            1,
+            $timezoneCode,
+            '',
+            true,
+        );
+    }
+
+    /**
+     * The rows {@see getDataTableWithFilter()} returns, in stable batches instead
+     * of one list: exports and background work read a table of any size without
+     * holding it in memory. The records, their order and their shape are the
+     * same as the single read.
+     *
+     * @param string $selectedColumns comma-separated column keys; empty reads every column
+     * @return \Generator<int, list<array<string, mixed>>>
+     * @throws \App\Service\CMS\DataQuery\DataQueryException when the filter cannot be read as a structured filter
+     */
+    public function batchesWithFilter(
+        int $tableId,
+        int $userId,
+        string $filter,
+        bool $excludeDeleted,
+        int $languageId = 1,
+        string $timezoneCode = 'UTC',
+        string $selectedColumns = '',
+        int $batchSize = 500,
+    ): \Generator {
+        $query = $this->queryFor(
+            $tableId,
+            $userId > 0 ? DataQuery::OWNER_USER : DataQuery::OWNER_ANY,
+            $userId > 0 ? $userId : null,
+            $filter,
+            $excludeDeleted,
+            $languageId,
+            $timezoneCode,
+            $selectedColumns,
+            false,
+        );
+        if ($query === null) {
+            return;
         }
 
-        // Sanitize the filter parameter for cache key usage
-        $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
-        $sanitizedTimezone = $this->sanitizeFilterForCacheKey($timezoneCode);
+        yield from $this->dataQueryEngine->batches($query, $batchSize);
+    }
 
-        /** @var list<array<string, mixed>> $rows */
-        $rows = $cache
-            ->getList("data_table_with_all_languages_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$sanitizedTimezone}", function () use ($tableId, $userId, $filter, $excludeDeleted, $timezoneCode) {
-                $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_data_table_all_languages(:tableId, :userId, :filter, :excludeDeleted, :timezoneCode)';
-                $stmt = $conn->prepare($sql);
-                $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
-                $stmt->bindValue('userId', $userId, ParameterType::INTEGER);
-                $stmt->bindValue('filter', $filter, ParameterType::STRING);
-                $stmt->bindValue('excludeDeleted', $excludeDeleted, ParameterType::BOOLEAN);
-                $stmt->bindValue('timezoneCode', $timezoneCode, ParameterType::STRING);
-                $result = $stmt->executeQuery();
+    /**
+     * The rows {@see getDataTableWithAllLanguages()} returns, in stable batches: one
+     * row per record and language, with no language fallback, so a translated
+     * cell is read as it was written. A batch holds the rows of whole records.
+     *
+     * @return \Generator<int, list<array<string, mixed>>>
+     * @throws \App\Service\CMS\DataQuery\DataQueryException when the filter cannot be read as a structured filter
+     */
+    public function batchesWithAllLanguages(int $tableId, int $userId, string $filter, bool $excludeDeleted, string $timezoneCode = 'UTC', int $batchSize = 500): \Generator
+    {
+        $query = $this->queryFor(
+            $tableId,
+            $userId > 0 ? DataQuery::OWNER_USER : DataQuery::OWNER_ANY,
+            $userId > 0 ? $userId : null,
+            $filter,
+            $excludeDeleted,
+            1,
+            $timezoneCode,
+            '',
+            true,
+        );
+        if ($query === null) {
+            return;
+        }
 
-                return $result->fetchAllAssociative();
-            });
+        yield from $this->dataQueryEngine->batches($query, $batchSize);
+    }
 
-        return $rows;
+    /**
+     * The rows {@see getDataTableWithUserGroupFilter()} returns, in stable batches.
+     *
+     * @return \Generator<int, list<array<string, mixed>>>
+     * @throws \App\Service\CMS\DataQuery\DataQueryException when the filter cannot be read as a structured filter
+     */
+    public function batchesWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC', int $batchSize = 500): \Generator
+    {
+        $query = $this->queryFor($tableId, DataQuery::OWNER_GROUPS, $currentUserId, $filter, $excludeDeleted, $languageId, $timezoneCode, '', false);
+        if ($query === null) {
+            return;
+        }
+
+        yield from $this->dataQueryEngine->batches($query, $batchSize);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function read(
+        int $tableId,
+        string $ownerScope,
+        ?int $userId,
+        string $filter,
+        bool $excludeDeleted,
+        int $languageId,
+        string $timezoneCode,
+        string $selectedColumns,
+        bool $allLanguages,
+    ): array {
+        $query = $this->queryFor($tableId, $ownerScope, $userId, $filter, $excludeDeleted, $languageId, $timezoneCode, $selectedColumns, $allLanguages);
+
+        return $query === null ? [] : $this->dataQueryEngine->run($query)->rows;
+    }
+
+    /**
+     * The structured query of a legacy read, or null when the read can only be empty
+     * (a column selection that matches no column of the table).
+     */
+    private function queryFor(
+        int $tableId,
+        string $ownerScope,
+        ?int $userId,
+        string $filter,
+        bool $excludeDeleted,
+        int $languageId,
+        string $timezoneCode,
+        string $selectedColumns,
+        bool $allLanguages,
+    ): ?DataQuery {
+        $translated = $this->legacyFilterTranslator->translate($this->dataTableFilterService->guardForStoredProcedure($filter));
+        // Authors write input names (`status`); the engine needs field keys
+        // (`section_123`). Same rewrite FormList / fixed_filter already apply.
+        $resolvedFilter = $this->resolveInputNamesInFilter($tableId, $translated->filter);
+        $resolvedSorts = $this->resolveInputNamesInSorts($tableId, $translated->sorts);
+
+        $columns = null;
+        $selected = $this->dataTableFilterService->sanitizeSelectedColumns($selectedColumns);
+        if ($selected !== '') {
+            // A selection keeps the columns the table has; one that matches none reads nothing.
+            $nameToKey = $this->nameToFieldKey($tableId);
+            $requested = array_map(
+                static fn (string $name): string => $nameToKey[$name] ?? $name,
+                explode(',', $selected),
+            );
+            $columns = array_values(array_intersect($requested, array_keys($this->dataQueryEngine->columnsOf($tableId))));
+            if ($columns === []) {
+                return null;
+            }
+        }
+
+        return new DataQuery(
+            tableId: $tableId,
+            ownerScope: $ownerScope,
+            userId: $userId,
+            filter: $resolvedFilter,
+            sorts: $resolvedSorts,
+            limit: $translated->limit,
+            offset: $translated->offset,
+            columns: $columns,
+            excludeDeleted: $excludeDeleted,
+            languageId: $languageId,
+            allLanguages: $allLanguages,
+            timezone: $timezoneCode,
+        );
+    }
+
+    /**
+     * @return array<string, string> input name => field_key
+     */
+    private function nameToFieldKey(int $tableId): array
+    {
+        $table = $this->find($tableId);
+        $tableName = $table !== null ? (string) $table->getName() : '';
+        if ($tableName === '') {
+            return [];
+        }
+
+        return $this->formFieldKeyResolver->getNameToFieldKey($tableName);
+    }
+
+    private function resolveInputNamesInFilter(int $tableId, DataFilterGroup $group): DataFilterGroup
+    {
+        if ($group->isEmpty()) {
+            return $group;
+        }
+        $nameToKey = $this->nameToFieldKey($tableId);
+        if ($nameToKey === []) {
+            return $group;
+        }
+
+        return $this->mapFilterGroup($group, $nameToKey);
+    }
+
+    /**
+     * @param list<DataSort> $sorts
+     * @return list<DataSort>
+     */
+    private function resolveInputNamesInSorts(int $tableId, array $sorts): array
+    {
+        if ($sorts === []) {
+            return $sorts;
+        }
+        $nameToKey = $this->nameToFieldKey($tableId);
+        if ($nameToKey === []) {
+            return $sorts;
+        }
+        $resolved = [];
+        foreach ($sorts as $sort) {
+            $resolved[] = new DataSort($nameToKey[$sort->column] ?? $sort->column, $sort->direction);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param array<string, string> $nameToKey
+     */
+    private function mapFilterGroup(DataFilterGroup $group, array $nameToKey): DataFilterGroup
+    {
+        $children = [];
+        foreach ($group->children as $child) {
+            if ($child instanceof DataFilterGroup) {
+                $children[] = $this->mapFilterGroup($child, $nameToKey);
+            } elseif ($child instanceof DataFilter) {
+                $children[] = new DataFilter(
+                    $nameToKey[$child->column] ?? $child->column,
+                    $child->operator,
+                    $child->value,
+                    $child->valueType,
+                );
+            }
+        }
+
+        return new DataFilterGroup($group->mode, $children);
     }
 
     /**

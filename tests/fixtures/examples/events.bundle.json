@@ -4,12 +4,14 @@
     "exported_at": "2026-07-06T00:00:00+00:00",
     "core_version": "0.1.x",
     "title": "Events",
-    "description": "Upcoming events with date badges, location and detail pages; managed through an admin grid.",
+    "description": "Upcoming events with date, location and status: a filterable card list and a detail page for visitors, and a managed list with cancel/reopen actions for editors.",
     "tags": [
         "cms-in-cms",
-        "list + detail"
+        "list + detail",
+        "quick actions",
+        "translatable"
     ],
-    "_comment": "CMS-in-CMS template: an Events app in four pages. PUBLIC: /events lists upcoming events as cards (date badge, location, teaser) and /events/{record_id} renders the full event page. ADMIN (CMS surface): /cms/events is an entry-table CRUD grid and /cms/events/form is one create+edit form page with two routes (blank = create, /{record_id} = update) opened as a modal. Data binding is portable via \"@section:events-form\" tokens; data_tables[] carries columns + sample rows (import with options.importData=true). The description input is translatable. Content locales: de-CH + en-GB. Use a keyword + route prefix to import a second copy — in-content links are rewritten automatically. Import via Admin > Pages > Import. NOT auto-seeded.",
+    "_comment": "CMS-in-CMS template: an Events app in three pages. PUBLIC: /events is a read-only data view (cards, search, filters by location and date, paging) and /events/{record_id} renders the full event page; both read the table of the form through \"@section:events-form\". CMS: /cms/events is ONE entry-form-list that holds the form: add and edit events in a dialog, delete them, restore earlier versions, and cancel or reopen an event with one click (quick actions that change the status). The inputs are defined once, in the form inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). Title, location and description are translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
     "data_tables": [
         {
             "owner_section_name": "events-form",
@@ -17,6 +19,7 @@
                 "title",
                 "event_date",
                 "location",
+                "status",
                 "description"
             ],
             "rows": [
@@ -26,11 +29,15 @@
                         "de-CH": "Kick-off-Webinar zur Studie"
                     },
                     "event_date": "2026-08-20 17:00",
-                    "location": "online-zoom",
+                    "location": {
+                        "de-CH": "Online (Zoom)",
+                        "en-GB": "Online (Zoom)"
+                    },
                     "description": {
                         "en-GB": "A one-hour introduction for new participants: how the study works, how to use the app, and how your data is protected. Includes a live Q&A with the study team.",
                         "de-CH": "Eine einstündige Einführung für neue Teilnehmende: Ablauf der Studie, Nutzung der App und Schutz Ihrer Daten. Mit Live-Q&A des Studienteams."
-                    }
+                    },
+                    "status": "Scheduled"
                 },
                 {
                     "title": {
@@ -38,11 +45,15 @@
                         "de-CH": "Koordinatorinnen-Workshop"
                     },
                     "event_date": "2026-09-04 09:30",
-                    "location": "university-bern-a102",
+                    "location": {
+                        "de-CH": "Universität Bern, Raum A102",
+                        "en-GB": "University of Bern, Room A102"
+                    },
                     "description": {
                         "en-GB": "Hands-on training for study coordinators: building pages with the CMS, importing templates, and managing participant groups. Bring your own laptop.",
                         "de-CH": "Praxisworkshop für Studienkoordinatorinnen: Seiten im CMS erstellen, Vorlagen importieren und Teilnehmergruppen verwalten. Bitte eigenen Laptop mitbringen."
-                    }
+                    },
+                    "status": "Scheduled"
                 },
                 {
                     "title": {
@@ -50,11 +61,15 @@
                         "de-CH": "Tag der offenen Labortür"
                     },
                     "event_date": "2026-09-18 14:00",
-                    "location": "inselspital-lab-3",
+                    "location": {
+                        "de-CH": "Inselspital, Laborgebäude 3",
+                        "en-GB": "Inselspital, Lab Building 3"
+                    },
                     "description": {
                         "en-GB": "Visit the lab, meet the researchers and see the measurement setup used in the current wave. Open to all enrolled participants and their families.",
                         "de-CH": "Besuchen Sie das Labor, lernen Sie die Forschenden kennen und sehen Sie den Messaufbau der aktuellen Welle. Offen für alle eingeschriebenen Teilnehmenden und ihre Familien."
-                    }
+                    },
+                    "status": "Scheduled"
                 },
                 {
                     "title": {
@@ -62,23 +77,27 @@
                         "de-CH": "Ergebnisabend"
                     },
                     "event_date": "2026-11-12 18:30",
-                    "location": "kursaal-bern",
+                    "location": {
+                        "de-CH": "Kursaal Bern",
+                        "en-GB": "Kursaal Bern"
+                    },
                     "description": {
                         "en-GB": "We present the first aggregated results of the study, what they mean, and what happens next. With apéro afterwards.",
                         "de-CH": "Wir präsentieren die ersten aggregierten Studienergebnisse, was sie bedeuten und wie es weitergeht. Anschliessend Apéro."
-                    }
+                    },
+                    "status": "Scheduled"
                 }
             ]
         }
     ],
     "pages": [
         {
-            "keyword": "cms-events-form",
+            "keyword": "cms-events",
             "surface": "cms",
             "page_access_type": "mobile_and_web",
             "headless": false,
             "open_access": false,
-            "url": "/cms/events/form",
+            "url": "/cms/events",
             "parent_keyword": null,
             "is_system": false,
             "fields": [
@@ -88,251 +107,338 @@
                     "translations": [
                         {
                             "language_code": "de-CH",
-                            "content": "Veranstaltung"
+                            "content": "Veranstaltungen verwalten"
                         },
                         {
                             "language_code": "en-GB",
-                            "content": "Event"
-                        }
-                    ]
-                },
-                {
-                    "name": "open_in_modal",
-                    "display": false,
-                    "translations": [
-                        {
-                            "language_code": "all",
-                            "content": "1"
+                            "content": "Manage events"
                         }
                     ]
                 }
             ],
             "routes": [
                 {
-                    "path_pattern": "/cms/events/form",
+                    "path_pattern": "/cms/events",
                     "requirements": null,
                     "is_canonical": true,
                     "is_active": true,
                     "priority": 0
-                },
-                {
-                    "path_pattern": "/cms/events/{record_id}",
-                    "requirements": {
-                        "record_id": "\\d+"
-                    },
-                    "is_canonical": false,
-                    "is_active": true,
-                    "priority": 0
                 }
             ],
+            "cms_app_role": "cms_list",
             "sections": [
                 {
-                    "section_name": "events-form",
-                    "style_name": "entry-record-form",
+                    "section_name": "events-cms-list",
+                    "style_name": "entry-form-list",
                     "fields": {
                         "title": {
                             "de-CH": {
-                                "content": "Veranstaltung"
+                                "content": "Veranstaltungen"
                             },
                             "en-GB": {
-                                "content": "Event"
+                                "content": "Events"
                             }
                         },
-                        "alert_success": {
-                            "de-CH": {
-                                "content": "Veranstaltung gespeichert."
-                            },
-                            "en-GB": {
-                                "content": "Event saved."
-                            }
-                        },
-                        "btn_save_label": {
-                            "de-CH": {
-                                "content": "Speichern"
-                            },
-                            "en-GB": {
-                                "content": "Save"
-                            }
-                        },
-                        "btn_update_label": {
-                            "de-CH": {
-                                "content": "Aktualisieren"
-                            },
-                            "en-GB": {
-                                "content": "Update"
-                            }
-                        },
-                        "btn_cancel_label": {
-                            "de-CH": {
-                                "content": "Abbrechen"
-                            },
-                            "en-GB": {
-                                "content": "Cancel"
-                            }
-                        },
-                        "btn_cancel_url": {
+                        "list_key": {
                             "all": {
-                                "content": "/cms/events"
+                                "content": "events"
                             }
                         },
-                        "close_modal_on_save": {
+                        "list_layout": {
                             "all": {
-                                "content": "1"
+                                "content": "table"
                             }
                         },
-                        "load_record_from": {
+                        "form_presentation": {
                             "all": {
-                                "content": "record_id"
+                                "content": "modal"
+                            }
+                        },
+                        "page_size": {
+                            "all": {
+                                "content": "25"
+                            }
+                        },
+                        "list_columns": {
+                            "all": {
+                                "content": "[{\"field\":\"title\",\"label\":{\"de-CH\":\"Titel\",\"en-GB\":\"Title\"},\"sortable\":true,\"searchable\":true},{\"field\":\"event_date\",\"label\":{\"de-CH\":\"Datum\",\"en-GB\":\"Date\"},\"sortable\":true,\"format\":\"datetime\"},{\"field\":\"location\",\"label\":{\"de-CH\":\"Ort\",\"en-GB\":\"Location\"},\"sortable\":true,\"searchable\":true},{\"field\":\"status\",\"label\":{\"de-CH\":\"Status\",\"en-GB\":\"Status\"},\"sortable\":true,\"format\":\"badge\"}]"
+                            }
+                        },
+                        "list_sort": {
+                            "all": {
+                                "content": "[{\"field\":\"event_date\",\"direction\":\"asc\"}]"
+                            }
+                        },
+                        "list_controls": {
+                            "all": {
+                                "content": "[{\"id\":\"status\",\"type\":\"select\",\"field\":\"status\",\"label\":{\"de-CH\":\"Status\",\"en-GB\":\"Status\"},\"options\":[{\"value\":\"Scheduled\",\"label\":{\"de-CH\":\"Geplant\",\"en-GB\":\"Scheduled\"}},{\"value\":\"Cancelled\",\"label\":{\"de-CH\":\"Abgesagt\",\"en-GB\":\"Cancelled\"}}]},{\"id\":\"date\",\"type\":\"date_range\",\"field\":\"event_date\",\"label\":{\"de-CH\":\"Datum\",\"en-GB\":\"Date\"}}]"
+                            }
+                        },
+                        "quick_actions": {
+                            "all": {
+                                "content": "[{\"id\":\"cancel\",\"label\":{\"de-CH\":\"Absagen\",\"en-GB\":\"Cancel event\"},\"confirm\":{\"de-CH\":\"Diese Veranstaltung absagen?\",\"en-GB\":\"Cancel this event?\"},\"set\":{\"status\":\"Cancelled\"},\"when\":{\"mode\":\"and\",\"children\":[{\"column\":\"status\",\"operator\":\"eq\",\"value\":\"Scheduled\"}]}},{\"id\":\"reopen\",\"label\":{\"de-CH\":\"Wieder öffnen\",\"en-GB\":\"Reopen\"},\"set\":{\"status\":\"Scheduled\"},\"when\":{\"mode\":\"and\",\"children\":[{\"column\":\"status\",\"operator\":\"eq\",\"value\":\"Cancelled\"}]}}]"
                             }
                         },
                         "own_entries_only": {
                             "all": {
                                 "content": "0"
                             }
+                        },
+                        "allow_create": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "allow_update": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "allow_delete": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "show_history": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "label_add": {
+                            "de-CH": {
+                                "content": "Veranstaltung hinzufügen"
+                            },
+                            "en-GB": {
+                                "content": "Add event"
+                            }
+                        },
+                        "label_empty": {
+                            "de-CH": {
+                                "content": "Noch keine Veranstaltungen."
+                            },
+                            "en-GB": {
+                                "content": "No events yet."
+                            }
+                        },
+                        "label_search": {
+                            "de-CH": {
+                                "content": "Veranstaltungen durchsuchen"
+                            },
+                            "en-GB": {
+                                "content": "Search events"
+                            }
+                        },
+                        "label_confirm_delete": {
+                            "de-CH": {
+                                "content": "Diese Veranstaltung löschen?"
+                            },
+                            "en-GB": {
+                                "content": "Delete this event?"
+                            }
                         }
                     },
                     "children": [
                         {
-                            "section_name": "events-form-title",
-                            "style_name": "text-input",
+                            "section_name": "events-form",
+                            "style_name": "form-record",
                             "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "title"
-                                    }
-                                },
-                                "label": {
+                                "alert_success": {
                                     "de-CH": {
-                                        "content": "Titel"
+                                        "content": "Veranstaltung gespeichert."
                                     },
                                     "en-GB": {
-                                        "content": "Title"
+                                        "content": "Event saved."
                                     }
                                 },
-                                "is_required": {
-                                    "all": {
-                                        "content": "1"
+                                "btn_save_label": {
+                                    "de-CH": {
+                                        "content": "Speichern"
+                                    },
+                                    "en-GB": {
+                                        "content": "Save"
                                     }
                                 },
-                                "translatable": {
-                                    "all": {
-                                        "content": "1"
+                                "btn_update_label": {
+                                    "de-CH": {
+                                        "content": "Aktualisieren"
+                                    },
+                                    "en-GB": {
+                                        "content": "Update"
                                     }
                                 }
-                            }
-                        },
-                        {
-                            "section_name": "events-form-date",
-                            "style_name": "datepicker",
-                            "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "event_date"
+                            },
+                            "children": [
+                                {
+                                    "section_name": "events-form-title",
+                                    "style_name": "text-input",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "title"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Titel"
+                                            },
+                                            "en-GB": {
+                                                "content": "Title"
+                                            }
+                                        },
+                                        "is_required": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "translatable": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        }
                                     }
                                 },
-                                "label": {
-                                    "de-CH": {
-                                        "content": "Datum und Zeit"
-                                    },
-                                    "en-GB": {
-                                        "content": "Date and time"
+                                {
+                                    "section_name": "events-form-date",
+                                    "style_name": "datepicker",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "event_date"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Datum und Zeit"
+                                            },
+                                            "en-GB": {
+                                                "content": "Date and time"
+                                            }
+                                        },
+                                        "is_required": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "web_datepicker_type": {
+                                            "all": {
+                                                "content": "datetime"
+                                            }
+                                        },
+                                        "web_datepicker_format": {
+                                            "all": {
+                                                "content": "YYYY-MM-DD HH:mm"
+                                            }
+                                        },
+                                        "datepicker_placeholder": {
+                                            "all": {
+                                                "content": "2026-07-06 14:30"
+                                            }
+                                        }
                                     }
                                 },
-                                "is_required": {
-                                    "all": {
-                                        "content": "1"
+                                {
+                                    "section_name": "events-form-location",
+                                    "style_name": "text-input",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "location"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Ort"
+                                            },
+                                            "en-GB": {
+                                                "content": "Location"
+                                            }
+                                        },
+                                        "translatable": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        }
                                     }
                                 },
-                                "web_datepicker_type": {
-                                    "all": {
-                                        "content": "datetime"
+                                {
+                                    "section_name": "events-form-status",
+                                    "style_name": "select",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "status"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Status"
+                                            },
+                                            "en-GB": {
+                                                "content": "Status"
+                                            }
+                                        },
+                                        "options": {
+                                            "all": {
+                                                "content": "[{\"value\":\"Scheduled\",\"sort\":1},{\"value\":\"Cancelled\",\"sort\":2}]"
+                                            }
+                                        },
+                                        "option_labels": {
+                                            "de-CH": {
+                                                "content": "{\"Scheduled\":\"Geplant\",\"Cancelled\":\"Abgesagt\"}"
+                                            },
+                                            "en-GB": {
+                                                "content": "{\"Scheduled\":\"Scheduled\",\"Cancelled\":\"Cancelled\"}"
+                                            }
+                                        },
+                                        "value": {
+                                            "all": {
+                                                "content": "Scheduled"
+                                            }
+                                        }
                                     }
                                 },
-                                "web_datepicker_format": {
-                                    "all": {
-                                        "content": "YYYY-MM-DD HH:mm"
-                                    }
-                                },
-                                "datepicker_placeholder": {
-                                    "all": {
-                                        "content": "2026-09-04 09:30"
+                                {
+                                    "section_name": "events-form-description",
+                                    "style_name": "textarea",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "description"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Beschreibung"
+                                            },
+                                            "en-GB": {
+                                                "content": "Description"
+                                            }
+                                        },
+                                        "description": {
+                                            "de-CH": {
+                                                "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
+                                            },
+                                            "en-GB": {
+                                                "content": "Translatable — enter a separate text per language."
+                                            }
+                                        },
+                                        "translatable": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "rows": {
+                                            "all": {
+                                                "content": "5"
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        {
-                            "section_name": "events-form-location",
-                            "style_name": "select",
-                            "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "location"
-                                    }
-                                },
-                                "label": {
-                                    "de-CH": {
-                                        "content": "Ort"
-                                    },
-                                    "en-GB": {
-                                        "content": "Location"
-                                    }
-                                },
-                                "options": {
-                                    "all": {
-                                        "content": "[{\"value\":\"online-zoom\",\"sort\":1},{\"value\":\"university-bern-a102\",\"sort\":2},{\"value\":\"inselspital-lab-3\",\"sort\":3},{\"value\":\"kursaal-bern\",\"sort\":4}]"
-                                    }
-                                },
-                                "option_labels": {
-                                    "de-CH": {
-                                        "content": "{\"online-zoom\":\"Online (Zoom)\",\"university-bern-a102\":\"Universität Bern, Raum A102\",\"inselspital-lab-3\":\"Inselspital, Laborgebäude 3\",\"kursaal-bern\":\"Kursaal Bern\"}"
-                                    },
-                                    "en-GB": {
-                                        "content": "{\"online-zoom\":\"Online (Zoom)\",\"university-bern-a102\":\"University of Bern, Room A102\",\"inselspital-lab-3\":\"Inselspital, Lab Building 3\",\"kursaal-bern\":\"Kursaal Bern\"}"
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "section_name": "events-form-description",
-                            "style_name": "textarea",
-                            "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "description"
-                                    }
-                                },
-                                "label": {
-                                    "de-CH": {
-                                        "content": "Beschreibung"
-                                    },
-                                    "en-GB": {
-                                        "content": "Description"
-                                    }
-                                },
-                                "description": {
-                                    "de-CH": {
-                                        "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
-                                    },
-                                    "en-GB": {
-                                        "content": "Translatable — enter a separate text per language."
-                                    }
-                                },
-                                "translatable": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "rows": {
-                                    "all": {
-                                        "content": "5"
-                                    }
-                                }
-                            }
+                            ]
                         }
                     ]
                 }
-            ],
-            "cms_app_role": "form"
+            ]
         },
         {
             "keyword": "events",
@@ -368,6 +474,7 @@
                     "priority": 0
                 }
             ],
+            "cms_app_role": "public_list",
             "sections": [
                 {
                     "section_name": "events-page",
@@ -384,6 +491,9 @@
                             }
                         }
                     },
+                    "global_fields": {
+                        "css_mobile": "px-4 py-6"
+                    },
                     "children": [
                         {
                             "section_name": "events-hero",
@@ -391,7 +501,7 @@
                             "fields": {
                                 "gap": {
                                     "all": {
-                                        "content": "xs"
+                                        "content": "sm"
                                     }
                                 },
                                 "spacing": {
@@ -400,7 +510,45 @@
                                     }
                                 }
                             },
+                            "global_fields": {
+                                "css": "relative overflow-hidden rounded-3xl px-6 py-10 md:px-10 md:py-14 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950 border border-sky-100/80 dark:border-slate-800 shadow-sm",
+                                "css_mobile": "flex flex-col gap-2 mb-6"
+                            },
                             "children": [
+                                {
+                                    "section_name": "events-hero-eyebrow",
+                                    "style_name": "badge",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Termine"
+                                            },
+                                            "en-GB": {
+                                                "content": "Calendar"
+                                            }
+                                        },
+                                        "variant": {
+                                            "all": {
+                                                "content": "light"
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "violet"
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "xl"
+                                            }
+                                        }
+                                    }
+                                },
                                 {
                                     "section_name": "events-hero-title",
                                     "style_name": "title",
@@ -410,7 +558,7 @@
                                                 "content": "Veranstaltungen"
                                             },
                                             "en-GB": {
-                                                "content": "Upcoming events"
+                                                "content": "Events"
                                             }
                                         },
                                         "title_order": {
@@ -418,6 +566,9 @@
                                                 "content": "1"
                                             }
                                         }
+                                    },
+                                    "global_fields": {
+                                        "css": "tracking-tight text-4xl md:text-5xl font-semibold text-slate-900 dark:text-white max-w-3xl"
                                     }
                                 },
                                 {
@@ -432,44 +583,95 @@
                                                 "content": "Webinars, workshops and meetups around the study."
                                             }
                                         },
-                                        "color": {
-                                            "all": {
-                                                "content": "dimmed"
-                                            }
-                                        },
                                         "size": {
                                             "all": {
                                                 "content": "lg"
                                             }
                                         }
-                                    }
-                                },
-                                {
-                                    "section_name": "events-hero-divider",
-                                    "style_name": "divider",
-                                    "fields": {
-                                        "spacing": {
-                                            "all": {
-                                                "content": "{\"mt\":\"sm\"}"
-                                            }
-                                        }
+                                    },
+                                    "global_fields": {
+                                        "css": "max-w-2xl text-slate-600 dark:text-slate-300 leading-relaxed"
                                     }
                                 }
-                            ],
-                            "global_fields": {
-                                "css_mobile": "flex flex-col gap-2 mb-6"
-                            }
+                            ]
                         },
                         {
-                            "section_name": "events-list",
-                            "style_name": "entry-list",
+                            "section_name": "events-view",
+                            "style_name": "data-view",
+                            "fields": {
+                                "list_key": {
+                                    "all": {
+                                        "content": "events"
+                                    }
+                                },
+                                "list_layout": {
+                                    "all": {
+                                        "content": "custom"
+                                    }
+                                },
+                                "page_size": {
+                                    "all": {
+                                        "content": "6"
+                                    }
+                                },
+                                "list_columns": {
+                                    "all": {
+                                        "content": "[{\"field\":\"title\",\"label\":{\"de-CH\":\"Titel\",\"en-GB\":\"Title\"},\"sortable\":true,\"searchable\":true},{\"field\":\"event_date\",\"label\":{\"de-CH\":\"Datum\",\"en-GB\":\"Date\"},\"sortable\":true,\"format\":\"datetime\"},{\"field\":\"location\",\"label\":{\"de-CH\":\"Ort\",\"en-GB\":\"Location\"},\"sortable\":true,\"searchable\":true},{\"field\":\"status\",\"label\":{\"de-CH\":\"Status\",\"en-GB\":\"Status\"},\"format\":\"badge\"},{\"field\":\"description\",\"label\":{\"de-CH\":\"Beschreibung\",\"en-GB\":\"Description\"}}]"
+                                    }
+                                },
+                                "list_sort": {
+                                    "all": {
+                                        "content": "[{\"field\":\"event_date\",\"direction\":\"asc\"}]"
+                                    }
+                                },
+                                "list_controls": {
+                                    "all": {
+                                        "content": "[{\"id\":\"location\",\"type\":\"select\",\"field\":\"location\",\"label\":{\"de-CH\":\"Ort\",\"en-GB\":\"Location\"},\"options_from\":\"data\"},{\"id\":\"date\",\"type\":\"date_range\",\"field\":\"event_date\",\"label\":{\"de-CH\":\"Datum\",\"en-GB\":\"Date\"}}]"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "label_empty": {
+                                    "de-CH": {
+                                        "content": "Keine Veranstaltungen gefunden."
+                                    },
+                                    "en-GB": {
+                                        "content": "No events found."
+                                    }
+                                },
+                                "label_search": {
+                                    "de-CH": {
+                                        "content": "Veranstaltungen suchen"
+                                    },
+                                    "en-GB": {
+                                        "content": "Search events"
+                                    }
+                                },
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:events-form"
+                                    }
+                                },
+                                "detail_url": {
+                                    "all": {
+                                        "content": "/events/{record_id}"
+                                    }
+                                },
+                                "list_row_css": {
+                                    "all": {
+                                        "content": "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+                                    }
+                                }
+                            },
                             "global_fields": {
-                                "css": "grid grid-cols-1 md:grid-cols-2 gap-6",
-                                "css_mobile": "flex flex-col gap-4"
+                                "css": "mt-2"
                             },
                             "children": [
                                 {
-                                    "section_name": "events-list-card",
+                                    "section_name": "events-view-card",
                                     "style_name": "card",
                                     "fields": {
                                         "border": {
@@ -479,50 +681,124 @@
                                         },
                                         "radius": {
                                             "all": {
-                                                "content": "md"
+                                                "content": "xl"
                                             }
                                         },
                                         "web_card_shadow": {
                                             "all": {
-                                                "content": "sm"
+                                                "content": "md"
                                             }
                                         }
                                     },
+                                    "global_fields": {
+                                        "css": "h-full flex flex-col transition duration-300 ease-out hover:-translate-y-1 hover:shadow-xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm border-t-4 border-t-violet-400",
+                                        "css_mobile": "mb-4 px-4 py-4"
+                                    },
                                     "children": [
                                         {
-                                            "section_name": "events-list-card-date",
-                                            "style_name": "badge",
+                                            "section_name": "events-view-card-head",
+                                            "style_name": "group",
                                             "fields": {
-                                                "label": {
-                                                    "de-CH": {
-                                                        "content": "{{event.event_date}}"
-                                                    },
-                                                    "en-GB": {
-                                                        "content": "{{event.event_date}}"
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
                                                     }
                                                 },
-                                                "variant": {
+                                                "align": {
                                                     "all": {
-                                                        "content": "light"
+                                                        "content": "center"
                                                     }
                                                 },
-                                                "web_left_icon": {
+                                                "justify": {
                                                     "all": {
-                                                        "content": "IconCalendar"
+                                                        "content": "space-between"
+                                                    }
+                                                },
+                                                "web_group_wrap": {
+                                                    "all": {
+                                                        "content": "wrap"
                                                     }
                                                 }
-                                            }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-center justify-between gap-3"
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "events-view-card-date",
+                                                    "style_name": "badge",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "{{event_date}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{event_date}}"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "violet"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "xl"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "events-view-card-status",
+                                                    "style_name": "badge",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "{{_status_label}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{_status_label}}"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "outline"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "gray"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "xl"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
                                         },
                                         {
-                                            "section_name": "events-list-card-title",
+                                            "section_name": "events-view-card-title",
                                             "style_name": "title",
                                             "fields": {
                                                 "content": {
                                                     "de-CH": {
-                                                        "content": "{{event.title}}"
+                                                        "content": "{{title}}"
                                                     },
                                                     "en-GB": {
-                                                        "content": "{{event.title}}"
+                                                        "content": "{{title}}"
                                                     }
                                                 },
                                                 "title_order": {
@@ -535,18 +811,22 @@
                                                         "content": "{\"mt\":\"sm\"}"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css": "tracking-tight",
+                                                "css_mobile": "mt-3"
                                             }
                                         },
                                         {
-                                            "section_name": "events-list-card-location",
+                                            "section_name": "events-view-card-location",
                                             "style_name": "text",
                                             "fields": {
                                                 "text": {
                                                     "de-CH": {
-                                                        "content": "{{event._location_label}}"
+                                                        "content": "{{location}}"
                                                     },
                                                     "en-GB": {
-                                                        "content": "{{event._location_label}}"
+                                                        "content": "{{location}}"
                                                     }
                                                 },
                                                 "size": {
@@ -556,21 +836,24 @@
                                                 },
                                                 "color": {
                                                     "all": {
-                                                        "content": "dimmed"
+                                                        "content": "gray"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mt-1"
                                             }
                                         },
                                         {
-                                            "section_name": "events-list-card-teaser",
+                                            "section_name": "events-view-card-teaser",
                                             "style_name": "text",
                                             "fields": {
                                                 "text": {
                                                     "de-CH": {
-                                                        "content": "{{event.description}}"
+                                                        "content": "{{description}}"
                                                     },
                                                     "en-GB": {
-                                                        "content": "{{event.description}}"
+                                                        "content": "{{description}}"
                                                     }
                                                 },
                                                 "size": {
@@ -580,18 +863,21 @@
                                                 },
                                                 "web_text_line_clamp": {
                                                     "all": {
-                                                        "content": "2"
+                                                        "content": "3"
                                                     }
                                                 },
                                                 "spacing": {
                                                     "all": {
-                                                        "content": "{\"mt\":\"xs\",\"mb\":\"sm\"}"
+                                                        "content": "{\"mt\":\"sm\"}"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mt-3"
                                             }
                                         },
                                         {
-                                            "section_name": "events-list-card-open",
+                                            "section_name": "events-view-card-open",
                                             "style_name": "button",
                                             "fields": {
                                                 "label": {
@@ -609,7 +895,7 @@
                                                 },
                                                 "url": {
                                                     "all": {
-                                                        "content": "/events/{{event.record_id}}"
+                                                        "content": "/events/{{record_id}}"
                                                     }
                                                 },
                                                 "variant": {
@@ -619,47 +905,36 @@
                                                 },
                                                 "size": {
                                                     "all": {
-                                                        "content": "xs"
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "violet"
+                                                    }
+                                                },
+                                                "radius": {
+                                                    "all": {
+                                                        "content": "xl"
+                                                    }
+                                                },
+                                                "spacing": {
+                                                    "all": {
+                                                        "content": "{\"mt\":\"md\"}"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mt-4"
                                             }
                                         }
-                                    ],
-                                    "global_fields": {
-                                        "css_mobile": "flex flex-col items-start mb-4 px-4 py-4 gap-3"
-                                    }
+                                    ]
                                 }
-                            ],
-                            "fields": {
-                                "data_table": {
-                                    "all": {
-                                        "content": "@section:events-form"
-                                    }
-                                },
-                                "own_entries_only": {
-                                    "all": {
-                                        "content": "0"
-                                    }
-                                },
-                                "filter": {
-                                    "all": {
-                                        "content": ""
-                                    }
-                                },
-                                "scope": {
-                                    "all": {
-                                        "content": "event"
-                                    }
-                                }
-                            }
+                            ]
                         }
-                    ],
-                    "global_fields": {
-                        "css_mobile": "px-4 py-6"
-                    }
+                    ]
                 }
-            ],
-            "cms_app_role": "public_list"
+            ]
         },
         {
             "keyword": "events-record",
@@ -923,173 +1198,11 @@
                 }
             ],
             "cms_app_role": "public_detail"
-        },
-        {
-            "keyword": "cms-events",
-            "surface": "cms",
-            "page_access_type": "mobile_and_web",
-            "headless": false,
-            "open_access": false,
-            "url": "/cms/events",
-            "parent_keyword": null,
-            "is_system": false,
-            "fields": [
-                {
-                    "name": "title",
-                    "display": true,
-                    "translations": [
-                        {
-                            "language_code": "de-CH",
-                            "content": "Veranstaltungen verwalten"
-                        },
-                        {
-                            "language_code": "en-GB",
-                            "content": "Manage events"
-                        }
-                    ]
-                }
-            ],
-            "routes": [
-                {
-                    "path_pattern": "/cms/events",
-                    "requirements": null,
-                    "is_canonical": true,
-                    "is_active": true,
-                    "priority": 0
-                }
-            ],
-            "sections": [
-                {
-                    "section_name": "cms-events-page",
-                    "style_name": "container",
-                    "fields": {
-                        "size": {
-                            "all": {
-                                "content": "lg"
-                            }
-                        },
-                        "spacing": {
-                            "all": {
-                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
-                            }
-                        }
-                    },
-                    "children": [
-                        {
-                            "section_name": "cms-events-table",
-                            "style_name": "entry-table",
-                            "fields": {
-                                "title": {
-                                    "de-CH": {
-                                        "content": "Alle Veranstaltungen"
-                                    },
-                                    "en-GB": {
-                                        "content": "All events"
-                                    }
-                                },
-                                "data_table": {
-                                    "all": {
-                                        "content": "@section:events-form"
-                                    }
-                                },
-                                "own_entries_only": {
-                                    "all": {
-                                        "content": "0"
-                                    }
-                                },
-                                "delete_entry": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_sortable": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_searching": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_paginate": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_info": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "csv_export": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "fields_map": {
-                                    "all": {
-                                        "content": "[\"title\",\"event_date\",\"location\",\"description\"]"
-                                    }
-                                },
-                                "add_url": {
-                                    "all": {
-                                        "content": "/cms/events/form"
-                                    }
-                                },
-                                "edit_url": {
-                                    "all": {
-                                        "content": "/cms/events/{record_id}"
-                                    }
-                                },
-                                "empty_text": {
-                                    "de-CH": {
-                                        "content": "Noch keine Veranstaltungen — mit «Neu hinzufügen» die erste anlegen."
-                                    },
-                                    "en-GB": {
-                                        "content": "No events yet — click \"Add new\" to create the first one."
-                                    }
-                                },
-                                "delete_modal_title": {
-                                    "de-CH": {
-                                        "content": "Veranstaltung löschen?"
-                                    },
-                                    "en-GB": {
-                                        "content": "Delete event?"
-                                    }
-                                },
-                                "delete_modal_body": {
-                                    "de-CH": {
-                                        "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
-                                    },
-                                    "en-GB": {
-                                        "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
-                                    }
-                                },
-                                "show_language_preview": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "fields_map_labels": {
-                                    "en-GB": {
-                                        "content": "{\"title\":\"Title\",\"event_date\":\"Date\",\"location\":\"Location\",\"description\":\"Description\"}"
-                                    },
-                                    "de-CH": {
-                                        "content": "{\"title\":\"Titel\",\"event_date\":\"Datum\",\"location\":\"Ort\",\"description\":\"Beschreibung\"}"
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                }
-            ],
-            "cms_app_role": "cms_list"
         }
     ],
     "cms_app": {
         "name": "Events",
         "slug": "events",
-        "description": null
+        "description": "Events with a filterable public list, detail pages and cancel/reopen actions."
     }
 }

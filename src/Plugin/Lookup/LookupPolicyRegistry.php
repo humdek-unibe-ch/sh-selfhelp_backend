@@ -46,7 +46,6 @@ final class LookupPolicyRegistry
         LookupService::SCHEDULED_JOBS_SEARCH_DATE_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::PAGE_ACCESS_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::PAGE_SURFACE => LookupExtensionPolicy::CLOSED,
-        LookupService::HOOK_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::ASSET_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::USER_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::USER_STATUS => LookupExtensionPolicy::CLOSED,

@@ -56,6 +56,10 @@
       "patternProperties": {
         "^[a-zA-Z][a-zA-Z0-9_]{0,254}$": true
       }
+    },
+    "preview": {
+      "type": "boolean",
+      "description": "Act on the draft of the page instead of its published version. Only for a signed-in person who may read the draft; it must match what the person is looking at (the page endpoint's `preview`). Without it the published version is used. The page access rights, the live data and the permissions stay the same."
     }
   },
   "additionalProperties": false

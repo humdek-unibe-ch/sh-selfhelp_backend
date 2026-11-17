@@ -119,9 +119,8 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
         $user = $this->findUser($email);
         self::assertInstanceOf(User::class, $user, 'The admin user must exist after the command runs.');
 
-        // Active / non-blocked / non-intern, mapped to the real lookups.
+        // Active / non-blocked, mapped to the real lookups.
         self::assertFalse($user->isBlocked(), 'Admin user must not be blocked.');
-        self::assertFalse($user->isIntern(), 'Admin user must not be intern.');
         self::assertInstanceOf(Lookup::class, $user->getStatus());
         self::assertSame(LookupService::USER_STATUS_ACTIVE, $user->getStatus()->getLookupCode());
         self::assertInstanceOf(Lookup::class, $user->getUserType());

@@ -15,6 +15,7 @@ use App\Entity\Page;
 use App\Navigation\NavigationHeaderLayerSupport;
 use App\Navigation\NavigationMenuChildPagesSupport;
 use App\Navigation\NavigationMenuDepthSupport;
+use App\Navigation\NavigationMenuItemLimitSupport;
 use App\Navigation\NavigationMenuItemTranslationSupport;
 use App\Repository\NavigationMenuItemRepository;
 use App\Repository\NavigationMenuItemTranslationRepository;
@@ -43,6 +44,7 @@ class AdminNavigationService extends BaseService
         private readonly NavigationMenuService $navigationMenuService,
         private readonly NavigationMenuChildPagesSupport $navigationMenuChildPagesSupport,
         private readonly NavigationMenuDepthSupport $navigationMenuDepthSupport,
+        private readonly NavigationMenuItemLimitSupport $navigationMenuItemLimitSupport,
         private readonly NavigationHeaderLayerSupport $navigationHeaderLayerSupport,
         private readonly NavigationMenuItemTranslationRepository $navigationMenuItemTranslationRepository,
         private readonly NavigationMenuItemTranslationSupport $navigationMenuItemTranslationSupport,
@@ -302,7 +304,9 @@ class AdminNavigationService extends BaseService
             ));
         }
         if (array_key_exists('item_limit', $data)) {
-            $menu->setItemLimit(is_int($data['item_limit']) ? $data['item_limit'] : null);
+            $menu->setItemLimit($this->navigationMenuItemLimitSupport->normalizeMenuItemLimit(
+                $data['item_limit']
+            ));
         }
         if (array_key_exists('children_nav', $data)) {
             $menu->setChildrenNav($this->resolveChildrenNavLookup(

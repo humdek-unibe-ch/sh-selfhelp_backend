@@ -61,7 +61,7 @@ final class DataTableRepositoryTest extends QaKernelTestCase
 
         // Soft-delete through the real service (ownEntriesOnly=false: no logged-in
         // user in a kernel test). This also invalidates the data-table cache.
-        self::assertTrue($this->dataService->deleteData($recordId, false));
+        self::assertTrue($this->dataService->deleteData((int) $table->getId(), $recordId, false));
 
         $visible = $this->repository->getDataTableWithFilter((int) $table->getId(), $userId, '', true);
         self::assertStringNotContainsString('qa-soft-deleted', $this->flatten($visible), 'excludeDeleted=true must hide soft-deleted rows.');

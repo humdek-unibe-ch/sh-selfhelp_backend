@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Scaffold CMS App Pages",
-    "description": "Scaffold list/detail/form pages into an existing cms_app (POST /admin/cms-apps/{id}/scaffold).",
+    "description": "Scaffold the pages of an app into an existing cms_app (POST /admin/cms-apps/{id}/scaffold): one CMS entry list that holds the form (create_admin), a public read-only data view and its detail page (create_public).",
     "type": "object",
     "properties": {
         "base_name": {
@@ -18,7 +18,7 @@
         },
         "create_form": {
             "type": "boolean",
-            "description": "Scaffold /cms/<base>/form that owns a fresh data table. Default false."
+            "description": "Put the inline form (and the fresh data table it owns) into the CMS list /cms/<base>. Requires create_admin. Default false."
         },
         "form_field_name": {
             "type": "string",
@@ -38,7 +38,8 @@
                     },
                     "style": {
                         "type": "string",
-                        "enum": ["text-input", "textarea", "select", "checkbox", "radio", "number-input"]
+                        "enum": ["text-input", "textarea", "select", "checkbox", "radio", "number-input", "image", "files", "file-input"],
+                        "description": "image/files scaffold a file-input (single image or multi-file downloads, files_public=1)."
                     },
                     "label": {
                         "type": "string"
@@ -48,8 +49,18 @@
                 "additionalProperties": false
             }
         },
-        "create_public": { "type": "boolean" },
-        "create_admin": { "type": "boolean" },
+        "with_status": {
+            "type": "boolean",
+            "description": "Add a draft/published status field, CMS publish/unpublish quick actions, and a public fixed filter for published records. Default true."
+        },
+        "create_public": {
+            "type": "boolean",
+            "description": "Create the public list (a read-only data view) and the public detail page. Default true."
+        },
+        "create_admin": {
+            "type": "boolean",
+            "description": "Create the CMS list /cms/<base>: one entry list that shows, adds, edits, deletes and restores the records. Default true."
+        },
         "record_id_param": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*$"

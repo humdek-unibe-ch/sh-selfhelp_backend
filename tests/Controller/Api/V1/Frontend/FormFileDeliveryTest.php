@@ -101,7 +101,8 @@ final class FormFileDeliveryTest extends QaWebTestCase
         self::assertSame('application/zip', $response->headers->get('Content-Type'));
         self::assertSame(['qa-a.txt', 'qa-b.txt'], $this->zipEntries($response));
 
-        self::assertSame(Response::HTTP_FORBIDDEN, $this->get(sprintf('/cms-api/v1/forms/files/%d/%s/zip', $recordId, self::FIELD), $this->loginAsQaGuest())->getStatusCode());
+        // F165: a signed-in user without owner/READ gets the same answer as a missing file.
+        self::assertSame(Response::HTTP_NOT_FOUND, $this->get(sprintf('/cms-api/v1/forms/files/%d/%s/zip', $recordId, self::FIELD), $this->loginAsQaGuest())->getStatusCode());
     }
 
     public function testAdminDownloadsTheShownRecordsFilesAsOneZip(): void
@@ -182,7 +183,8 @@ final class FormFileDeliveryTest extends QaWebTestCase
         [$recordId] = $this->submitAsQaUser('qa-notes.txt', "qa private notes\n");
 
         self::assertSame(Response::HTTP_OK, $this->download($recordId, self::FIELD, $this->loginAsQaAdmin())->getStatusCode());
-        self::assertSame(Response::HTTP_FORBIDDEN, $this->download($recordId, self::FIELD, $this->loginAsQaGuest())->getStatusCode());
+        // F165: no 403 that would reveal the record exists.
+        self::assertSame(Response::HTTP_NOT_FOUND, $this->download($recordId, self::FIELD, $this->loginAsQaGuest())->getStatusCode());
         self::assertSame(Response::HTTP_UNAUTHORIZED, $this->download($recordId, self::FIELD, null)->getStatusCode());
     }
 
@@ -229,15 +231,20 @@ final class FormFileDeliveryTest extends QaWebTestCase
         self::assertStringStartsWith('uploads/form-files/', $path);
     }
 
-    public function testFilesPublicSwitchAppliesLiveToAlreadyUploadedFiles(): void
+    public function testFilesPublicSwitchNoLongerServesGuestsViaFormsFiles(): void
     {
+        // F165: /forms/files is owner or table READ only. Page viewers use the
+        // list current-file route; files_public no longer means anyone-with-link.
         [$recordId] = $this->submitAsQaUser('qa-photo.txt', "qa public photo\n");
 
         $this->setFilesPublic('1');
-        self::assertSame(Response::HTTP_OK, $this->download($recordId, self::FIELD, null)->getStatusCode());
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $this->download($recordId, self::FIELD, null)->getStatusCode());
 
         $this->setFilesPublic('0');
         self::assertSame(Response::HTTP_UNAUTHORIZED, $this->download($recordId, self::FIELD, null)->getStatusCode());
+
+        $owner = $this->loginAsQaUser();
+        self::assertSame(Response::HTTP_OK, $this->download($recordId, self::FIELD, $owner)->getStatusCode());
     }
 
     private function setFilesPublic(string $value): void
@@ -271,6 +278,15 @@ final class FormFileDeliveryTest extends QaWebTestCase
         [$page, $form] = $this->pages->createFormPage('qa_form_file_delivery', openAccess: false);
         $this->formId = (int) $form->getId();
         $this->addFileInput($form);
+        if ($moreFiles !== []) {
+            // Several files in one field are only accepted when the input says so.
+            $fileInput = $this->fileInput;
+            self::assertInstanceOf(Section::class, $fileInput);
+            $this->pages->setSectionField($fileInput, 'web_file_input_multiple', '1');
+        }
+        if ($withNote) {
+            $this->addInput($form, 'text-input', 'qa_fd_note', 'qa_note', 20);
+        }
         $this->pages->grantGroupAcl($page, $this->subjectGroup(), select: true, insert: true, update: false, delete: false, affectedUserIds: [$this->qaUserId()]);
 
         $uploads = [];
@@ -321,7 +337,15 @@ final class FormFileDeliveryTest extends QaWebTestCase
 
     private function addFileInput(Section $form): void
     {
-        $style = $this->em->getRepository(Style::class)->findOneBy(['name' => 'file-input']);
+        $this->fileInput = $this->addInput($form, 'file-input', 'qa_fd_upload', self::FIELD, 10);
+    }
+
+    /**
+     * An input of the form: a form only accepts the inputs it declares.
+     */
+    private function addInput(Section $form, string $styleName, string $sectionName, string $inputName, int $position): Section
+    {
+        $style = $this->em->getRepository(Style::class)->findOneBy(['name' => $styleName]);
         $nameField = $this->em->getRepository(Field::class)->findOneBy(['name' => 'name']);
         $language = $this->em->getRepository(Language::class)->find(1);
         self::assertInstanceOf(Style::class, $style);
@@ -329,24 +353,25 @@ final class FormFileDeliveryTest extends QaWebTestCase
         self::assertInstanceOf(Language::class, $language);
 
         $input = new Section();
-        $input->setName('qa_fd_upload');
+        $input->setName($sectionName);
         $input->setStyle($style);
         $this->em->persist($input);
-        $this->fileInput = $input;
 
         $link = new SectionsHierarchy();
         $link->setParentSection($form);
         $link->setChildSection($input);
-        $link->setPosition(10);
+        $link->setPosition($position);
         $this->em->persist($link);
 
         $translation = new SectionsFieldsTranslation();
         $translation->setSection($input);
         $translation->setField($nameField);
         $translation->setLanguage($language);
-        $translation->setContent(self::FIELD);
+        $translation->setContent($inputName);
         $this->em->persist($translation);
         $this->em->flush();
+
+        return $input;
     }
 
     private function subjectGroup(): Group

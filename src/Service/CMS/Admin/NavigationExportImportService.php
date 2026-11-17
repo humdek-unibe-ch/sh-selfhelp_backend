@@ -16,6 +16,7 @@ use App\Entity\Page;
 use App\Exception\ServiceException;
 use App\Navigation\NavigationHeaderLayerSupport;
 use App\Navigation\NavigationMenuDepthSupport;
+use App\Navigation\NavigationMenuItemLimitSupport;
 use App\Navigation\NavigationMenuItemTranslationSupport;
 use App\Repository\LanguageRepository;
 use App\Repository\NavigationMenuItemRepository;
@@ -75,6 +76,7 @@ class NavigationExportImportService extends BaseService
         private readonly NavigationMenuService $navigationMenuService,
         private readonly NavigationMenuItemTranslationSupport $translationSupport,
         private readonly NavigationMenuDepthSupport $depthSupport,
+        private readonly NavigationMenuItemLimitSupport $itemLimitSupport,
         private readonly NavigationHeaderLayerSupport $headerLayerSupport,
         private readonly PageExportImportService $pageExportImportService,
         private readonly AdminPageService $adminPageService,
@@ -849,7 +851,10 @@ class NavigationExportImportService extends BaseService
             $menu->setMaxDepth($this->depthSupport->normalizeMenuMaxDepth($maxDepth));
         }
         if (array_key_exists('item_limit', $menuPayload)) {
-            $menu->setItemLimit(is_int($menuPayload['item_limit']) ? $menuPayload['item_limit'] : null);
+            // Same rules as admin PUT: null unlimited; reject 0 / out-of-range.
+            $menu->setItemLimit($this->itemLimitSupport->normalizeMenuItemLimit(
+                is_int($menuPayload['item_limit']) ? $menuPayload['item_limit'] : null,
+            ));
         }
         if ($menu->getPlatform()?->getLookupCode() === 'web') {
             if (array_key_exists('children_nav', $menuPayload)) {

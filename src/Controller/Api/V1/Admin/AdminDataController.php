@@ -12,7 +12,10 @@ use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
+use App\Service\CMS\Admin\AdminDataHistoryService;
 use App\Service\CMS\Admin\DataQueryPreviewService;
+use App\Service\CMS\Admin\DataTableExportService;
+use App\Service\CMS\DataRevision\RecordWriteContext;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\CMS\FormFileUploadService;
@@ -23,9 +26,11 @@ use App\Service\Core\TransactionService;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
 class AdminDataController extends AbstractController
 {
@@ -35,17 +40,20 @@ class AdminDataController extends AbstractController
         private readonly DataService $dataService,
         private readonly DataTableService $dataTableService,
         private readonly DataQueryPreviewService $dataQueryPreviewService,
+        private readonly AdminDataHistoryService $recordHistory,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
         private readonly TransactionService $transactionService,
         private readonly OptionLabelHydrator $optionLabelHydrator,
         private readonly FormFileUploadService $formFileUploadService,
+        private readonly DataTableExportService $exports,
     ) {
     }
 
     /**
-     * Preview how an entry-style filter will be prepared for get_data_table_filtered.
+     * Preview how an entry-style filter will be read by the data query engine
+     * (structured filter, sort and page window). Nothing is executed.
      */
     public function queryPreview(Request $request): JsonResponse
     {
@@ -227,7 +235,13 @@ class AdminDataController extends AbstractController
             $ownEntriesOnly = filter_var($request->query->get('own_entries_only', 'true'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             $ownEntriesOnly = $ownEntriesOnly === null ? true : $ownEntriesOnly;
 
-            $success = $this->dataService->deleteData($recordId, $ownEntriesOnly);
+            // F127: the record must belong to the table the caller was authorized for.
+            $success = $this->dataService->deleteData(
+                (int) $dataTable->getId(),
+                $recordId,
+                $ownEntriesOnly,
+                new RecordWriteContext(LookupService::DATA_REVISION_SOURCES_ADMIN)
+            );
             return $this->responseFormatter->formatSuccess(['deleted' => $success]);
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatThrowable($e);
@@ -483,21 +497,17 @@ class AdminDataController extends AbstractController
             $excludeDeleted = filter_var($request->query->get('exclude_deleted', 'true'), FILTER_VALIDATE_BOOLEAN);
 
             $hasFullAccess = $this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE);
-            if ($hasFullAccess) {
-                $rows = $this->dataService->getData((int) $dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
-            } else {
-                $rows = $this->dataService->getDataWithUserGroupFilter((int) $dataTable->getId(), $currentUserId, '', $excludeDeleted, $languageId);
-            }
-            // Export with the current human input name as the column header
-            // instead of the immutable section_<id> key (issue #56).
-            $rows = $this->dataService->remapEntriesToInputNames((int) $dataTable->getId(), $rows);
+            // The rows are read in batches and written as they arrive; the column
+            // header is the current human input name, not the immutable
+            // section_<id> key (issue #56).
+            $batches = $this->exports->batches($dataTable, $currentUserId, $hasFullAccess, $userId, $excludeDeleted, $languageId);
 
             $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? $tableName;
             $filename = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) . '.' . $format;
 
             if ($format === 'json') {
                 return new Response(
-                    (string) json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+                    $this->exports->json($batches),
                     Response::HTTP_OK,
                     [
                         'Content-Type' => 'application/json',
@@ -507,9 +517,8 @@ class AdminDataController extends AbstractController
             }
 
             // CSV
-            $csvContent = $this->buildCsv($rows);
             return new Response(
-                $csvContent,
+                $this->exports->csv($batches),
                 Response::HTTP_OK,
                 [
                     'Content-Type' => 'text/csv; charset=UTF-8',
@@ -618,21 +627,15 @@ class AdminDataController extends AbstractController
 
             foreach ($tables as $dataTable) {
                 $hasFullAccess = $this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE);
-                if ($hasFullAccess) {
-                    $rows = $this->dataService->getData((int) $dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
-                } else {
-                    $rows = $this->dataService->getDataWithUserGroupFilter((int) $dataTable->getId(), $currentUserId, '', $excludeDeleted, $languageId);
-                }
-                // Export with the current human input name as the column header
-                // instead of the immutable section_<id> key (issue #56).
-                $rows = $this->dataService->remapEntriesToInputNames((int) $dataTable->getId(), $rows);
+                // Batched read; the column header is the current human input name (issue #56).
+                $batches = $this->exports->batches($dataTable, $currentUserId, $hasFullAccess, $userId, $excludeDeleted, $languageId);
 
                 $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? '';
                 $entryName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) . '.' . $format;
 
                 $content = $format === 'json'
-                    ? (string) json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
-                    : $this->buildCsv($rows);
+                    ? $this->exports->json($batches)
+                    : $this->exports->csv($batches);
 
                 $zip->addFromString($entryName, $content);
             }
@@ -659,54 +662,6 @@ class AdminDataController extends AbstractController
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError('Export failed', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-    }
-
-    /**
-     * Build a CSV string from a list of row arrays.
-     * Collects the union of all keys as the header row; missing cells are empty.
-     *
-     * @param array<array-key, mixed> $rows
-     */
-    private function buildCsv(array $rows): string
-    {
-        if (empty($rows)) {
-            return '';
-        }
-
-        // Union of all column names across all rows
-        $headers = [];
-        foreach ($rows as $row) {
-            if (is_array($row)) {
-                foreach (array_keys($row) as $key) {
-                    $headers[(string) $key] = true;
-                }
-            }
-        }
-        $headers = array_keys($headers);
-
-        $handle = fopen('php://temp', 'r+');
-        if ($handle === false) {
-            return '';
-        }
-
-        fputcsv($handle, $headers, escape: '');
-        foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $line = [];
-            foreach ($headers as $col) {
-                $val = $row[$col] ?? null;
-                $line[] = is_scalar($val) ? (string) $val : '';
-            }
-            fputcsv($handle, $line, escape: '');
-        }
-
-        rewind($handle);
-        $csv = stream_get_contents($handle);
-        fclose($handle);
-
-        return $csv === false ? '' : $csv;
     }
 
     /**
@@ -758,6 +713,131 @@ class AdminDataController extends AbstractController
         }
 
         return $preview;
+    }
+
+    // -- record history (contract 6) ---------------------------------------------------------
+
+    public function recordHistory(Request $request, string $tableName, int $recordId): JsonResponse
+    {
+        try {
+            $userId = $this->requireAdminUserId();
+            $page = max(1, (int) $request->query->get('page', 1));
+            $pageSize = max(1, (int) $request->query->get('page_size', 20));
+            $data = $this->recordHistory->versions($tableName, $recordId, $userId, $page, $pageSize);
+
+            return $this->responseFormatter->formatSuccess($data);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    public function recordVersion(Request $request, string $tableName, int $recordId, int $version): JsonResponse
+    {
+        try {
+            $userId = $this->requireAdminUserId();
+            $data = $this->recordHistory->version($tableName, $recordId, $userId, $version);
+
+            return $this->responseFormatter->formatSuccess($data);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    public function recordCompare(Request $request, string $tableName, int $recordId): JsonResponse
+    {
+        try {
+            $userId = $this->requireAdminUserId();
+            $from = (int) $request->query->get('from', 0);
+            $to = (int) $request->query->get('to', 0);
+            if ($from < 1 || $to < 1) {
+                return $this->responseFormatter->formatError('from and to versions are required', Response::HTTP_BAD_REQUEST);
+            }
+            $data = $this->recordHistory->compare($tableName, $recordId, $userId, $from, $to);
+
+            return $this->responseFormatter->formatSuccess($data);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    public function recordRestore(Request $request, string $tableName, int $recordId): JsonResponse
+    {
+        try {
+            $userId = $this->requireAdminUserId();
+            $body = [];
+            if (str_contains((string) $request->headers->get('Content-Type'), 'json')) {
+                try {
+                    $body = $request->toArray();
+                } catch (\Throwable) {
+                    $body = [];
+                }
+            } else {
+                $body = $request->request->all();
+            }
+            $versionRaw = $body['version'] ?? null;
+            $version = is_numeric($versionRaw) ? (int) $versionRaw : 0;
+            if ($version < 1) {
+                return $this->responseFormatter->formatError('version is required', Response::HTTP_BAD_REQUEST);
+            }
+            $dryRun = ($body['dry_run'] ?? false) === true;
+            $expectedRaw = $body['expected_version'] ?? null;
+            $expected = is_numeric($expectedRaw) ? (int) $expectedRaw : null;
+            $fieldKeys = null;
+            if (isset($body['field_keys']) && is_array($body['field_keys'])) {
+                $fieldKeys = [];
+                foreach ($body['field_keys'] as $key) {
+                    if (is_string($key) || is_int($key)) {
+                        $fieldKeys[] = (string) $key;
+                    }
+                }
+            }
+            $data = $this->recordHistory->restore($tableName, $recordId, $userId, $version, $fieldKeys, $expected, $dryRun);
+
+            return $this->responseFormatter->formatSuccess($data);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    public function recordVersionFile(
+        Request $request,
+        string $tableName,
+        int $recordId,
+        int $version,
+        string $fieldKey,
+    ): Response {
+        try {
+            $userId = $this->requireAdminUserId();
+            $file = $this->recordHistory->file(
+                $tableName,
+                $recordId,
+                $userId,
+                $version,
+                $fieldKey,
+                max(1, (int) $request->query->get('file_language', 1)),
+                max(0, (int) $request->query->get('index', 0)),
+            );
+            $response = new BinaryFileResponse($file['absolutePath']);
+            $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $file['name']);
+            $response->setPrivate();
+            $response->headers->addCacheControlDirective('no-store');
+            $response->headers->set('X-Content-Type-Options', 'nosniff');
+            $response->headers->set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
+
+            return $response;
+        } catch (ServiceException $e) {
+            return new Response($e->getMessage(), $e->getCode() >= 400 ? $e->getCode() : Response::HTTP_NOT_FOUND);
+        }
+    }
+
+    private function requireAdminUserId(): int
+    {
+        $user = $this->userContextService->getCurrentUser();
+        if ($user === null) {
+            throw new ServiceException('Authentication required', Response::HTTP_UNAUTHORIZED);
+        }
+
+        return (int) $user->getId();
     }
 }
 

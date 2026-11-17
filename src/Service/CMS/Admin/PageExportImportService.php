@@ -23,8 +23,13 @@ use App\Repository\StyleRepository;
 use App\Routing\RouteConflictValidator;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Common\StyleNames;
+use App\Service\CMS\DataRevision\RecordWriteContext;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\FormList\FormListConfigReader;
+use App\Service\CMS\FormList\FormListConfigValidator;
+use App\Service\CMS\FormList\FormListLayout;
+use App\Service\CMS\FormList\FormListPortability;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\UserContextAwareService;
@@ -62,7 +67,7 @@ class PageExportImportService extends BaseService
      * `"table":"123"` to `"table":"@section:<owner section name>"` and the import
      * resolves it back to the freshly-created form section's id (issue #30).
      */
-    private const OWNER_TOKEN_PREFIX = '@section:';
+    public const OWNER_TOKEN_PREFIX = '@section:';
 
     /**
      * Content field names that carry an in-app URL and therefore must follow
@@ -71,8 +76,11 @@ class PageExportImportService extends BaseService
      */
     private const URL_FIELD_NAMES = [
         'url', 'add_url', 'edit_url', 'btn_cancel_url', 'cancel_url',
-        'url_cancel', 'redirect_at_end', 'redirect_on_save',
+        'url_cancel', 'redirect_at_end', 'redirect_on_save', 'detail_url',
     ];
+
+    /** The locale of the language-independent cells of a data table (language id 1). */
+    private const DEFAULT_CELL_LOCALE = 'all';
 
     private const ISSUE_ERROR = 'error';
     private const ISSUE_WARNING = 'warning';
@@ -97,6 +105,9 @@ class PageExportImportService extends BaseService
         private readonly CmsAppHubSyncService $cmsAppHubSyncService,
         private readonly CmsAppRepository $cmsAppRepository,
         private readonly StyleSchemaService $styleSchemaService,
+        private readonly FormListPortability $listPortability,
+        private readonly FormListConfigValidator $listValidator,
+        private readonly FormListConfigReader $listReader,
     ) {
     }
 
@@ -127,9 +138,17 @@ class PageExportImportService extends BaseService
         // rewrite owner table references and enforce owner-name uniqueness.
         $idToName = [];
         $nameCounts = [];
+        /** @var array<int, true> $listFormIds the forms inside a list: they own the table the list shows */
+        $listFormIds = [];
         foreach ($pageIds as $pageId) {
             $hierarchical = $this->sectionRepository->fetchSectionsHierarchicalByPageId($pageId);
             $this->collectSectionIndex($hierarchical, $idToName, $nameCounts);
+            foreach (FormListLayout::listSectionIds($hierarchical) as $listId) {
+                $formId = FormListLayout::inlineFormSectionId($hierarchical, $listId);
+                if ($formId !== null) {
+                    $listFormIds[$formId] = true;
+                }
+            }
         }
 
         $pages = [];
@@ -157,6 +176,23 @@ class PageExportImportService extends BaseService
             $page['sections'] = $sections;
         }
         unset($page);
+
+        // The form inside a list owns the list's table and its sample rows; the
+        // list names the table by its form, so the form's name must be unique.
+        foreach (array_keys($listFormIds) as $formId) {
+            $formName = $idToName[$formId] ?? null;
+            if ($formName === null) {
+                continue;
+            }
+            if (($nameCounts[$formName] ?? 0) > 1) {
+                $this->throwBadRequest(sprintf(
+                    'Cannot export: the form "%s" (id %d) inside a list shares its name with another section in the bundle, so its data cannot be made portable. Rename it to a unique name and export again.',
+                    $formName,
+                    $formId
+                ));
+            }
+            $ownerTableIds[$formId] = true;
+        }
 
         $bundle = [
             'format' => self::BUNDLE_FORMAT,
@@ -237,11 +273,7 @@ class PageExportImportService extends BaseService
                     }
                 }
             }
-            if (in_array($style, [
-                StyleNames::STYLE_ENTRY_TABLE,
-                StyleNames::STYLE_ENTRY_LIST,
-                StyleNames::STYLE_ENTRY_RECORD,
-            ], true)) {
+            if ($style !== StyleNames::STYLE_ENTRY_RECORD_FORM && $this->isDataTableFieldStyle($style)) {
                 $this->rewriteEntryTableExportRef($section, $idToName, $nameCounts, $ownerTableIds);
             }
             if (is_array($section['children'] ?? null)) {
@@ -398,9 +430,13 @@ class PageExportImportService extends BaseService
     }
 
     /**
-     * Read every row of a form data table and project it down to the human
+     * Read every record of a form data table and project it down to the human
      * column names (dropping the metadata/projection columns) so the rows are
      * portable and can be re-inserted through the normal form-save path.
+     *
+     * A cell with no translation is a plain value. A cell that is written per
+     * language is a locale map (`{"de-CH":"…","en-GB":"…"}`), which the import
+     * saves back cell by cell; reading the default language alone would lose it.
      *
      * @param list<string> $columns
      * @return list<array<string, mixed>>
@@ -412,29 +448,74 @@ class PageExportImportService extends BaseService
         }
         $allowed = array_fill_keys($columns, true);
 
-        // All rows, all users (userId -1), excluding soft-deleted; remap the
-        // immutable `section_<id>` keys back to their human input names.
-        $rows = $this->dataService->getData($tableId, '', false, -1, false, true);
-        $rows = $this->dataService->remapEntriesToInputNames($tableId, $rows);
-
+        // All records, all users, excluding soft-deleted, read in batches so the
+        // table is never held twice (raw and projected); the immutable
+        // `section_<id>` keys are remapped back to their human input names. A
+        // batch holds the rows (one per language) of whole records.
         $result = [];
-        foreach ($rows as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-            $clean = [];
-            foreach ($row as $key => $value) {
-                $keyString = (string) $key;
-                if (isset($allowed[$keyString]) && (is_scalar($value) || $value === null)) {
-                    $clean[$keyString] = $value;
+        foreach ($this->dataService->getDataInBatchesWithAllLanguages($tableId, null, true) as $batch) {
+            /** @var array<int, list<array<string, mixed>>> $rowsByRecord */
+            $rowsByRecord = [];
+            foreach ($this->dataService->remapEntriesToInputNames($tableId, $batch) as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $recordId = $this->asInt($row['record_id'] ?? 0);
+                if ($recordId > 0) {
+                    $rowsByRecord[$recordId][] = $this->asAssocArray($row);
                 }
             }
-            if ($clean !== []) {
-                $result[] = $clean;
+
+            foreach ($rowsByRecord as $languageRows) {
+                $clean = $this->portableRecord($languageRows, $allowed);
+                if ($clean !== []) {
+                    $result[] = $clean;
+                }
             }
         }
 
         return $result;
+    }
+
+    /**
+     * One record of a data table as a bundle row: the rows of its languages
+     * merged, a cell written for a language other than the default as a locale map.
+     *
+     * @param list<array<string, mixed>> $languageRows the record, one row per language that has a cell
+     * @param array<string, true> $allowed the human column names of the table
+     * @return array<string, mixed>
+     */
+    private function portableRecord(array $languageRows, array $allowed): array
+    {
+        $order = [];
+        $perLocale = [];
+        foreach ($languageRows as $row) {
+            $locale = $this->asString($row['language_locale'] ?? '');
+            foreach ($row as $key => $value) {
+                $name = (string) $key;
+                if (!isset($allowed[$name])) {
+                    continue;
+                }
+                $order[$name] = true;
+                if ($locale !== '' && is_scalar($value)) {
+                    $perLocale[$name][$locale] = $value;
+                }
+            }
+        }
+
+        $clean = [];
+        foreach (array_keys($order) as $name) {
+            $cells = $perLocale[$name] ?? [];
+            if ($cells === []) {
+                $clean[$name] = null;
+                continue;
+            }
+            // Only the default language ("all") wrote it: the plain value.
+            $translated = array_diff_key($cells, [self::DEFAULT_CELL_LOCALE => true]);
+            $clean[$name] = $translated === [] ? $cells[self::DEFAULT_CELL_LOCALE] : $cells;
+        }
+
+        return $clean;
     }
 
     /**
@@ -1229,10 +1310,16 @@ class PageExportImportService extends BaseService
             $this->restoreDataTables($bundle, $sourceNameToNewId, $importData, $localeMap);
             $this->relinkEntryTableDataTables($allNewSectionIds, $sourceNameToNewId);
             $this->relinkEntryTableFieldsMap($allNewSectionIds, $sourceNameToNewId);
+            $this->relinkListColumns($allNewSectionIds, $sourceNameToNewId);
 
+            $importedCmsApp = null;
             if ($cmsAppId !== null) {
                 $app = $this->cmsAppService->requireApp($cmsAppId);
                 $this->cmsAppHubSyncService->sync($app);
+                $importedCmsApp = [
+                    'id' => (int) $app->getId(),
+                    'slug' => (string) $app->getSlug(),
+                ];
             }
 
             $this->entityManager->commit();
@@ -1250,7 +1337,12 @@ class PageExportImportService extends BaseService
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
                 ->invalidateCategory();
 
-            return ['created' => $createdResult];
+            $result = ['created' => $createdResult];
+            if ($importedCmsApp !== null) {
+                $result['cms_app'] = $importedCmsApp;
+            }
+
+            return $result;
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
             throw $e instanceof ServiceException ? $e : new ServiceException(
@@ -1314,12 +1406,7 @@ class PageExportImportService extends BaseService
                 continue;
             }
             $styleName = $section->getStyle()?->getName();
-            if (!in_array($styleName, [
-                StyleNames::STYLE_ENTRY_TABLE,
-                StyleNames::STYLE_ENTRY_LIST,
-                StyleNames::STYLE_ENTRY_RECORD,
-                StyleNames::STYLE_ENTRY_RECORD_FORM,
-            ], true)) {
+            if ($styleName === null || !$this->isDataTableFieldStyle($styleName)) {
                 continue;
             }
 
@@ -1369,6 +1456,39 @@ class PageExportImportService extends BaseService
 
         if ($touched) {
             $this->entityManager->flush();
+        }
+    }
+
+    /**
+     * Give the imported lists the column keys of the form inputs the import has
+     * created (the bundle names the columns by input name), then check each list
+     * the way a save would: a bundle whose list cannot work with its data fails
+     * the import instead of importing a list that shows an error.
+     *
+     * @param list<int> $newSectionIds
+     * @param array<string, int> $sourceNameToNewId
+     */
+    private function relinkListColumns(array $newSectionIds, array $sourceNameToNewId): void
+    {
+        $sourceNames = array_flip($sourceNameToNewId);
+        foreach ($newSectionIds as $sectionId) {
+            $section = $this->sectionRepository->find($sectionId);
+            $style = $section?->getStyle()?->getName();
+            if ($section === null || $style === null || !in_array($style, StyleNames::LIST_STYLE_NAMES, true)) {
+                continue;
+            }
+
+            $this->listPortability->relink($sectionId);
+
+            $problems = $this->listValidator->problems($sectionId, $style, $this->listReader->rawFields($sectionId));
+            if ($problems !== []) {
+                $name = $sourceNames[$sectionId] ?? $section->getName();
+                throw new ServiceException(
+                    sprintf('Import failed: the list "%s" cannot work with its data: %s', $name, $problems[0]['message']),
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                    ['section_name' => $name, 'issues' => $problems]
+                );
+            }
         }
     }
 
@@ -1686,7 +1806,15 @@ class PageExportImportService extends BaseService
                 if ($rowData === []) {
                     continue;
                 }
-                $saved = $this->dataService->saveData((string) $newOwnerId, $rowData, LookupService::TRANSACTION_BY_BY_USER, null, false);
+                $saved = $this->dataService->saveData(
+                    (string) $newOwnerId,
+                    $rowData,
+                    LookupService::TRANSACTION_BY_BY_USER,
+                    null,
+                    false,
+                    null,
+                    new RecordWriteContext(LookupService::DATA_REVISION_SOURCES_IMPORT)
+                );
                 if ($saved === false) {
                     throw new ServiceException(
                         sprintf('Import failed: could not insert a sample row into data table for owner section "%s".', $ownerName),
@@ -2602,6 +2730,10 @@ class PageExportImportService extends BaseService
         );
     }
 
+    /**
+     * Styles whose `data_table` field holds a data table id: the entry styles and
+     * the two list styles.
+     */
     private function isDataTableFieldStyle(string $styleName): bool
     {
         return in_array($styleName, [
@@ -2609,6 +2741,7 @@ class PageExportImportService extends BaseService
             StyleNames::STYLE_ENTRY_LIST,
             StyleNames::STYLE_ENTRY_RECORD,
             StyleNames::STYLE_ENTRY_RECORD_FORM,
+            ...StyleNames::LIST_STYLE_NAMES,
         ], true);
     }
 
@@ -2760,11 +2893,15 @@ class PageExportImportService extends BaseService
         return '';
     }
 
+    /**
+     * Styles that bind their rows through `data_table`, never through `data_config`.
+     */
     private function isEntryHolderStyle(string $styleName): bool
     {
         return in_array($styleName, [
             StyleNames::STYLE_ENTRY_LIST,
             StyleNames::STYLE_ENTRY_RECORD,
+            ...StyleNames::LIST_STYLE_NAMES,
         ], true);
     }
 }

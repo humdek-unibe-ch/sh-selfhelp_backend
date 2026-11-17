@@ -4,12 +4,14 @@
     "exported_at": "2026-07-06T00:00:00+00:00",
     "core_version": "0.1.x",
     "title": "Contact directory",
-    "description": "Compact directory with avatar initials and tap-to-call / tap-to-mail links — the three-page list-only variant.",
+    "description": "A searchable contact table for visitors (filter by department, tap to call or mail), and a managed list for editors.",
     "tags": [
         "cms-in-cms",
-        "list only"
+        "list only",
+        "directory",
+        "translatable"
     ],
-    "_comment": "CMS-in-CMS template: a Contact Directory in three pages — the compact list-only variant of the pattern (no public detail page). PUBLIC: /contacts renders a searchable-looking card grid with avatar initials, department badge and tap-to-call / tap-to-mail links. ADMIN (CMS surface): /cms/contacts is an entry-table CRUD grid and /cms/contacts/form is one create+edit form page with two routes (blank = create, /{record_id} = update) opened as a modal. Data binding is portable via \"@section:contacts-form\" tokens; data_tables[] carries columns + sample rows (import with options.importData=true). Content locales: de-CH + en-GB. Use a keyword + route prefix to import a second copy — in-content links are rewritten automatically. Import via Admin > Pages > Import. NOT auto-seeded.",
+    "_comment": "CMS-in-CMS template: a Contact Directory in two pages (list only, no detail page). PUBLIC: /contacts is a read-only data view as a table (search in name, department and mail, sort, filter by department, paging) of the table of the form \"@section:contacts-form\". CMS: /cms/contacts is ONE entry-form-list that holds the form: add and edit contacts in a dialog, delete them and restore earlier versions. The inputs are defined once, in the form inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). The department is translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
     "data_tables": [
         {
             "owner_section_name": "contacts-form",
@@ -22,37 +24,55 @@
             "rows": [
                 {
                     "name": "Nora Keller",
-                    "department": "study-coordination",
+                    "department": {
+                        "de-CH": "Studienkoordination",
+                        "en-GB": "Study Coordination"
+                    },
                     "phone": "+41 31 000 11 22",
                     "email": "nora.keller@example.org"
                 },
                 {
                     "name": "Marc Dubois",
-                    "department": "it-support",
+                    "department": {
+                        "de-CH": "IT-Support",
+                        "en-GB": "IT Support"
+                    },
                     "phone": "+41 31 000 33 44",
                     "email": "marc.dubois@example.org"
                 },
                 {
                     "name": "Sofia Ricci",
-                    "department": "data-protection",
+                    "department": {
+                        "de-CH": "Datenschutz",
+                        "en-GB": "Data Protection"
+                    },
                     "phone": "+41 31 000 55 66",
                     "email": "sofia.ricci@example.org"
                 },
                 {
                     "name": "Jonas Weber",
-                    "department": "lab-scheduling",
+                    "department": {
+                        "de-CH": "Laborplanung",
+                        "en-GB": "Lab Scheduling"
+                    },
                     "phone": "+41 31 000 77 88",
                     "email": "jonas.weber@example.org"
                 },
                 {
                     "name": "Elena Petrova",
-                    "department": "participant-care",
+                    "department": {
+                        "de-CH": "Teilnehmendenbetreuung",
+                        "en-GB": "Participant Care"
+                    },
                     "phone": "+41 31 000 99 00",
                     "email": "elena.petrova@example.org"
                 },
                 {
                     "name": "David Brunner",
-                    "department": "finance",
+                    "department": {
+                        "de-CH": "Finanzen",
+                        "en-GB": "Finance"
+                    },
                     "phone": "+41 31 000 12 34",
                     "email": "david.brunner@example.org"
                 }
@@ -61,12 +81,12 @@
     ],
     "pages": [
         {
-            "keyword": "cms-contacts-form",
+            "keyword": "cms-contacts",
             "surface": "cms",
             "page_access_type": "mobile_and_web",
             "headless": false,
             "open_access": false,
-            "url": "/cms/contacts/form",
+            "url": "/cms/contacts",
             "parent_keyword": null,
             "is_system": false,
             "fields": [
@@ -76,218 +96,268 @@
                     "translations": [
                         {
                             "language_code": "de-CH",
-                            "content": "Kontakt"
+                            "content": "Kontakte verwalten"
                         },
                         {
                             "language_code": "en-GB",
-                            "content": "Contact"
-                        }
-                    ]
-                },
-                {
-                    "name": "open_in_modal",
-                    "display": false,
-                    "translations": [
-                        {
-                            "language_code": "all",
-                            "content": "1"
+                            "content": "Manage contacts"
                         }
                     ]
                 }
             ],
             "routes": [
                 {
-                    "path_pattern": "/cms/contacts/form",
+                    "path_pattern": "/cms/contacts",
                     "requirements": null,
                     "is_canonical": true,
                     "is_active": true,
                     "priority": 0
-                },
-                {
-                    "path_pattern": "/cms/contacts/{record_id}",
-                    "requirements": {
-                        "record_id": "\\d+"
-                    },
-                    "is_canonical": false,
-                    "is_active": true,
-                    "priority": 0
                 }
             ],
+            "cms_app_role": "cms_list",
             "sections": [
                 {
-                    "section_name": "contacts-form",
-                    "style_name": "entry-record-form",
+                    "section_name": "contacts-cms-list",
+                    "style_name": "entry-form-list",
                     "fields": {
                         "title": {
                             "de-CH": {
-                                "content": "Kontakt"
+                                "content": "Kontakte"
                             },
                             "en-GB": {
-                                "content": "Contact"
+                                "content": "Contacts"
                             }
                         },
-                        "alert_success": {
-                            "de-CH": {
-                                "content": "Kontakt gespeichert."
-                            },
-                            "en-GB": {
-                                "content": "Contact saved."
-                            }
-                        },
-                        "btn_save_label": {
-                            "de-CH": {
-                                "content": "Speichern"
-                            },
-                            "en-GB": {
-                                "content": "Save"
-                            }
-                        },
-                        "btn_update_label": {
-                            "de-CH": {
-                                "content": "Aktualisieren"
-                            },
-                            "en-GB": {
-                                "content": "Update"
-                            }
-                        },
-                        "btn_cancel_label": {
-                            "de-CH": {
-                                "content": "Abbrechen"
-                            },
-                            "en-GB": {
-                                "content": "Cancel"
-                            }
-                        },
-                        "btn_cancel_url": {
+                        "list_key": {
                             "all": {
-                                "content": "/cms/contacts"
+                                "content": "contacts"
                             }
                         },
-                        "close_modal_on_save": {
+                        "list_layout": {
                             "all": {
-                                "content": "1"
+                                "content": "table"
                             }
                         },
-                        "load_record_from": {
+                        "form_presentation": {
                             "all": {
-                                "content": "record_id"
+                                "content": "modal"
+                            }
+                        },
+                        "page_size": {
+                            "all": {
+                                "content": "25"
+                            }
+                        },
+                        "list_columns": {
+                            "all": {
+                                "content": "[{\"field\":\"name\",\"label\":{\"de-CH\":\"Name\",\"en-GB\":\"Name\"},\"sortable\":true,\"searchable\":true},{\"field\":\"department\",\"label\":{\"de-CH\":\"Abteilung\",\"en-GB\":\"Department\"},\"sortable\":true,\"searchable\":true},{\"field\":\"phone\",\"label\":{\"de-CH\":\"Telefon\",\"en-GB\":\"Phone\"}},{\"field\":\"email\",\"label\":{\"de-CH\":\"E-Mail\",\"en-GB\":\"Email\"},\"searchable\":true}]"
+                            }
+                        },
+                        "list_sort": {
+                            "all": {
+                                "content": "[{\"field\":\"name\",\"direction\":\"asc\"}]"
+                            }
+                        },
+                        "list_controls": {
+                            "all": {
+                                "content": "[{\"id\":\"department\",\"type\":\"select\",\"field\":\"department\",\"label\":{\"de-CH\":\"Abteilung\",\"en-GB\":\"Department\"},\"options_from\":\"data\"}]"
+                            }
+                        },
+                        "quick_actions": {
+                            "all": {
+                                "content": "[]"
                             }
                         },
                         "own_entries_only": {
                             "all": {
                                 "content": "0"
                             }
+                        },
+                        "allow_create": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "allow_update": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "allow_delete": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "show_history": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "label_add": {
+                            "de-CH": {
+                                "content": "Kontakt hinzufügen"
+                            },
+                            "en-GB": {
+                                "content": "Add contact"
+                            }
+                        },
+                        "label_empty": {
+                            "de-CH": {
+                                "content": "Noch keine Kontakte."
+                            },
+                            "en-GB": {
+                                "content": "No contacts yet."
+                            }
+                        },
+                        "label_search": {
+                            "de-CH": {
+                                "content": "Kontakte durchsuchen"
+                            },
+                            "en-GB": {
+                                "content": "Search contacts"
+                            }
+                        },
+                        "label_confirm_delete": {
+                            "de-CH": {
+                                "content": "Diesen Kontakt löschen?"
+                            },
+                            "en-GB": {
+                                "content": "Delete this contact?"
+                            }
                         }
                     },
                     "children": [
                         {
-                            "section_name": "contacts-form-name",
-                            "style_name": "text-input",
+                            "section_name": "contacts-form",
+                            "style_name": "form-record",
                             "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "name"
-                                    }
-                                },
-                                "label": {
+                                "alert_success": {
                                     "de-CH": {
-                                        "content": "Name"
+                                        "content": "Kontakt gespeichert."
                                     },
                                     "en-GB": {
-                                        "content": "Name"
+                                        "content": "Contact saved."
                                     }
                                 },
-                                "is_required": {
-                                    "all": {
-                                        "content": "1"
+                                "btn_save_label": {
+                                    "de-CH": {
+                                        "content": "Speichern"
+                                    },
+                                    "en-GB": {
+                                        "content": "Save"
+                                    }
+                                },
+                                "btn_update_label": {
+                                    "de-CH": {
+                                        "content": "Aktualisieren"
+                                    },
+                                    "en-GB": {
+                                        "content": "Update"
                                     }
                                 }
-                            }
-                        },
-                        {
-                            "section_name": "contacts-form-department",
-                            "style_name": "select",
-                            "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "department"
+                            },
+                            "children": [
+                                {
+                                    "section_name": "contacts-form-name",
+                                    "style_name": "text-input",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "name"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Name"
+                                            },
+                                            "en-GB": {
+                                                "content": "Name"
+                                            }
+                                        },
+                                        "is_required": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        }
                                     }
                                 },
-                                "label": {
-                                    "de-CH": {
-                                        "content": "Abteilung"
-                                    },
-                                    "en-GB": {
-                                        "content": "Department"
+                                {
+                                    "section_name": "contacts-form-department",
+                                    "style_name": "text-input",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "department"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Abteilung"
+                                            },
+                                            "en-GB": {
+                                                "content": "Department"
+                                            }
+                                        },
+                                        "translatable": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        }
                                     }
                                 },
-                                "options": {
-                                    "all": {
-                                        "content": "[{\"value\":\"study-coordination\",\"sort\":1},{\"value\":\"it-support\",\"sort\":2},{\"value\":\"data-protection\",\"sort\":3},{\"value\":\"lab-scheduling\",\"sort\":4},{\"value\":\"participant-care\",\"sort\":5},{\"value\":\"finance\",\"sort\":6}]"
+                                {
+                                    "section_name": "contacts-form-phone",
+                                    "style_name": "text-input",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "phone"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Telefon"
+                                            },
+                                            "en-GB": {
+                                                "content": "Phone"
+                                            }
+                                        },
+                                        "placeholder": {
+                                            "all": {
+                                                "content": "+41 31 000 00 00"
+                                            }
+                                        }
                                     }
                                 },
-                                "option_labels": {
-                                    "de-CH": {
-                                        "content": "{\"study-coordination\":\"Studienkoordination\",\"it-support\":\"IT-Support\",\"data-protection\":\"Datenschutz\",\"lab-scheduling\":\"Laborplanung\",\"participant-care\":\"Teilnehmendenbetreuung\",\"finance\":\"Finanzen\"}"
-                                    },
-                                    "en-GB": {
-                                        "content": "{\"study-coordination\":\"Study Coordination\",\"it-support\":\"IT Support\",\"data-protection\":\"Data Protection\",\"lab-scheduling\":\"Lab Scheduling\",\"participant-care\":\"Participant Care\",\"finance\":\"Finance\"}"
+                                {
+                                    "section_name": "contacts-form-email",
+                                    "style_name": "text-input",
+                                    "fields": {
+                                        "name": {
+                                            "all": {
+                                                "content": "email"
+                                            }
+                                        },
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "E-Mail"
+                                            },
+                                            "en-GB": {
+                                                "content": "Email"
+                                            }
+                                        },
+                                        "placeholder": {
+                                            "all": {
+                                                "content": "name@example.org"
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        {
-                            "section_name": "contacts-form-phone",
-                            "style_name": "text-input",
-                            "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "phone"
-                                    }
-                                },
-                                "label": {
-                                    "de-CH": {
-                                        "content": "Telefon"
-                                    },
-                                    "en-GB": {
-                                        "content": "Phone"
-                                    }
-                                },
-                                "placeholder": {
-                                    "all": {
-                                        "content": "+41 31 000 00 00"
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "section_name": "contacts-form-email",
-                            "style_name": "text-input",
-                            "fields": {
-                                "name": {
-                                    "all": {
-                                        "content": "email"
-                                    }
-                                },
-                                "label": {
-                                    "de-CH": {
-                                        "content": "E-Mail"
-                                    },
-                                    "en-GB": {
-                                        "content": "Email"
-                                    }
-                                },
-                                "placeholder": {
-                                    "all": {
-                                        "content": "name@example.org"
-                                    }
-                                }
-                            }
+                            ]
                         }
                     ]
                 }
-            ],
-            "cms_app_role": "form"
+            ]
         },
         {
             "keyword": "contacts",
@@ -323,6 +393,7 @@
                     "priority": 0
                 }
             ],
+            "cms_app_role": "public_list",
             "sections": [
                 {
                     "section_name": "contacts-page",
@@ -339,6 +410,9 @@
                             }
                         }
                     },
+                    "global_fields": {
+                        "css_mobile": "px-4 py-6"
+                    },
                     "children": [
                         {
                             "section_name": "contacts-hero",
@@ -346,7 +420,7 @@
                             "fields": {
                                 "gap": {
                                     "all": {
-                                        "content": "xs"
+                                        "content": "sm"
                                     }
                                 },
                                 "spacing": {
@@ -355,17 +429,55 @@
                                     }
                                 }
                             },
+                            "global_fields": {
+                                "css": "relative overflow-hidden rounded-3xl px-6 py-10 md:px-10 md:py-14 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950 border border-sky-100/80 dark:border-slate-800 shadow-sm",
+                                "css_mobile": "flex flex-col gap-2 mb-6"
+                            },
                             "children": [
+                                {
+                                    "section_name": "contacts-hero-eyebrow",
+                                    "style_name": "badge",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Verzeichnis"
+                                            },
+                                            "en-GB": {
+                                                "content": "Directory"
+                                            }
+                                        },
+                                        "variant": {
+                                            "all": {
+                                                "content": "light"
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "cyan"
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "xl"
+                                            }
+                                        }
+                                    }
+                                },
                                 {
                                     "section_name": "contacts-hero-title",
                                     "style_name": "title",
                                     "fields": {
                                         "content": {
                                             "de-CH": {
-                                                "content": "Kontakte"
+                                                "content": "Ansprechpersonen"
                                             },
                                             "en-GB": {
-                                                "content": "Contact directory"
+                                                "content": "Who to contact"
                                             }
                                         },
                                         "title_order": {
@@ -373,6 +485,9 @@
                                                 "content": "1"
                                             }
                                         }
+                                    },
+                                    "global_fields": {
+                                        "css": "tracking-tight text-4xl md:text-5xl font-semibold text-slate-900 dark:text-white max-w-3xl"
                                     }
                                 },
                                 {
@@ -381,15 +496,10 @@
                                     "fields": {
                                         "text": {
                                             "de-CH": {
-                                                "content": "Die richtige Ansprechperson für jedes Anliegen — direkt anrufen oder anschreiben."
+                                                "content": "Finden Sie die richtige Person für Ihr Anliegen: suchen oder nach Abteilung filtern."
                                             },
                                             "en-GB": {
-                                                "content": "The right person for every request — call or email them directly."
-                                            }
-                                        },
-                                        "color": {
-                                            "all": {
-                                                "content": "dimmed"
+                                                "content": "Find the right person for your question: search or filter by department."
                                             }
                                         },
                                         "size": {
@@ -397,34 +507,85 @@
                                                 "content": "lg"
                                             }
                                         }
-                                    }
-                                },
-                                {
-                                    "section_name": "contacts-hero-divider",
-                                    "style_name": "divider",
-                                    "fields": {
-                                        "spacing": {
-                                            "all": {
-                                                "content": "{\"mt\":\"sm\"}"
-                                            }
-                                        }
+                                    },
+                                    "global_fields": {
+                                        "css": "max-w-2xl text-slate-600 dark:text-slate-300 leading-relaxed"
                                     }
                                 }
-                            ],
-                            "global_fields": {
-                                "css_mobile": "flex flex-col gap-2 mb-6"
-                            }
+                            ]
                         },
                         {
-                            "section_name": "contacts-list",
-                            "style_name": "entry-list",
+                            "section_name": "contacts-view",
+                            "style_name": "data-view",
+                            "fields": {
+                                "list_key": {
+                                    "all": {
+                                        "content": "contacts"
+                                    }
+                                },
+                                "list_layout": {
+                                    "all": {
+                                        "content": "custom"
+                                    }
+                                },
+                                "page_size": {
+                                    "all": {
+                                        "content": "12"
+                                    }
+                                },
+                                "list_columns": {
+                                    "all": {
+                                        "content": "[{\"field\":\"name\",\"label\":{\"de-CH\":\"Name\",\"en-GB\":\"Name\"},\"sortable\":true,\"searchable\":true},{\"field\":\"department\",\"label\":{\"de-CH\":\"Abteilung\",\"en-GB\":\"Department\"},\"sortable\":true,\"searchable\":true},{\"field\":\"phone\",\"label\":{\"de-CH\":\"Telefon\",\"en-GB\":\"Phone\"}},{\"field\":\"email\",\"label\":{\"de-CH\":\"E-Mail\",\"en-GB\":\"Email\"},\"searchable\":true}]"
+                                    }
+                                },
+                                "list_sort": {
+                                    "all": {
+                                        "content": "[{\"field\":\"name\",\"direction\":\"asc\"}]"
+                                    }
+                                },
+                                "list_controls": {
+                                    "all": {
+                                        "content": "[{\"id\":\"department\",\"type\":\"select\",\"field\":\"department\",\"label\":{\"de-CH\":\"Abteilung\",\"en-GB\":\"Department\"},\"options_from\":\"data\"}]"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "label_empty": {
+                                    "de-CH": {
+                                        "content": "Keine Kontakte gefunden."
+                                    },
+                                    "en-GB": {
+                                        "content": "No contacts found."
+                                    }
+                                },
+                                "label_search": {
+                                    "de-CH": {
+                                        "content": "Kontakte suchen"
+                                    },
+                                    "en-GB": {
+                                        "content": "Search contacts"
+                                    }
+                                },
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:contacts-form"
+                                    }
+                                },
+                                "list_row_css": {
+                                    "all": {
+                                        "content": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+                                    }
+                                }
+                            },
                             "global_fields": {
-                                "css": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
-                                "css_mobile": "flex flex-col gap-4"
+                                "css": "mt-2"
                             },
                             "children": [
                                 {
-                                    "section_name": "contacts-list-card",
+                                    "section_name": "contacts-view-card",
                                     "style_name": "card",
                                     "fields": {
                                         "border": {
@@ -434,7 +595,7 @@
                                         },
                                         "radius": {
                                             "all": {
-                                                "content": "md"
+                                                "content": "xl"
                                             }
                                         },
                                         "web_card_shadow": {
@@ -443,9 +604,13 @@
                                             }
                                         }
                                     },
+                                    "global_fields": {
+                                        "css": "h-full flex flex-col transition duration-300 ease-out hover:-translate-y-1 hover:shadow-xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm border-t-4 border-t-cyan-400",
+                                        "css_mobile": "mb-4 px-4 py-4"
+                                    },
                                     "children": [
                                         {
-                                            "section_name": "contacts-list-card-head",
+                                            "section_name": "contacts-view-card-head",
                                             "style_name": "group",
                                             "fields": {
                                                 "gap": {
@@ -464,14 +629,17 @@
                                                     }
                                                 }
                                             },
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-center gap-3"
+                                            },
                                             "children": [
                                                 {
-                                                    "section_name": "contacts-list-card-avatar",
+                                                    "section_name": "contacts-view-card-avatar",
                                                     "style_name": "avatar",
                                                     "fields": {
                                                         "name": {
                                                             "all": {
-                                                                "content": "{{contact.name}}"
+                                                                "content": "{{name}}"
                                                             }
                                                         },
                                                         "color": {
@@ -481,7 +649,7 @@
                                                         },
                                                         "size": {
                                                             "all": {
-                                                                "content": "md"
+                                                                "content": "lg"
                                                             }
                                                         },
                                                         "radius": {
@@ -489,10 +657,13 @@
                                                                 "content": "50%"
                                                             }
                                                         }
+                                                    },
+                                                    "global_fields": {
+                                                        "css": "ring-2 ring-cyan-100 dark:ring-cyan-900"
                                                     }
                                                 },
                                                 {
-                                                    "section_name": "contacts-list-card-head-text",
+                                                    "section_name": "contacts-view-card-head-text",
                                                     "style_name": "stack",
                                                     "fields": {
                                                         "gap": {
@@ -501,36 +672,42 @@
                                                             }
                                                         }
                                                     },
+                                                    "global_fields": {
+                                                        "css_mobile": "flex-1 flex flex-col items-start gap-2"
+                                                    },
                                                     "children": [
                                                         {
-                                                            "section_name": "contacts-list-card-name",
+                                                            "section_name": "contacts-view-card-name",
                                                             "style_name": "title",
                                                             "fields": {
                                                                 "content": {
                                                                     "de-CH": {
-                                                                        "content": "{{contact.name}}"
+                                                                        "content": "{{name}}"
                                                                     },
                                                                     "en-GB": {
-                                                                        "content": "{{contact.name}}"
+                                                                        "content": "{{name}}"
                                                                     }
                                                                 },
                                                                 "title_order": {
                                                                     "all": {
-                                                                        "content": "5"
+                                                                        "content": "4"
                                                                     }
                                                                 }
+                                                            },
+                                                            "global_fields": {
+                                                                "css": "tracking-tight"
                                                             }
                                                         },
                                                         {
-                                                            "section_name": "contacts-list-card-department",
+                                                            "section_name": "contacts-view-card-department",
                                                             "style_name": "badge",
                                                             "fields": {
                                                                 "label": {
                                                                     "de-CH": {
-                                                                        "content": "{{contact._department_label}}"
+                                                                        "content": "{{department}}"
                                                                     },
                                                                     "en-GB": {
-                                                                        "content": "{{contact._department_label}}"
+                                                                        "content": "{{department}}"
                                                                     }
                                                                 },
                                                                 "variant": {
@@ -538,25 +715,29 @@
                                                                         "content": "light"
                                                                     }
                                                                 },
+                                                                "color": {
+                                                                    "all": {
+                                                                        "content": "cyan"
+                                                                    }
+                                                                },
                                                                 "size": {
                                                                     "all": {
                                                                         "content": "sm"
                                                                     }
+                                                                },
+                                                                "radius": {
+                                                                    "all": {
+                                                                        "content": "xl"
+                                                                    }
                                                                 }
                                                             }
                                                         }
-                                                    ],
-                                                    "global_fields": {
-                                                        "css_mobile": "flex-1 flex flex-col items-start gap-2"
-                                                    }
+                                                    ]
                                                 }
-                                            ],
-                                            "global_fields": {
-                                                "css_mobile": "flex flex-row items-center gap-3"
-                                            }
+                                            ]
                                         },
                                         {
-                                            "section_name": "contacts-list-card-divider",
+                                            "section_name": "contacts-view-card-divider",
                                             "style_name": "divider",
                                             "fields": {
                                                 "spacing": {
@@ -566,11 +747,11 @@
                                                 }
                                             },
                                             "global_fields": {
-                                                "css_mobile": "mt-2 mb-2"
+                                                "css_mobile": "mt-3 mb-3"
                                             }
                                         },
                                         {
-                                            "section_name": "contacts-list-card-links",
+                                            "section_name": "contacts-view-card-links",
                                             "style_name": "stack",
                                             "fields": {
                                                 "gap": {
@@ -579,258 +760,62 @@
                                                     }
                                                 }
                                             },
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-col gap-2"
+                                            },
                                             "children": [
                                                 {
-                                                    "section_name": "contacts-list-card-phone",
+                                                    "section_name": "contacts-view-card-phone",
                                                     "style_name": "link",
                                                     "fields": {
                                                         "label": {
                                                             "de-CH": {
-                                                                "content": "{{contact.phone}}"
+                                                                "content": "{{phone}}"
                                                             },
                                                             "en-GB": {
-                                                                "content": "{{contact.phone}}"
+                                                                "content": "{{phone}}"
                                                             }
                                                         },
                                                         "url": {
                                                             "all": {
-                                                                "content": "tel:{{contact.phone}}"
-                                                            }
-                                                        },
-                                                        "web_left_icon": {
-                                                            "all": {
-                                                                "content": "IconPhone"
+                                                                "content": "tel:{{phone}}"
                                                             }
                                                         }
                                                     }
                                                 },
                                                 {
-                                                    "section_name": "contacts-list-card-email",
+                                                    "section_name": "contacts-view-card-email",
                                                     "style_name": "link",
                                                     "fields": {
                                                         "label": {
                                                             "de-CH": {
-                                                                "content": "{{contact.email}}"
+                                                                "content": "{{email}}"
                                                             },
                                                             "en-GB": {
-                                                                "content": "{{contact.email}}"
+                                                                "content": "{{email}}"
                                                             }
                                                         },
                                                         "url": {
                                                             "all": {
-                                                                "content": "mailto:{{contact.email}}"
-                                                            }
-                                                        },
-                                                        "web_left_icon": {
-                                                            "all": {
-                                                                "content": "IconMail"
+                                                                "content": "mailto:{{email}}"
                                                             }
                                                         }
                                                     }
                                                 }
-                                            ],
-                                            "global_fields": {
-                                                "css_mobile": "flex flex-col items-start gap-3"
-                                            }
+                                            ]
                                         }
-                                    ],
-                                    "global_fields": {
-                                        "css_mobile": "flex flex-col mb-4 px-4 py-4 gap-3"
-                                    }
+                                    ]
                                 }
-                            ],
-                            "fields": {
-                                "data_table": {
-                                    "all": {
-                                        "content": "@section:contacts-form"
-                                    }
-                                },
-                                "own_entries_only": {
-                                    "all": {
-                                        "content": "0"
-                                    }
-                                },
-                                "filter": {
-                                    "all": {
-                                        "content": ""
-                                    }
-                                },
-                                "scope": {
-                                    "all": {
-                                        "content": "contact"
-                                    }
-                                }
-                            }
-                        }
-                    ],
-                    "global_fields": {
-                        "css_mobile": "px-4 py-6"
-                    }
-                }
-            ],
-            "cms_app_role": "public_list"
-        },
-        {
-            "keyword": "cms-contacts",
-            "surface": "cms",
-            "page_access_type": "mobile_and_web",
-            "headless": false,
-            "open_access": false,
-            "url": "/cms/contacts",
-            "parent_keyword": null,
-            "is_system": false,
-            "fields": [
-                {
-                    "name": "title",
-                    "display": true,
-                    "translations": [
-                        {
-                            "language_code": "de-CH",
-                            "content": "Kontakte verwalten"
-                        },
-                        {
-                            "language_code": "en-GB",
-                            "content": "Manage contacts"
+                            ]
                         }
                     ]
                 }
-            ],
-            "routes": [
-                {
-                    "path_pattern": "/cms/contacts",
-                    "requirements": null,
-                    "is_canonical": true,
-                    "is_active": true,
-                    "priority": 0
-                }
-            ],
-            "sections": [
-                {
-                    "section_name": "cms-contacts-page",
-                    "style_name": "container",
-                    "fields": {
-                        "size": {
-                            "all": {
-                                "content": "lg"
-                            }
-                        },
-                        "spacing": {
-                            "all": {
-                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
-                            }
-                        }
-                    },
-                    "children": [
-                        {
-                            "section_name": "cms-contacts-table",
-                            "style_name": "entry-table",
-                            "fields": {
-                                "title": {
-                                    "de-CH": {
-                                        "content": "Alle Kontakte"
-                                    },
-                                    "en-GB": {
-                                        "content": "All contacts"
-                                    }
-                                },
-                                "data_table": {
-                                    "all": {
-                                        "content": "@section:contacts-form"
-                                    }
-                                },
-                                "own_entries_only": {
-                                    "all": {
-                                        "content": "0"
-                                    }
-                                },
-                                "delete_entry": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_sortable": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_searching": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_paginate": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "dt_info": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "csv_export": {
-                                    "all": {
-                                        "content": "1"
-                                    }
-                                },
-                                "fields_map": {
-                                    "all": {
-                                        "content": "[\"name\",\"department\",\"phone\",\"email\"]"
-                                    }
-                                },
-                                "add_url": {
-                                    "all": {
-                                        "content": "/cms/contacts/form"
-                                    }
-                                },
-                                "edit_url": {
-                                    "all": {
-                                        "content": "/cms/contacts/{record_id}"
-                                    }
-                                },
-                                "empty_text": {
-                                    "de-CH": {
-                                        "content": "Noch keine Kontakte — mit «Neu hinzufügen» den ersten Kontakt anlegen."
-                                    },
-                                    "en-GB": {
-                                        "content": "No contacts yet — click \"Add new\" to create the first one."
-                                    }
-                                },
-                                "delete_modal_title": {
-                                    "de-CH": {
-                                        "content": "Kontakt löschen?"
-                                    },
-                                    "en-GB": {
-                                        "content": "Delete contact?"
-                                    }
-                                },
-                                "delete_modal_body": {
-                                    "de-CH": {
-                                        "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
-                                    },
-                                    "en-GB": {
-                                        "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
-                                    }
-                                },
-                                "fields_map_labels": {
-                                    "en-GB": {
-                                        "content": "{\"name\":\"Name\",\"department\":\"Department\",\"phone\":\"Phone\",\"email\":\"Email\"}"
-                                    },
-                                    "de-CH": {
-                                        "content": "{\"name\":\"Name\",\"department\":\"Abteilung\",\"phone\":\"Telefon\",\"email\":\"E-Mail\"}"
-                                    }
-                                }
-                            }
-                        }
-                    ]
-                }
-            ],
-            "cms_app_role": "cms_list"
+            ]
         }
     ],
     "cms_app": {
         "name": "Contact directory",
         "slug": "contacts",
-        "description": null
+        "description": "A searchable contact directory with a managed list."
     }
 }

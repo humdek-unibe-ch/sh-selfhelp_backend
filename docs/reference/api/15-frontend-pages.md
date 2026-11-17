@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-07-01.
+Last verified: 2026-11-13.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -94,11 +94,25 @@ Anonymous callers are treated as a guest (they inherit no group ACLs).
 
 **Query Parameters:**
 - `language_id`: Language ID (defaults to the CMS default language)
-- `preview`: `true` serves the unpublished draft. **Requires authentication**
-  (an anonymous `preview=true` request is rejected with `401`) plus page ACL
-  select; preview responses are sent with no-store/no-cache headers.
+- `preview`: `true` serves the unpublished draft only to a caller who may
+  **edit** the page (`admin.page.update` plus the update data-access grant;
+  the admin role passes). An anonymous request is rejected with `401`; a
+  signed-in caller without those rights gets `403` and nothing from the draft.
+  Page ACL select still applies on top. Preview responses are sent with
+  no-store/no-cache headers.
 
 **Response:** Complete page content including sections and translations
+
+**Lists on the page.** A section of style `entry-form-list` or `data-view` carries
+`list_state` (rows, columns, controls, pagination, capabilities) or `list_error`
+next to its configuration. A `data-view` with the layout `custom` carries no
+children in this payload: its sections are the layout of one record and arrive
+drawn, once per record, in `list_state.rows[].sections`. The list parameters of the page URL (`<key>.page`,
+`<key>.q`, `<key>.sort`, `<key>.f.<id>`, `<key>.record`, `<key>.mode`) are read from
+the raw query string of this request, and `GET /cms-api/v1/pages/resolve?path=...`
+behaves the same. The cached page holds the configuration only; the rows are added
+after the cache per visitor, and a page that contains a list is answered
+`Cache-Control: private, no-store`. See [22-form-lists.md](22-form-lists.md).
 
 ## Language Support
 

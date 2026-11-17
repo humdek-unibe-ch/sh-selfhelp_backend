@@ -18,10 +18,17 @@
     "section_id": {
       "type": "integer",
       "minimum": 1,
-      "description": "The section ID of the form"
+      "description": "The section ID of the form, or of the entry list the record belongs to"
+    },
+    "expected_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required: the record version the delete is based on (the `version` the client last received from the record or from the list). A delete that names none, or a value that is not a whole number of at least 1, is refused with 400 (`expected_version_required` / `invalid_expected_version`); one based on an older version is refused with 409 (`stale_version`). Nothing is deleted by a refused request. The schema declares it optional only so that the refusal carries its reason."
+    },
+    "preview": {
+      "type": "boolean",
+      "description": "Act on the draft of the page instead of its published version. Only for a signed-in person who may read the draft; it must match what the person is looking at (the page endpoint's `preview`). Without it the published version is used. The page access rights, the live data and the permissions stay the same."
     }
   },
   "additionalProperties": false
 }
-
-

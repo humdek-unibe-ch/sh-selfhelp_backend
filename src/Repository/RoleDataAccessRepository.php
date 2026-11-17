@@ -334,7 +334,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      * Single source of truth for admin user visibility: the list, the CSV
      * export and the stats tiles all start here, so a tile can never count a
      * user the table would not show. Callers pass $accessibleGroupIds = null
-     * for an admin (sees every non-intern user) or a list of group IDs for a
+     * for an admin (sees every user with an active status) or a list of group IDs for a
      * group-scoped admin.
      *
      * The caller is responsible for the SELECT clause.
@@ -347,9 +347,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->from(User::class, 'u')
             ->leftJoin('u.userType', 'ut')
             ->leftJoin('u.status', 'us')
-            ->where('u.intern = :intern')
-            ->andWhere('u.id_status > 0')
-            ->setParameter('intern', false);
+            ->where('u.id_status > 0');
 
         // Group scoping: an admin passes null (no restriction); a group-scoped
         // admin is limited to users in the groups they can access.

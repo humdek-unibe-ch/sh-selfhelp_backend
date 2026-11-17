@@ -1,3 +1,261 @@
+# v0.1.44
+
+**Navigation `item_limit`:** web_header default raised from 5 to 8 when still on
+the seed value (migration `Version20261116132240`); `PUT` menu definition
+rejects `item_limit` outside 1–50 (null remains unlimited). Soft overflow:
+extras stay stored; public resolve truncates **every** system menu (header,
+footer, drawer, bottom tabs), not only bottom tabs.
+
+**Entry lists: a server-rendered list of the records of a form with create, view,
+edit and delete, a read-only data view, one structured query engine behind every
+read of the generic data store, record versions with history and restore, and the
+four security fixes the workflow stands on (F127, F04, F05, F07).** Pre-release:
+fresh installs only, no upgrade path from earlier development builds, no data
+conversion.
+
+**CMS app media and publish (F165–F167):** section-scoped current-file route
+(`GET /lists/{section}/records/{record}/files/{field}` for `entry-form-list`,
+`data-view`, `entry-record` and `entry-list`), `files_public` means page viewers
+(not anyone-with-link), list cell format `image`, file keep/replace/remove on
+update, wizard `with_status` + `image`/`files` field types, admin data browser
+record history routes. Public detail bound by typed `entry-record.fixed_filter`
+(F166). Accept-restricted uploads refuse SVG; current-file never inlines SVG
+(F167). Template token `{{field__links}}`: ready HTML `<a>` list (same URLs as
+`__files`) for the existing `text` style; multi-file cells store JSON with
+unescaped slashes so file detection matches. Mustache escape is by origin
+(F177): only server-built `__url` / `__links` (`ServerBuiltString`) skip HTML
+escaping; visitor text that looks like those values is escaped.
+
+## Release floors
+
+- `release-manifest.json`: `supports.frontend` is raised to `>=0.1.71 <0.2.0`
+  (the frontend that renders the lists and sends `expected_version`);
+  `supports.manager` `>=1.7.0` and `pluginApiVersion` are unchanged. That
+  frontend declares `supports.core` `>=0.1.44`.
+- `@selfhelp/shared` 1.24.0 carries the matching types (`entry-form-list`,
+  `data-view`, list state, URL helpers).
+- `selfhelp_cms_version_default` is `0.1.44`.
+
+## New styles and routes
+
+- Styles `entry-form-list` (create, update, delete, quick actions, history and
+  restore) and `data-view` (read-only: the server refuses a forged write whatever
+  the caller may do elsewhere), with their fields and lookups
+  (migration `Version20261113120844`). A list reads **one table**: its own
+  `data_table`, otherwise the table of the form inside it. Search, sort, filters
+  and page live in the URL under the list's namespace and only narrow the dataset
+  (table, owner scope, author's fixed filter); the open record is looked up inside
+  the dataset, so a link works after narrowing and never reaches another record.
+- The list state is part of the page payload (`list_state` / `list_error`, added
+  after the page cache so the cached page stays shared and rows are per visitor)
+  and `GET /lists/{section_id}/state`. Pages with lists and every list endpoint
+  are `Cache-Control: private, no-store`. A list that cannot render becomes
+  `list_error` on its own section; the page is served.
+- `POST /lists/{section_id}/records/{record_id}/actions/{action_id}` (quick
+  actions: the client names an action, the author defined what it writes),
+  `GET .../history`, `GET .../versions/{version}`, `GET .../compare`,
+  `POST .../restore` (with dry run) and
+  `GET .../versions/{version}/files/{field_key}`. Wire contract:
+  `docs/reference/api/22-form-lists.md`.
+- Writes use the ordinary form endpoints (`POST /forms/submit`,
+  `PUT /forms/update` with `update_based_on.record_id` and `expected_version`,
+  `DELETE /forms/delete`) and answer the new `400 table_mismatch`,
+  `401 login_required`, `403 operation_disabled` and `409 stale_version` where
+  the list requires them. The owner of a record is never changed by an edit, a
+  quick action or a restore.
+- Admin section details carry `list_source` (the columns and row fields the list
+  editor may offer) for list sections.
+- **Validated when saved and when imported.** A list configuration that does not
+  fit its table is refused on save (`400`, every problem in one answer, nothing
+  stored) and on section or bundle import (`422`, before anything is created). A
+  save that does not touch the list fields is never held up. Bundles carry no
+  install-specific ids: a list bound to a form of the same bundle names its table
+  by owner token and its columns by input name, and relinks on import.
+- **Data view row templates (layout `custom`).** The sections placed inside a
+  data view are the layout of **one record**: the server draws them once per
+  record (`PageService::renderRowTemplate`, the path an `entry-list` uses for its
+  clones) and returns them in the list state as `rows[].sections`, with
+  `list.has_template` and `list.row_css`. A token is a column the author chose
+  plus `record_id`, `entry_date`, `_index` and the translated option labels
+  (`{{_status_label}}`); a form, a list or another data view inside the view is
+  left out and a file column is not a token. A section of the layout may carry a
+  condition that uses these tokens (`{">":[{"var":"{{seats}}"},10]}`): they are
+  resolved in the decoded JSON Logic, so a value of a record can never close a
+  string, change the shape of the condition or pick a system variable. The layout
+  also reads the declared route of the page (`{{route.record_id}}`, sent as
+  `route[<name>]` by clients and re-checked against the page's own routes) and the
+  supporting values of the view (`data_config`); a column that is called like one
+  of those scopes never replaces it, and a filter that cannot be resolved finds
+  nothing instead of everything. The page payload carries no children for a data
+  view, so a record's drawn sections reach a visitor only through the state. New property
+  `list_row_css` (web only: the classes of the element that holds the records)
+  and the layout `custom` (migration `Version20261113210755`, which also lets
+  `data-view` have children; its `down()` refuses to run while a data view holds
+  sections). `custom` is refused on an `entry-form-list` (its child is its form);
+  a `custom` view without sections falls back to cards. The shipped Events,
+  Contact directory and Testimonials templates are built on it.
+
+## Data query engine
+
+- `App\Service\CMS\DataQuery\*`: one structured, bound-parameter query
+  (projection, typed filters, search, sort, paging, count, facets, owner scope)
+  that pages the ids first and reads only the projected cells of that page; no
+  pivot over the table. `DataTableRepository`, `DataService`, repeaters,
+  `data_config`, form prefill, admin data grid, admin data export and the page
+  bundle dataset export all read through it (reader inventory and equivalence
+  tests in `docs/developer/data-query-engine.md`). The three `get_data_table_*`
+  stored procedures are no longer called.
+- Column value types live on `data_cols` (`id_value_type`, lookup group
+  `dataColValueTypes`; NULL is text), supplied by the form input that creates the
+  column (migration `Version20261113104850`), so numbers and dates sort and
+  compare as numbers and dates.
+- Admin data export and page-bundle dataset export read in batches of 500 with
+  identical output; no new export was added.
+- Migration `Version20261113135247` adds two covering indexes on `data_rows`
+  (`id_data_tables, timestamp, id, ...` and `id_data_tables, id_users,
+  timestamp, id, ...`). A million-record table pages in about 1 ms instead of
+  about 1 s, and an own-entries list of 200 records no longer reads the table.
+  The older single-column index is left in place.
+
+## Record versions and history
+
+- Migration `Version20261113120906`: `data_rows.version`, `data_revisions`,
+  `data_revision_changes`, `data_revision_values` and the lookup groups
+  `dataRevisionOperations` (`create`, `update`, `delete`, `restore`, `baseline`)
+  and `dataRevisionSources` (`form`, `admin`, `quick_action`, `job`, `import`,
+  `system`).
+- `DataService` is the only writer: inside the same transaction it takes the
+  record lock, refuses a stale `expected_version` with `409 stale_version`
+  (nothing written), changes the cells, advances the version by one and stores
+  one revision. A save that changes nothing stores nothing. Values are stored
+  once per record and reused when a value comes back; a checkpoint every 20
+  versions bounds the rebuild of an old state. Restore appends one `restore`
+  revision, is validated against today's columns, languages and files
+  (`422 restore_blocked`) and never rewinds history. Files of old versions are
+  kept and delivered only through the version-file route.
+- History is kept until someone erases data on purpose
+  (`DataRevisionErasureService`: a user's data, a table, deleted columns).
+  Details: `docs/developer/record-history.md`.
+
+## Security fixes
+
+- **F127**: `PUT /forms/update` and `DELETE /forms/delete` are bound to the table
+  of the form named in the request; a form can no longer change or delete a
+  record of another table.
+- **F04**: request query/body parameters are no longer merged into condition and
+  interpolation variables (route parameters keep their own `{{route.*}}` scope).
+  A section that read a visitor-supplied query value through a bare `{{name}}`
+  must use the form or list state instead.
+- **F05**: the section's and its ancestors' conditions are checked again when a
+  form is submitted, updated or deleted.
+- **F07**: binding a data table into a section (`data_table` field, `data_config`
+  table) is checked against the editor's own access when the section is saved or
+  imported (`SectionTableBindingGuard`, `403`).
+- **A form payload is untrusted.** `form_data` may only carry inputs of the form as
+  the effective page defines it. Owner, trigger and internal metadata (`id`,
+  `id_users`, `id_action_trigger_types`, `triggerType`, `timestamp`, `version`,
+  `record_id`, `__*`) and unknown keys are refused (`400 protected_field` /
+  `unknown_field`) on JSON and multipart, for signed-in people and guests. Jobs and
+  imports keep their trusted internal entry points; a client cannot select them.
+- **One dataset boundary for every door.** Update (by record number or by field
+  values), delete, quick action, history and restore find their record inside the
+  list's dataset (table, fixed filter, own entries), checked again under the write
+  lock; anything else is `404`. An update that names no usable target is
+  `400 unsupported_target_selection` and never creates an entry.
+- **Strict `expected_version`.** Interactive updates, deletes, quick actions and
+  restores require it: a missing, malformed (also as multipart text), negative,
+  fractional or coerced value is `400` before an upload is stored, a row is written
+  or a job is scheduled; a stale one stays `409`. **Breaking for custom clients** of
+  `PUT /forms/update` and `DELETE /forms/delete` that never sent it (the shipped web
+  and mobile clients do). The classic record styles learn the version from the page:
+  every prefilled row of a `form-record` / `entry-record-form`
+  (`section_data[]._version`), every `entry-table` row that offers edit or delete
+  (`entries[]._version`) and an `entry-record-delete` button (`record_version`)
+  carries the version the record has when the page is built, and the client sends it
+  back. The cached page now goes with the record it shows: the data table of a
+  `form-record` and an `entry-record-form` is part of the page cache scope, so after
+  a save a reload no longer prefills the old values with the old version (before, the
+  page kept the old prefill until its cache expired). A request body that broke its
+  request schema answered `500` on the three form routes; it is now the standard `400`.
+- **Participants need only the page `select` right.** The page's group
+  insert/update/delete rights are no longer consulted by the form and list routes
+  (groups see, roles edit): the operation switches, record ownership and the existing
+  data-table grants decide. CMS permissions are unchanged.
+- **Published or draft: one effective configuration.** A visitor is served and
+  written through the published version of the page (list fields, form, conditions,
+  quick actions, history, row templates); only a signed-in author who may read the
+  draft and asks for it (`preview` on the page, state and history endpoints and in the
+  body of a write, quick action or restore) gets the draft. Page access, routes, menus
+  and data stay live (F43).
+- **One set of input rules for every write.** Required, range, length, format,
+  options, read-only, conditions and files of the effective form apply to a normal
+  save, to the value a quick action assigns and to a restore, atomically
+  (`422 invalid_form_data`, `422 restore_blocked`): a refusal leaves no row,
+  revision, upload or scheduled action.
+- **Dates and times read by one grammar in PHP and SQL.** `DataColValueType`:
+  real calendar days and clocks, offsets between -13:59 and +14:00 compared as UTC
+  instants, a malformed stored value behaves as missing and never fails a listing,
+  a malformed filter value is refused. Verified on MySQL 8.0 and 9.1;
+  `ENGINE_VERSION` is 2 so earlier cached results are not reused.
+- **Public page payloads no longer carry the internal query configuration** of a
+  list (`data_table`, `list_columns`, `list_fixed_filter`, `quick_actions`,
+  `data_config`, ...); clients draw from `list_state`.
+
+## CMS apps and templates
+
+- **The scaffold wizard builds the new shape.** `POST /admin/cms-apps/{id}/scaffold`
+  creates the CMS list `/cms/<base>` (one `entry-form-list` whose inline form is
+  the only place the inputs are defined and owns the data table), the public list
+  `/<base>` (a read-only `data-view` of the same table, every row linking to its
+  detail page) and the public detail `/<base>/{record_id}` (`entry-record`). It
+  is one transaction; a failure leaves nothing behind. `create_form` needs
+  `create_admin` (`400` otherwise); over an existing table (`create_form` off)
+  the CMS list shows and deletes records only. The app hub finds the form of an
+  app without a form page in the inline form of its CMS list
+  (`CmsAppHubSyncService`).
+- **Six redesigned templates** (team members, news, FAQ, events, contact
+  directory, testimonials): each is one CMS `entry-form-list` that holds the
+  form, a public page over the same table (card grid, article cards, accordion,
+  filterable cards, searchable table, quote wall) and sample rows in German and
+  English. Option codes are stable and carry translated labels; events add the
+  quick actions *Cancel* / *Reopen*, testimonials moderate through *Approve* /
+  *Hide* with a fixed `status = Approved` filter on the public view, team
+  members carry a public portrait upload. Imports never open a page to guests.
+  The bundles are written by the frontend script
+  `scripts/build-cms-example-bundles.mjs`; the backend keeps byte-identical
+  copies under `tests/fixtures/examples/`.
+- **Fixed: `{{scope._<field>_label}}` was empty.** Option labels were hydrated
+  after the rows were put under the list's `scope`, so a scoped token such as
+  `{{team_member._role_label}}` rendered nothing while the flat form worked.
+  `PageService::resolveEntryRows()` now hydrates first.
+- **Fixed: a page bundle lost the translated cells of its sample rows.** The
+  export read one language per cell and dropped translations; it now reads all
+  languages in batches and writes a locale map for a translated cell, which the
+  import restores.
+- Docs: `docs/cookbook/cms-in-cms-list-detail.md` and `docs/user/cms-apps.md`
+  describe the new shape; older `entry-table` pages keep working.
+
+## Tests and tooling
+
+- New focused tests are listed in `docs/developer/form-lists.md`; the isolated
+  QA data (`QaFormListFixture`: pages `/qa-entries` and `/qa-events`, personas
+  `qa.user`, `qa.editor`, `qa.guest`) backs the frontend and mobile golden
+  specs. The million-record proof is opt-in (`SH_PERF=1`) and runs on its own
+  database.
+- `CmsInCmsTemplateWorkflowTest` (golden) runs all six templates end to end:
+  the manager adds, edits and deletes records while the public view follows,
+  participants and guests are refused, history and the stale-save conflict hold,
+  quick actions, the portrait upload and its delivery, translated labels,
+  search/sort/validation, and a wizard-made app with `data_config`,
+  interpolation, classes and language conditions. `EntryListHydrationTest`
+  picks the newest record, so it no longer depends on rows of the QA fixture.
+- `ReleaseManifestWaveTest` pins the new floor.
+- Review round 1: `FormListWriteValidationTest`, `FormListPublishedConfigTest`,
+  `FormListHistoricalFileTest` and the extended `FormListSecurityTest`,
+  `FormRecordVersionTest`, `FormConditionRecheckTest`, `FormListQuickActionTest`,
+  `DataColumnValueTypeTest` and `FormListQueryTest` cover the rules above; the list
+  tests remove the uploads they store (`InteractsWithFormLists::uploadsOf()`).
+
 # v0.1.43
 
 **Admin users, groups and roles management; reworked assets (uuid identity,
@@ -280,6 +538,53 @@ everyone else; IPv6 counts per /64. Details in `docs/developer/03-authentication
   the record named by the style default, `record_id` (F87). Before, a blank value
   showed no record at all, which disagreed with the import above.
 
+## About the platform
+
+- The `version` style draws an "about this platform" block: the SelfHelp
+  version, the frameworks (PHP, Symfony, MySQL, Redis), the enabled plugins and
+  the direct production libraries of the backend, each with its licence. The
+  backend generates it from what is installed (`PlatformAboutService`; the
+  libraries are the `require` of `composer.json`, resolved through
+  `vendor/composer/installed.json`) and adds it to the section as `about`
+  **after** the page cache is read, so it is never cached with the page and a
+  permission change shows on the next request. Exact version numbers are shown
+  only to a caller who holds `admin.system.read`; everyone else sees the
+  platform version, the names and the licences. The web and mobile clients add
+  their own generated list in the same shape.
+- New translatable headings on `version`: `title`, `label_frameworks`,
+  `label_plugins`, `label_libraries`, `label_web`, `label_app`, `label_filter`,
+  `label_no_match` (en-GB and de-CH).
+- The Impressum page shows this block instead of the SelfHelp 1
+  "Components & versions" area. The migration deletes that heading, intro, card
+  (with every descendant) and note on every instance, with no check for
+  operator edits, and places one `version` section there; it never adds a
+  second one. The SH1 text is not restored on `down()`.
+- `GET /admin/system/version` returns `frameworks` and `libraries` with exact
+  versions and licences for the admin System page.
+- The admin "Referrers" card gets real data: the web client sends the external
+  referrer host as `X-Referrer-Host`; the mobile app sends none. A test now
+  covers the page endpoint (an external host counts once per page view; a
+  missing, malformed or own-host value counts nothing).
+- Known limit: `_section_recursive.json` ties `about` to the `version` style
+  with `if/then`, which the validator (`justinrainbow/json-schema` 6.x) does not
+  evaluate, like every other per-style rule in that file. The shape of `about`
+  is checked directly against `common/_platform_about.json` in
+  `VersionStyleAboutTest`.
+
+## Database cleanup
+
+- New `docs/reference/database-inventory.md`: every table, procedure, function,
+  lookup type and leftover of the schema, with what uses it.
+- The known-dead SH1 leftovers are gone, completely: the tables `libraries` and
+  `rel_sections_navigation` (and the entities `Library`, `SectionsNavigation`),
+  the column `users.intern` (and `User::$intern`; the three `intern = false`
+  filters it fed were always true), the two `hookTypes` lookup rows (and
+  `LookupService::HOOK_TYPES` with its policy entry), and the unused
+  `MESSENGER_TRANSPORT_DSN` in `.env` and `.env.test`. The migration stops if a
+  foreign key still points at a `hookTypes` row; `down()` brings back the
+  structure and the two lookup rows, not the 23 SH1 `libraries` rows (nothing
+  read them).
+
 ## Security and logging
 
 `api_request_logs` masks every request/response key containing `password`,
@@ -297,7 +602,7 @@ locally built image never contains uploaded files.
 
 `supports.frontend` is `>=0.1.70 <0.2.0` (uuid asset contract, `can_view` /
 `can_update` / `can_delete`, `isFile`; 0.1.69 was never tagged); the frontend
-uses `@selfhelp/shared` 1.22.1. `supports.manager` is `>=1.7.0` (first manager
+uses `@selfhelp/shared` 1.23.0 (the `about` block). `supports.manager` is `>=1.7.0` (first manager
 that backs up `form_files`, `assets` and the plugin artifact volumes; the
 registry `requiresManager` floor is raised when 0.1.43 is published).
 `pluginApiVersion` is unchanged (`0.1.0`). Migrations: `Version20260716180311`,
@@ -306,7 +611,10 @@ registry `requiresManager` floor is raised when 0.1.43 is published).
 `Version20261028100251`, `Version20261028125153`, `Version20261103112133`,
 `Version20261111082842` (group type out, `add_to_new_pages` in),
 `Version20261111083203` (audit rows keep their history without the person),
-`Version20261111104125` (index on `api_request_logs.id_users`).
+`Version20261111104125` (index on `api_request_logs.id_users`),
+`Version20261112163406` (dead SH1 tables, column and lookup rows out),
+`Version20261112164930` (headings of the `version` style),
+`Version20261112164932` (Impressum shows the generated block).
 
 # v0.1.36
 

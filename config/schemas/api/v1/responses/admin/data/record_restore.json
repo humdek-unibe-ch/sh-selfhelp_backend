@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin Data Record Restore Response",
+  "description": "The preview (dry_run) or the result of restoring an earlier version in the data browser. A blocked restore is answered with 422 and the blockers, not with this body.",
+  "allOf": [
+    {
+      "$ref": "../../common/_response_envelope.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["dry_run"],
+          "properties": {
+            "dry_run": { "type": "boolean" },
+            "restorable": { "type": "boolean" },
+            "record_id": { "type": "integer", "minimum": 1 },
+            "from_version": { "type": "integer", "minimum": 1 },
+            "current_version": { "type": "integer", "minimum": 1 },
+            "changes": { "type": "array", "items": { "type": "object" } },
+            "blockers": { "type": "array", "items": { "type": "object" } },
+            "restored_from_version": { "type": "integer", "minimum": 1 },
+            "version": { "type": "integer", "minimum": 1, "description": "The record's version after the restore (unchanged when nothing differed)." }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

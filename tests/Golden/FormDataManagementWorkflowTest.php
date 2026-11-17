@@ -13,10 +13,6 @@ use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\PageAclGroup;
 use App\Entity\Style;
-use App\Service\ACL\ACLService;
-use App\Service\Cache\Core\CacheService;
-use App\Service\Core\LookupService;
-use App\Tests\Support\Factories\PageSectionFactory;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group as TestGroup;
@@ -27,7 +23,7 @@ use Symfony\Component\HttpFoundation\Response;
  *
  *   admin creates a qa_ page + a form-record section through the admin API (the
  *   data table is auto-created and admin CRUD auto-granted) -> the subject group
- *   is granted ACL insert -> a subject user submits the form (POST /forms/submit)
+ *   keeps its select-only page right -> a subject user submits the form (POST /forms/submit)
  *   and then updates the SAME record (PUT /forms/update with
  *   update_based_on.record_id) -> admin reads the rows through /admin/data,
  *   warms the cache, deletes the record (soft-delete) -> the default read hides
@@ -49,26 +45,18 @@ final class FormDataManagementWorkflowTest extends QaWebTestCase
     private const FIELD = 'qa_field';
 
     private EntityManagerInterface $em;
-    private PageSectionFactory $pages;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        // Shared container so the ACL grant the factory invalidates is the pool
-        // the submit request reads (proven PublicPageRenderingWorkflowTest pattern).
+        // Shared container: the entity manager the test reads is the one the requests write through
+        // (proven PublicPageRenderingWorkflowTest pattern).
         $this->client->disableReboot();
 
         $em = self::getContainer()->get(EntityManagerInterface::class);
         self::assertInstanceOf(EntityManagerInterface::class, $em);
         $this->em = $em;
-
-        $this->pages = new PageSectionFactory(
-            $this->em,
-            $this->service(ACLService::class),
-            $this->service(LookupService::class),
-            $this->service(CacheService::class),
-        );
     }
 
     public function testSubmitUpdateReadSoftDeleteFormRecord(): void
@@ -101,11 +89,9 @@ final class FormDataManagementWorkflowTest extends QaWebTestCase
         self::assertIsInt($sectionData['id'] ?? null);
         $sectionId = (int) $sectionData['id'];
 
-        // 2. The page-create flow already granted the subject group ACL *select*
-        //    only. Form submit + update both check the page 'insert' ACL, so
-        //    upgrade the existing subject row in place — a fresh insert would
-        //    collide with the (subject, page) row created above. Then drop the
-        //    page-scoped caches so the submit request observes the upgrade.
+        // 2. The page-create flow grants the subject group ACL *select* only, and that is all a participant needs:
+        //    groups see, so a participant who can see the page works with the forms on it (the form's own
+        //    operation switches and the data grants decide what it may do). The row must still be select-only.
         $page = $this->em->getRepository(Page::class)->find($pageId);
         self::assertInstanceOf(Page::class, $page);
         $subjectAcl = $this->em->getRepository(PageAclGroup::class)->findOneBy([
@@ -113,9 +99,9 @@ final class FormDataManagementWorkflowTest extends QaWebTestCase
             'page' => $page,
         ]);
         self::assertInstanceOf(PageAclGroup::class, $subjectAcl, 'createPage must seed a base subject ACL row.');
-        $subjectAcl->setAclInsert(true)->setAclUpdate(true);
-        $this->em->flush();
-        $this->pages->invalidatePageScopedCaches();
+        self::assertTrue($subjectAcl->getAclSelect());
+        self::assertFalse($subjectAcl->getAclInsert(), 'The participant works through a select-only page right.');
+        self::assertFalse($subjectAcl->getAclUpdate());
 
         $user = $this->loginAsQaUser();
 
@@ -137,6 +123,7 @@ final class FormDataManagementWorkflowTest extends QaWebTestCase
                 'section_id' => $sectionId,
                 'form_data' => [self::FIELD => 'qa_value_2'],
                 'update_based_on' => ['record_id' => $recordId],
+                'expected_version' => $submit['version'] ?? null,
             ], $user)
         );
         self::assertSame($recordId, $update['record_id'] ?? null, 'Update must target the same record id (no second insert).');

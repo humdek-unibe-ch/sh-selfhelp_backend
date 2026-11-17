@@ -13,6 +13,7 @@ use App\Entity\DataAccessAudit;
 use App\Entity\Transaction;
 use App\Plugin\Event\UserDataCleanupEvent;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\DataRevision\DataRevisionErasureService;
 use App\Service\CMS\FormFileUploadService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -35,7 +36,11 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
  * What goes, what stays:
  *  - Removed: scheduled jobs of the user and the recipient rows that point at
  *    the user on other people's jobs, every data row the user owns with its
- *    cells, the user's API request log rows, and the form files they uploaded.
+ *    cells and its whole revision history (including what other people edited on
+ *    those records) and the files that history kept, the user's API request log
+ *    rows, and the form files they uploaded.
+ *  - Detached, not removed: the user as author of history on records somebody else
+ *    owns. That content belongs to the other person's record; only the name goes.
  *  - Kept, with the person removed: the `transactions` and `data_access_audits`
  *    rows. They are the audit trail of what changed and who was refused, so the
  *    rows stay and only the link to the user is cleared. (`transactions` records
@@ -58,6 +63,7 @@ final class UserDataCleanerService
         private readonly CacheService $cache,
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly LoggerInterface $logger,
+        private readonly DataRevisionErasureService $historyErasure,
     ) {
     }
 
@@ -112,6 +118,15 @@ final class UserDataCleanerService
             $userId
         );
 
+        // The history of the user's records goes first: its files are named from the
+        // current cells and the history values, which the statements below delete.
+        // History the user only wrote on somebody else's records is detached, not deleted.
+        $history = $this->historyErasure->eraseOwnedBy($userId);
+        $removed['data_revisions'] = $history->revisions;
+        $removed['data_revision_changes'] = $history->changes;
+        $removed['data_revision_values'] = $history->values;
+        $removed['data_revision_actor_links'] = $history->actorLinksDetached;
+
         // Data cells are deleted explicitly rather than relying on the
         // fk_data_cells_id_data_rows ON DELETE CASCADE: a bulk DQL DELETE
         // bypasses Doctrine's ORM-level cascade entirely, so the erasure must
@@ -147,7 +162,7 @@ final class UserDataCleanerService
 
         $this->refreshManagedAuditRows($userId);
 
-        return new UserDataRemoval($removed, $dataTableIds, $event->getAfterCommitCallbacks());
+        return new UserDataRemoval($removed, $dataTableIds, $event->getAfterCommitCallbacks(), $history->fileKeys);
     }
 
     /**
@@ -161,8 +176,12 @@ final class UserDataCleanerService
     public function finishAfterCommit(int $userId, UserDataRemoval $removal): int
     {
         // Files cannot roll back, so they go only once the rows are gone. The
-        // data cells that pointed at them were just deleted.
-        $files = $this->formFileUploadService->deleteUserFiles($userId);
+        // data cells and history values that pointed at them were just deleted.
+        // First the files the erased records (and their history) named, wherever
+        // they were stored: another person's upload onto this user's record is part
+        // of this user's data. A key some remaining value still names stays.
+        $files = $this->formFileUploadService->deleteUnreferencedFiles($removal->fileKeys);
+        $files += $this->formFileUploadService->deleteUserFiles($userId);
 
         // The data is gone for good, so a plugin that fails here must not make
         // the removal look failed, and must not stop the plugins after it.

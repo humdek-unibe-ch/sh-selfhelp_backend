@@ -15,6 +15,8 @@ use App\Entity\SectionsFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\CmsPreferenceService;
+use App\Service\CMS\DataRevision\DataRevisionErasureService;
+use App\Service\CMS\DataRevision\ErasedHistory;
 use App\Repository\DataTableRepository;
 use App\Repository\RoleDataAccessRepository;
 use App\Service\Core\LookupService;
@@ -65,6 +67,8 @@ class DataTableService extends BaseService
         private readonly LookupService $lookupService,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly FormFieldKeyResolver $formFieldKeyResolver,
+        private readonly DataRevisionErasureService $historyErasure,
+        private readonly FormFileUploadService $formFileUploadService,
     ) {
     }
 
@@ -312,6 +316,7 @@ class DataTableService extends BaseService
         }
 
         $deletedDataTableId = $dataTable->getId();
+        $history = new ErasedHistory();
 
         $this->entityManager->beginTransaction();
 
@@ -324,10 +329,17 @@ class DataTableService extends BaseService
                 $dataTable->getId()
             );
 
+            // Deleting a table is an explicit erasure: the history of its records goes
+            // with them, and the files that history kept are named for deletion below.
+            $history = $this->historyErasure->eraseTable((int) $deletedDataTableId);
+
             // Doctrine will cascade delete all related rows, columns, and cells
             $this->entityManager->remove($dataTable);
             $this->entityManager->flush();
             $this->entityManager->commit();
+
+            // A file cannot roll back, so it goes only once the data is gone for good.
+            $this->formFileUploadService->deleteUnreferencedFiles($history->fileKeys);
             
             // Invalidate cache after deleting data table
             $this->cache
@@ -443,9 +455,34 @@ class DataTableService extends BaseService
             /** @var array<int, \App\Entity\DataCol> $columns */
             $columns = $qb->getQuery()->getResult();
 
+            // Deleting a column is an explicit erasure of that field's data: what the
+            // history kept of it goes too (the revision headers stay), and so do the
+            // files that history named.
+            $erasedKeys = [];
             foreach ($columns as $column) {
-                $this->entityManager->remove($column);
-                $deletedCount++;
+                $erasedKeys[] = (string) $column->getFieldKey();
+            }
+            $history = $this->historyErasure->eraseColumns((int) $dataTable->getId(), $erasedKeys);
+
+            // Bulk statements, not `$em->remove($column)`: `DataCell::$dataRow` cascades
+            // REMOVE, so removing a column through the ORM cascades from each of its cells
+            // to the ROW the cell belongs to, and deletes every record that has a value in
+            // the column. The cells go first, explicitly (as the user-data cleaner does,
+            // rather than leaning on the foreign-key cascade), then the columns.
+            $columnIds = [];
+            foreach ($columns as $column) {
+                $columnIds[] = (int) $column->getId();
+            }
+            if ($columnIds !== []) {
+                $this->entityManager
+                    ->createQuery('DELETE FROM App\Entity\DataCell c WHERE c.dataCol IN (:ids)')
+                    ->setParameter('ids', $columnIds)
+                    ->execute();
+                $this->entityManager
+                    ->createQuery('DELETE FROM App\Entity\DataCol dc WHERE dc.id IN (:ids)')
+                    ->setParameter('ids', $columnIds)
+                    ->execute();
+                $deletedCount = count($columnIds);
             }
 
             if ($deletedCount > 0) {
@@ -459,6 +496,19 @@ class DataTableService extends BaseService
 
             $this->entityManager->flush();
             $this->entityManager->commit();
+
+            // A file cannot roll back, so it goes only once the data is gone for good.
+            $this->formFileUploadService->deleteUnreferencedFiles($history->fileKeys);
+
+            if ($deletedCount > 0) {
+                // Every read of the table is cached under its scope: the columns it shows changed.
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                    ->invalidateAllListsInCategory();
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
+            }
 
             return $deletedCount;
         } catch (\Throwable $e) {

@@ -9,6 +9,7 @@
 namespace App\Tests\Service\Core;
 
 use App\Service\Core\InterpolationService;
+use App\Service\Core\ServerBuiltString;
 use App\Tests\Support\NarrowsJson;
 use PHPUnit\Framework\TestCase;
 
@@ -260,6 +261,85 @@ class InterpolationServiceTest extends TestCase
 
         // Mustache escapes HTML by default
         $this->assertStringContainsString('Hello', $result);
+        $this->assertStringContainsString('&amp;', $result);
+    }
+
+    /**
+     * Section-scoped file URLs keep a raw `&` so an img_src / href query string
+     * still works after interpolation (HTML-escaping would turn it into `&amp;`).
+     * Only a server-built marker skips escaping — a plain string does not.
+     */
+    public function testListFileUrlsAreNotHtmlEscaped(): void
+    {
+        $url = '/lists/385/records/24/files/cover?page_id=107&index=0';
+        $result = $this->interpolationService->interpolate(
+            '{{cover__url}}',
+            ['cover__url' => new ServerBuiltString($url)],
+        );
+
+        $this->assertSame($url, $result);
+        $this->assertStringNotContainsString('&amp;', $result);
+    }
+
+    /**
+     * Ready HTML from {{field__links}} keeps its `<a>` tags so the `text` style
+     * can draw clickable downloads (escaping would show entities).
+     */
+    public function testFileLinksHtmlIsNotHtmlEscaped(): void
+    {
+        $links = '<a href="/lists/385/records/24/files/doc?page_id=107&amp;index=0">one.pdf</a>'
+            . '<br><a href="/lists/385/records/24/files/doc?page_id=107&amp;index=1">two.pdf</a>';
+        $result = $this->interpolationService->interpolate(
+            '{{doc__links}}',
+            ['doc__links' => new ServerBuiltString($links)],
+        );
+
+        $this->assertSame($links, $result);
+        $this->assertStringContainsString('<a href="/lists/', $result);
+        $this->assertStringNotContainsString('&lt;a', $result);
+    }
+
+    /**
+     * F177: a visitor value that imitates ready download HTML must be escaped.
+     * Content sniffing used to leave it raw.
+     */
+    public function testVisitorHtmlThatLooksLikeFileLinksIsEscaped(): void
+    {
+        $payload = '<a href="/lists/1/files/">x</a><img src=https://evil.example/t.png>'
+            . '<a href="https://evil.example/login">Reset password</a>';
+        $result = $this->interpolationService->interpolate('{{c}}', ['c' => $payload]);
+
+        $this->assertStringContainsString('&lt;a href=', $result);
+        $this->assertStringNotContainsString('<img src=https://evil.example/t.png>', $result);
+        $this->assertSame(htmlspecialchars($payload, ENT_COMPAT, 'UTF-8'), $result);
+    }
+
+    /**
+     * F177: a visitor value that imitates a list-file URL must not open an attribute.
+     */
+    public function testVisitorUrlThatBreaksImgSrcIsEscaped(): void
+    {
+        $payload = '/lists/1/files/" onerror="alert(1)';
+        $result = $this->interpolationService->interpolate('<img src="{{c}}">', ['c' => $payload]);
+
+        $this->assertStringContainsString('&quot;', $result);
+        $this->assertStringNotContainsString('onerror="alert(1)"', $result);
+        $this->assertSame(
+            '<img src="' . htmlspecialchars($payload, ENT_COMPAT, 'UTF-8') . '">',
+            $result,
+        );
+    }
+
+    /**
+     * A plain string that looks like a list-file URL is escaped (origin, not content).
+     */
+    public function testPlainListFileUrlStringIsEscaped(): void
+    {
+        $url = '/lists/385/records/24/files/cover?page_id=107&index=0';
+        $result = $this->interpolationService->interpolate('{{cover__url}}', ['cover__url' => $url]);
+
+        $this->assertStringContainsString('&amp;', $result);
+        $this->assertSame(htmlspecialchars($url, ENT_COMPAT, 'UTF-8'), $result);
     }
 
     /**
@@ -359,6 +439,103 @@ class InterpolationServiceTest extends TestCase
 
         // Mustache renders true as '1' and false as empty string
         $this->assertEquals('Active: 1, Disabled: ', $result);
+    }
+
+    // -- conditions of a record template -----------------------------------
+
+    /**
+     * A condition without a token is handed back untouched, so every condition that never used a token
+     * evaluates exactly as it did before.
+     */
+    public function testConditionWithoutTokenIsReturnedAsItIs(): void
+    {
+        $text = '{"==":[{"var":"language"},3]}';
+        $this->assertSame($text, $this->interpolationService->interpolateCondition($text, ['language' => 'x']));
+
+        $array = ['==' => [['var' => 'language'], 3]];
+        $this->assertSame($array, $this->interpolationService->interpolateCondition($array, ['language' => 'x']));
+    }
+
+    public function testConditionTokensAreResolvedInTheStructureAndNotInTheText(): void
+    {
+        $data = ['city' => 'Basel', 'seats' => 15, 'row' => ['title' => 'Event 03']];
+
+        $this->assertSame(
+            ['==' => ['Basel', 'Basel']],
+            $this->interpolationService->interpolateCondition('{"==":["{{city}}","Basel"]}', $data),
+            'A token inside a string is replaced by its value.',
+        );
+        $this->assertSame(
+            ['>' => ['15', 10]],
+            $this->interpolationService->interpolateCondition('{">":[{"var":"{{seats}}"},10]}', $data),
+            'A var whose name is a token becomes the value, never a lookup of that name.',
+        );
+        $this->assertSame(
+            ['==' => ['Event 03', 'Event 03']],
+            $this->interpolationService->interpolateCondition(['==' => [['var' => ['{{row.title}}', 'x']], 'Event 03']], $data),
+            'The default of a var and a nested path work the same way, on a condition that is already decoded.',
+        );
+        $this->assertSame(
+            ['and' => [['!=' => ['Basel', 'Bern']], ['var' => 'language']]],
+            $this->interpolationService->interpolateCondition('{"and":[{"!=":["{{city}}","Bern"]},{"var":"language"}]}', $data),
+            'A var without a token stays a variable.',
+        );
+    }
+
+    public function testConditionStoredAsAJsonStringInsideAJsonStringIsReadToo(): void
+    {
+        $condition = (string) json_encode('{"==":["{{city}}","Basel"]}');
+
+        $this->assertSame(
+            ['==' => ['Basel', 'Basel']],
+            $this->interpolationService->interpolateCondition($condition, ['city' => 'Basel']),
+        );
+    }
+
+    /**
+     * The value of a record is data, not part of the condition: whatever it holds, the shape of the condition
+     * stays, and the name of a system variable in a value never makes the condition read that variable.
+     */
+    public function testAValueCanNeverChangeTheShapeOfAConditionOrPickAVariable(): void
+    {
+        $condition = '{"==":[{"var":"{{city}}"},"{{city}}"]}';
+
+        $quote = $this->interpolationService->interpolateCondition($condition, ['city' => 'Bern"},{"==":[1,1']);
+        $this->assertSame(['==' => ['Bern"},{"==":[1,1', 'Bern"},{"==":[1,1']], $quote);
+
+        $variable = $this->interpolationService->interpolateCondition($condition, ['city' => 'language']);
+        $this->assertSame(['==' => ['language', 'language']], $variable, 'A literal text, not {"var":"language"}.');
+
+        $html = $this->interpolationService->interpolateCondition('{"==":["{{city}}","<b>&"]}', ['city' => '<b>&']);
+        $this->assertSame(['==' => ['<b>&', '<b>&']], $html, 'The values are compared as they are: no HTML escaping.');
+    }
+
+    public function testAConditionValueThatIsNotATextBecomesAnEmptyText(): void
+    {
+        $data = ['list' => ['a', 'b'], 'flag' => true, 'none' => null];
+
+        $this->assertSame(
+            ['==' => ['', '1']],
+            $this->interpolationService->interpolateCondition('{"==":["{{list}}","{{flag}}"]}', $data),
+        );
+        $this->assertSame(
+            ['==' => ['', 'x']],
+            $this->interpolationService->interpolateCondition('{"==":["{{none}}","x"]}', $data),
+            'A value that does not exist is an empty text.',
+        );
+    }
+
+    public function testAConditionThatIsOnlyATokenVarIsStillAStructure(): void
+    {
+        $this->assertSame(
+            ['!!' => ['yes']],
+            $this->interpolationService->interpolateCondition('{"var":"{{flag}}"}', ['flag' => 'yes']),
+        );
+    }
+
+    public function testATextThatIsNotAConditionIsHandedBack(): void
+    {
+        $this->assertSame('not json {{x}}', $this->interpolationService->interpolateCondition('not json {{x}}', ['x' => 1]));
     }
 }
 

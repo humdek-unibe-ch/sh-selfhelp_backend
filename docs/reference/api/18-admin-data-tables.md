@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-29.
+Last verified: 2026-11-13.
 Source of truth: `App\Controller\Api\V1\Admin\AdminDataController`, the request schemas under `config/schemas/api/v1/requests/admin/`, and the `api_routes` rows seeded by `migrations/Version20260603092955.php`, `migrations/Version20260626121351.php` and `migrations/Version20260629074552.php`.
 
 ## Overview
@@ -177,6 +177,23 @@ does not exist). For a form section, the same `{ id, name, display_name, locked 
 table info is embedded in the section's `getSection` payload (`data_table` block)
 so the CMS inspector can show the label, a lock badge, and a deep link here.
 
+### Record history (data browser)
+
+Same revision model as a list with `show_history`, gated by `admin.data.read` on
+the route and the caller's **UPDATE** grant on the named table. Schemas under
+`config/schemas/api/v1/responses/admin/data/record_*.json`.
+
+| Endpoint | Notes |
+| --- | --- |
+| `GET /cms-api/v1/admin/data/tables/{tableName}/records/{recordId}/history` | `{items, total, page, page_size, current_version}` |
+| `GET .../versions/{version}` | revision + state at that version |
+| `GET .../compare?from=&to=` | field changes between two versions |
+| `POST .../restore` | body `{version, expected_version?, field_keys?, dry_run?}` |
+| `GET .../versions/{version}/files/{fieldKey}` | historical file bytes (`attachment`, `private, no-store`) |
+
+Guest `401`; role without the table UPDATE grant `403`. File changes carry
+historical-file `url`s when the bytes are still available.
+
 ### Delete a record
 
 **Endpoint:** `DELETE /cms-api/v1/admin/data/records/{recordId}`
@@ -220,7 +237,11 @@ Returns `{ "data": { "deleted_column_count": 2 } }`.
 > export.)
 
 Both export endpoints apply the same read permission and per-table access /
-group-filter logic as `GET /admin/data`.
+group-filter logic as `GET /admin/data`. Rows are read in stable batches of 500
+through the data query engine ([data-query-engine.md](../../developer/data-query-engine.md))
+and written to the response as they arrive, so the memory an export needs does not
+grow with the table (CSV spools its rows through a temporary buffer to write the
+header once). The files are identical to what the single read produced.
 
 ### Export a single table
 

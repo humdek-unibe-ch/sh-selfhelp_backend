@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin Data Record Version Response",
+  "description": "One revision of a data-browser record: what changed and the state at that version.",
+  "allOf": [
+    {
+      "$ref": "../../common/_response_envelope.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["revision", "state"],
+          "properties": {
+            "revision": {
+              "type": "object",
+              "required": ["revision", "changes"],
+              "properties": {
+                "revision": { "type": "object" },
+                "changes": { "type": "array", "items": { "type": "object" } }
+              },
+              "additionalProperties": false
+            },
+            "state": {
+              "type": "object",
+              "required": ["version", "current_version", "fields"],
+              "properties": {
+                "version": { "type": "integer", "minimum": 1 },
+                "current_version": { "type": "integer", "minimum": 1 },
+                "fields": { "type": "array", "items": { "type": "object" } }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

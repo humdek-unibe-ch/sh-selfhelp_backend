@@ -24,20 +24,23 @@ use Symfony\Component\Security\Core\Exception\AccessDeniedException;
  * that {@see \App\Security\JWTTokenAuthenticator} already stored on the request
  * (`_jwt_payload`) — no second JWT decode.
  *
- * A token minted by {@see JWTService::createMobilePreviewToken()} carries the
- * admin's identity (so pages render exactly as the admin sees them) but is
- * restricted here to a GET allowlist of read-only core render routes PLUS the
- * core frontend form routes (`/cms-api/v{n}/forms/*`) PLUS any plugin PUBLIC
- * runtime route (`/cms-api/v{n}/plugins/...`). The latter two let the previewed
- * page's forms be exercised end-to-end — a plugin style (e.g. the SurveyJS
- * runtime) loads, autosaves and submits, and a core form submits / updates /
- * deletes — exactly as on the live page, which is the whole point of a preview.
- * Everything else — every other core mutation, every admin route (core or
- * plugin), every non-listed core read — is denied. The form and plugin public
- * routes carry no route permission and enforce their own ACL / page-access /
- * per-response ownership checks, so this keeps a leaked preview token to the
- * same public/admin-visible surface the iframe already shows.
- */
+     * A token minted by {@see JWTService::createMobilePreviewToken()} carries the
+     * admin's identity (so pages render exactly as the admin sees them) but is
+     * restricted here to a GET allowlist of read-only core render routes PLUS the
+     * core frontend form routes (`/cms-api/v{n}/forms/*`) PLUS the entry-list /
+     * data-view routes (`/cms-api/v{n}/lists/*`) PLUS any plugin PUBLIC runtime
+     * route (`/cms-api/v{n}/plugins/...`). The latter three let the previewed
+     * page's forms and lists be exercised end-to-end — a plugin style (e.g. the
+     * SurveyJS runtime) loads, autosaves and submits; a core form submits /
+     * updates / deletes; a list searches, filters, opens a record, runs a quick
+     * action and restores history — exactly as on the live page, which is the
+     * whole point of a preview. Everything else — every other core mutation,
+     * every admin route (core or plugin), every non-listed core read — is
+     * denied. The form, list and plugin public routes carry no route permission
+     * and enforce their own ACL / page-access / per-response ownership checks,
+     * so this keeps a leaked preview token to the same public/admin-visible
+     * surface the iframe already shows.
+     */
 class MobilePreviewAccessGuard implements EventSubscriberInterface
 {
     /**
@@ -46,10 +49,12 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
      * fetch the navigation payload (drawer/bottom-tab menus + startup pages —
      * without it the preview shell falls back to modal-only rendering), list
      * languages, read the plugin manifest, read the (admin) user data the
-     * shared renderer expects, and serve restricted assets by UUID (images,
+     * shared renderer expects, serve restricted assets by UUID (images,
      * audio, video the page embeds — without it the preview pane shows empty
-     * media while the live app loads them). Plugin PUBLIC runtime routes are
-     * allowed in addition to this list — see {@see isPluginPublicRoute()}.
+     * media while the live app loads them), and read entry-list / data-view
+     * state (rows, filters, history, files — without it the list draws
+     * "You may not use this list" after the page loads). Plugin PUBLIC runtime
+     * routes are allowed in addition to this list — see {@see isPluginPublicRoute()}.
      */
     private const ALLOWED_ROUTES = [
         'pages_get_by_keyword_v1',
@@ -61,22 +66,30 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
         'plugins_manifest_v1',
         'auth_user_data_get_v1',
         'assets_serve_by_uuid_v1',
+        'form_list_state_v1',
+        'form_list_history_v1',
+        'form_list_version_v1',
+        'form_list_compare_v1',
+        'form_list_version_file_v1',
+        'form_list_current_file_v1',
     ];
 
     /**
-     * Core frontend form routes the previewed page's forms call to submit /
-     * update / delete their data (registered by
-     * {@see \DoctrineMigrations\Version20260602081706}). Like the plugin PUBLIC
-     * routes, these carry no `rel_api_routes_permissions` entry and enforce
-     * their own ACL / page-access checks inside {@see \App\Controller\Api\V1\Frontend\FormController},
-     * so a previewed admin (or impersonated user) may exercise a page's forms
-     * end-to-end exactly as on the live page. Allowed with their declared
-     * methods (POST/PUT/DELETE), not GET.
+     * Core frontend form and list-write routes the previewed page calls to
+     * submit / update / delete form data and to run a list quick action or
+     * restore (registered by the form and form-list migrations). Like the
+     * plugin PUBLIC routes, these carry no `rel_api_routes_permissions` entry
+     * and enforce their own ACL / page-access checks inside FormController /
+     * FormListController, so a previewed admin (or impersonated user) may
+     * exercise a page's forms and lists end-to-end exactly as on the live page.
+     * Allowed with their declared methods (POST/PUT/DELETE), not GET.
      */
     private const ALLOWED_FORM_ROUTES = [
         'form_submit_v1',
         'form_update_v1',
         'form_delete_v1',
+        'form_list_quick_action_v1',
+        'form_list_restore_v1',
     ];
 
     public function __construct(

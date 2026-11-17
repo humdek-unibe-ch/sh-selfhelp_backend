@@ -22,6 +22,9 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\LookupService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Common\SectionUtilityService;
+use App\Service\CMS\Common\StyleNames;
+use App\Service\CMS\FormList\FormListConfigValidator;
+use App\Service\CMS\FormList\FormListPortability;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
@@ -45,7 +48,10 @@ class SectionExportImportService extends BaseService
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly StyleSchemaService $styleSchemaService
+        private readonly StyleSchemaService $styleSchemaService,
+        private readonly SectionTableBindingGuard $tableBindingGuard,
+        private readonly FormListConfigValidator $listConfigValidator,
+        private readonly FormListPortability $listPortability,
     ) {
     }
 
@@ -151,12 +157,16 @@ class SectionExportImportService extends BaseService
 
         // Phase 1: Dry-run validation — collect ALL issues, abort the request if any were found.
         $this->assertImportPayloadIsValid($sectionsData);
+        // F07: the importer may bind only tables their role can read. Checked
+        // before anything is written.
+        $this->assertImportBindingsAllowed($sectionsData);
 
         // Start transaction
         $this->entityManager->beginTransaction();
         
         try {
             $importedSections = $this->importSections($sectionsData, $page, null, $position);
+            $this->relinkImportedLists($importedSections);
 
             // Page-level audit entry so the import is visible in the page's
             // transaction history (mirrors restoreSectionsFromVersion()).
@@ -219,12 +229,16 @@ class SectionExportImportService extends BaseService
 
         // Phase 1: Dry-run validation — collect ALL issues, abort the request if any were found.
         $this->assertImportPayloadIsValid($sectionsData);
+        // F07: the importer may bind only tables their role can read. Checked
+        // before anything is written.
+        $this->assertImportBindingsAllowed($sectionsData);
 
         // Start transaction
         $this->entityManager->beginTransaction();
         
         try {
             $importedSections = $this->importSections($sectionsData, null, $parentSection, $position);
+            $this->relinkImportedLists($importedSections);
 
             // Page-level audit entry so the import shows up in the parent
             // page's transaction history. Without this the page audit trail
@@ -262,6 +276,25 @@ class SectionExportImportService extends BaseService
                 Response::HTTP_INTERNAL_SERVER_ERROR,
                 ['previous_exception' => $e->getMessage()]
             );
+        }
+    }
+
+    /**
+     * Give the lists of an import the column keys of the form inputs the import
+     * created: the bundle names the columns by input name. A list bound to a table
+     * the import has not created yet (an owner token of a page bundle) is
+     * relinked by the bundle import once the table exists.
+     *
+     * @param list<array<string, mixed>> $importedSections the result of {@see importSections()}
+     */
+    private function relinkImportedLists(array $importedSections): void
+    {
+        foreach ($importedSections as $imported) {
+            $style = $this->asStringOrNull($imported['style_name'] ?? null);
+            $id = $this->asInt($imported['id'] ?? 0);
+            if ($id > 0 && $style !== null && in_array($style, StyleNames::LIST_STYLE_NAMES, true)) {
+                $this->listPortability->relink($id);
+            }
         }
     }
 
@@ -392,6 +425,12 @@ class SectionExportImportService extends BaseService
                     $fields[$fieldName] = [];
                 }
                 $fields[$fieldName][$locale] = $entry;
+            }
+
+            // A list names its columns by form input keys, which differ on every
+            // install: the export carries the input names instead.
+            if ($fields !== [] && $styleName !== null && in_array($styleName, StyleNames::LIST_STYLE_NAMES, true)) {
+                $fields = $this->listPortability->toPortableFields($this->asInt($sectionId), $fields);
             }
 
             if (!empty($fields)) {
@@ -1410,6 +1449,36 @@ class SectionExportImportService extends BaseService
     }
 
     /**
+     * F07: walk the import tree and refuse it when any section binds a data
+     * table the importing user's role cannot read, either through a
+     * table-binding field or through `global_fields.data_config`. Runs before
+     * anything is written, so a refused import leaves the page untouched.
+     *
+     * @param array<int, array<string, mixed>> $sectionsData Import tree as received by the controller
+     * @throws ServiceException HTTP 403 when a section binds an unreadable table
+     */
+    private function assertImportBindingsAllowed(array $sectionsData): void
+    {
+        foreach ($sectionsData as $sectionData) {
+            $globalFields = $sectionData['global_fields'] ?? null;
+            if (is_array($globalFields) && isset($globalFields['data_config'])) {
+                $this->tableBindingGuard->assertDataConfigBindable($this->asStringOrNull($globalFields['data_config']));
+            }
+
+            $fields = $sectionData['fields'] ?? null;
+            if (is_array($fields)) {
+                $this->tableBindingGuard->assertImportedFieldsBindable($fields);
+            }
+
+            $children = $sectionData['children'] ?? null;
+            if (is_array($children) && $children !== []) {
+                /** @var array<int, array<string, mixed>> $children */
+                $this->assertImportBindingsAllowed($children);
+            }
+        }
+    }
+
+    /**
      * Two-phase pre-validation entry point.
      *
      * Walks the entire import payload, collects EVERY issue into an
@@ -1539,6 +1608,18 @@ class SectionExportImportService extends BaseService
                             ];
                         }
                     }
+                }
+            }
+
+            // A list is checked for shape; its table is created by the import, so the
+            // columns are checked when the list is saved afterwards.
+            if (is_array($fields) && in_array($styleName, StyleNames::LIST_STYLE_NAMES, true)) {
+                foreach ($this->listConfigValidator->importProblems($styleName, $fields) as $problem) {
+                    $errors[] = [
+                        'path' => $sectionPath . '.fields.' . $problem['field'],
+                        'type' => 'invalid_list_config',
+                        'detail' => $problem['message'],
+                    ];
                 }
             }
 

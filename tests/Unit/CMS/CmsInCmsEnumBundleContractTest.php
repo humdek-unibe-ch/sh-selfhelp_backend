@@ -13,6 +13,18 @@ use App\Tests\Support\ExampleBundleTestPaths;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * Stored data holds option codes; translated labels are added while a page
+ * renders. Every option input of a shipped template therefore ships stable
+ * codes with a label per locale, and its sample rows store codes.
+ *
+ * Two public shapes exist. A composition (`entry-list`, `entry-record`) reads the
+ * label of a code through the hydrated token `{{scope._field_label}}`. A data
+ * view shows the stored value as it is, so a template whose data view shows a
+ * field uses free text for it, not a code; a field that only the managers see
+ * (publish status on news/team-members, or the status of a testimonial) may stay
+ * an option input without a public composition token.
+ */
 final class CmsInCmsEnumBundleContractTest extends TestCase
 {
     /** @var array<string, string> */
@@ -24,17 +36,22 @@ final class CmsInCmsEnumBundleContractTest extends TestCase
     ];
 
     /**
-     * @return iterable<string, array{0: string}>
+     * @return iterable<string, array{0: string, 1: bool, 2: bool}> template id, has option inputs, a composition renders their labels
      */
     public static function bundleProvider(): iterable
     {
-        foreach (['team-members', 'news', 'events', 'faq', 'contact-directory', 'testimonials'] as $id) {
-            yield $id => [$id];
-        }
+        yield 'team-members' => ['team-members', true, true];
+        yield 'news' => ['news', true, true];
+        yield 'events' => ['events', true, true];
+        yield 'faq' => ['faq', true, true];
+        // The directory shows department and role as the free text they are: a data view prints stored values.
+        yield 'contact-directory' => ['contact-directory', false, false];
+        // The status of a testimonial is moderation data: only the managers see it.
+        yield 'testimonials' => ['testimonials', true, false];
     }
 
     #[DataProvider('bundleProvider')]
-    public function testTemplateUsesStableCodesTranslatedLabelsAndUnderscoredRuntimeTokens(string $id): void
+    public function testTemplateUsesStableCodesTranslatedLabelsAndUnderscoredRuntimeTokens(string $id, bool $hasOptionInputs, bool $compositionRendersLabels): void
     {
         $backendRoot = dirname(__DIR__, 3);
         $frontendPath = dirname($backendRoot) . '/sh-selfhelp_frontend/examples/cms-in-cms/' . $id . '.bundle.json';
@@ -63,6 +80,11 @@ final class CmsInCmsEnumBundleContractTest extends TestCase
         $bundle = json_decode($bundleJson, true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($bundle);
         $optionSections = $this->optionSections($bundle['pages'] ?? []);
+        if (!$hasOptionInputs) {
+            self::assertSame([], $optionSections, sprintf('%s shows its values as free text; an option input would print raw codes.', $id));
+
+            return;
+        }
         self::assertNotSame([], $optionSections, sprintf('%s must exercise the option-label contract.', $id));
 
         $dataTables = $bundle['data_tables'] ?? null;
@@ -112,20 +134,34 @@ final class CmsInCmsEnumBundleContractTest extends TestCase
                 }
             }
 
+            if (!$compositionRendersLabels) {
+                continue;
+            }
+
             $isMultiple = ($this->fieldContentOptional($fields, 'is_multiple', 'all') ?? '') === '1'
                 || ($this->fieldContentOptional($fields, 'web_combobox_multi_select', 'all') ?? '') === '1';
             $labelSuffix = $isMultiple ? '_labels' : '_label';
             $labelColumn = '_' . $fieldName . $labelSuffix;
             // Accept unscoped `{{_role_label}}` or scoped `{{team_member._role_label}}`.
+            $labelTokenPattern = '/\{\{(?:[A-Za-z0-9_]+\.)?' . preg_quote($labelColumn, '/') . '\}\}/';
+            $rawTokenPattern = '/\{\{(?:[A-Za-z0-9_]+\.)?' . preg_quote($fieldName, '/') . '\}\}/';
+            // Publish/moderation fields (draft/published) often stay on the CMS list
+            // and filters only; they need codes + labels, not a public composition token.
+            if (
+                preg_match($labelTokenPattern, $bundleJson) !== 1
+                && preg_match($rawTokenPattern, $bundleJson) !== 1
+            ) {
+                continue;
+            }
             self::assertMatchesRegularExpression(
-                '/\{\{(?:[A-Za-z0-9_]+\.)?' . preg_quote($labelColumn, '/') . '\}\}/',
+                $labelTokenPattern,
                 $bundleJson,
                 sprintf('%s must interpolate hydrated option labels via %s.', $id, $labelColumn),
             );
             self::assertStringContainsString(
                 $labelColumn,
                 $bundleJson,
-                sprintf('%s CMS entry-table must display hydrated labels via fields_map.', $id),
+                sprintf('%s must read the hydrated label column %s.', $id, $labelColumn),
             );
         }
     }

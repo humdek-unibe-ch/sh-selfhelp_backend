@@ -13,6 +13,8 @@ use App\Entity\DataTable;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\CMS\Common\SectionAccessibleRouteService;
+use App\Service\CMS\DataQuery\DataQueryException;
+use App\Service\CMS\DataQuery\LegacyFilterTranslator;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Security\DataAccessSecurityService;
@@ -20,12 +22,18 @@ use App\Exception\ServiceException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Read-only admin preview of how an entry-style filter will be prepared for
- * `get_data_table_filtered` -- no arbitrary SQL execution.
+ * Read-only admin preview of how an entry-style filter will be read: prepared
+ * (route tokens resolved, unsafe fragments refused) and turned into the
+ * structured filter the data query engine runs -- the same translation the real
+ * read uses, so a filter the preview accepts is a filter that returns rows. No
+ * query is executed.
+ *
+ * The response key `stored_procedure` keeps its old name so existing clients
+ * still render it; it describes the engine call.
  */
 final class DataQueryPreviewService
 {
-    private const STORED_PROCEDURE = 'get_data_table_filtered';
+    private const ENGINE_CALL = 'DataQueryEngine::run';
 
     public function __construct(
         private readonly AdminSectionService $adminSectionService,
@@ -34,6 +42,7 @@ final class DataQueryPreviewService
         private readonly DataService $dataService,
         private readonly UserContextService $userContextService,
         private readonly SectionAccessibleRouteService $sectionAccessibleRouteService,
+        private readonly LegacyFilterTranslator $legacyFilterTranslator,
     ) {
     }
 
@@ -125,6 +134,14 @@ final class DataQueryPreviewService
                 } else {
                     $errors[] = 'The filter was rejected by the SQL safety rules or could not be normalized. Check route parameters, comparisons, and dangerous SQL patterns.';
                 }
+            } else {
+                // The real read translates the prepared filter into the structured form and reads
+                // nothing when that is impossible; say so here instead of showing an empty list later.
+                try {
+                    $this->legacyFilterTranslator->translate($preparedFilter);
+                } catch (DataQueryException $e) {
+                    $errors[] = 'The filter cannot be read and returns no rows: ' . $e->getMessage();
+                }
             }
         }
 
@@ -179,10 +196,10 @@ final class DataQueryPreviewService
             'errors' => $errors,
             'warnings' => $warnings,
             'stored_procedure' => [
-                'name' => self::STORED_PROCEDURE,
+                'name' => self::ENGINE_CALL,
                 'call' => sprintf(
-                    'CALL %s(:tableId, :userId, :filter, :excludeDeleted, :languageId, :timezoneCode, :selectedColumns)',
-                    self::STORED_PROCEDURE,
+                    '%s(tableId, userId, filter, excludeDeleted, languageId, timezoneCode, selectedColumns)',
+                    self::ENGINE_CALL,
                 ),
                 'parameters' => $procedureParams,
             ],
@@ -317,7 +334,7 @@ final class DataQueryPreviewService
         if ($ownEntriesOnly) {
             $where .= sprintf(' AND id_users = %d', $userId);
         }
-        $shape = sprintf('SELECT pivoted rows FROM data table "%s" %s', $tableLabel, $where);
+        $shape = sprintf('SELECT the cells of the matching records FROM data table "%s" %s', $tableLabel, $where);
         if ($selectedColumns !== '') {
             $shape .= sprintf(' [column subset: %s]', $selectedColumns);
         }

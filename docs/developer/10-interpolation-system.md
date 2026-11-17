@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-29.
+Last verified: 2026-11-13.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 **Date:** 2025-10-24  
@@ -396,10 +396,12 @@ unified endpoint — migration `Version20260629170535`.)
 ### Standard projection columns (always present)
 
 Every data row has a fixed set of **standard columns** in addition to the
-form/SurveyJS columns, produced directly by the data stored procedure
-`get_data_table_filtered` (`r.id AS record_id`,
-`convert_entry_date_timezone(...) AS entry_date`, `r.id_users`,
-`u.name AS user_name`, `vc.code AS user_code`, `l.lookup_code AS triggerType`).
+form/SurveyJS columns, produced directly by the data query engine
+(`DataQueryEngine`, formerly the stored procedure `get_data_table_filtered`;
+see [data-query-engine.md](./data-query-engine.md)): `record_id` (`r.id`),
+`entry_date` (`r.timestamp` shown in the requested time zone), `id_users`,
+`user_name`, `user_code` and `triggerType` (the lookup code of the row's trigger
+type).
 They are **runtime-real**: a `{{scope.record_id}}` / `{{scope.user_name}}` token
 always resolves for any connected scope.
 
@@ -463,6 +465,29 @@ placeholders in the body are resolved before the HTML reaches the renderer. The
 full preset contract (frontend Tiptap extension ⇄ backend inline CSS) and the
 "adding a preset" checklist live in
 [../reference/email-styles.md](../reference/email-styles.md).
+
+---
+
+## HTML escaping (origin, not content)
+
+Every `{{var}}` is HTML-escaped by default (`htmlspecialchars`, `ENT_COMPAT`).
+Whether a value skips escaping is decided by **where it comes from**, never by
+what the text looks like:
+
+- Plain strings (visitor/editor record fields, mail/action context) are always
+  escaped. A value that imitates a list-file URL or ready `<a href="/lists/…">`
+  markup is escaped like any other text.
+- Server-built file template values `__url` and `__links` are wrapped in
+  `App\Service\Core\ServerBuiltString` when `PageService` / form-list row
+  tokens are prepared for Mustache. The escape callback recognises that type
+  and returns the string raw (so `&` in `__url` query strings and the `<a>`
+  tags in `__links` reach the browser). `__files` stays JSON and is escaped
+  like ordinary text (it is not drawn as HTML).
+- Marking happens at render time. Page-cache payloads stay plain arrays; the
+  marker is not stored as a privilege a visitor can set.
+
+Mail templates and action texts use the same `InterpolationService`, so the
+same rule applies there.
 
 ---
 

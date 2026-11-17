@@ -852,7 +852,6 @@ final class AdminUserManagementTest extends QaWebTestCase
         $user->setStatus($status);
         $user->setUserType($userType);
         $user->setBlocked($blocked);
-        $user->setIntern(false);
         $user->setPassword(
             $this->service(UserPasswordHasherInterface::class)
                 ->hashPassword($user, QaBaselineFixture::QA_PASSWORD)

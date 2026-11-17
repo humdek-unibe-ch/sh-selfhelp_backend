@@ -47,9 +47,23 @@
             }
           },
           {
-            "type": ["array", "object"],
+            "type": "array",
             "items": {"type": "string", "maxLength": 65535},
-            "description": "Array of filenames or empty object for file input fields"
+            "description": "Legacy unused file-name list; uploads travel outside form_data"
+          },
+          {
+            "type": "object",
+            "description": "File-field instruction on update: omit the field to keep files; {\"remove\":true} clears all; {\"remove_indexes\":[0]} drops those indexes (then an upload appends for multi-file or replaces for single).",
+            "properties": {
+              "remove": {"type": "boolean"},
+              "remove_indexes": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 0},
+                "maxItems": 50
+              }
+            },
+            "additionalProperties": false,
+            "minProperties": 1
           }
         ]
       },
@@ -75,6 +89,15 @@
           {"type": "boolean"}
         ]
       }
+    },
+    "expected_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required: the record version the change is based on (the `version` the client last received from the record or from the list). An update that names none, or a value that is not a whole number of at least 1 (also as multipart text), is refused with 400 (`expected_version_required` / `invalid_expected_version`) before anything is stored; one based on an older version is refused with 409 (`stale_version`). Nothing is written, uploaded or scheduled by a refused update. The schema declares it optional only so that the refusal carries its reason."
+    },
+    "preview": {
+      "type": "boolean",
+      "description": "Act on the draft of the page instead of its published version. Only for a signed-in person who may read the draft; it must match what the person is looking at (the page endpoint's `preview`). Without it the published version is used. The page access rights, the live data and the permissions stay the same."
     }
   },
   "additionalProperties": false

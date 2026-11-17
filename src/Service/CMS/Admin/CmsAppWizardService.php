@@ -9,31 +9,40 @@
 namespace App\Service\CMS\Admin;
 
 use App\Entity\CmsApp;
-use App\Entity\Field;
 use App\Entity\Language;
-use App\Entity\Page;
 use App\Entity\Section;
 use App\Exception\ServiceException;
 use App\Repository\CmsAppRepository;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Routing\RouteConflictValidator;
-use App\Service\CMS\Common\StyleNames;
+use App\Service\CMS\DataQuery\DataQueryEngine;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\FormFieldKeyResolver;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Scaffold list/detail/form pages into an existing first-class {@see CmsApp}.
+ * Scaffold the pages of an app into an existing first-class {@see CmsApp}.
  *
- * Atomically scaffolds a working list/detail pattern bound to a data table:
- * a public pair (`/<base>` list + `/<base>/{record_id}` detail) and/or an admin
- * CMS pair (`/cms/<base>` + `/cms/<base>/{record_id}`). Every created page is
- * assigned to the target app with a strict {@see CmsAppRole}; hub FKs are
- * refreshed via {@see CmsAppHubSyncService} (never written here directly).
+ * One logical dataset, two surfaces, no duplicated input definition:
+ *
+ *  - the CMS surface (`/cms/<base>`, role `cms_list`) is one `entry-form-list`.
+ *    Its inline form is the only place the inputs are defined; the form owns the
+ *    data table. The list creates, edits, deletes and (with history on) restores
+ *    records, so the app needs neither a separate form page nor a separate CMS
+ *    detail page;
+ *  - the public surface (`/<base>`, role `public_list`) is a read-only
+ *    `data-view` of the same table, linking each row to the public detail page
+ *    (`/<base>/{record_id}`, role `public_detail`), an `entry-record`.
+ *
+ * The wizard writes every page through the same section import a bundle goes
+ * through, so the list configuration is checked by the same validator. Every
+ * created page is assigned to the target app with a strict {@see CmsAppRole};
+ * hub FKs are refreshed via {@see CmsAppHubSyncService} (never written here).
  */
 class CmsAppWizardService extends BaseService
 {
@@ -50,13 +59,31 @@ class CmsAppWizardService extends BaseService
         'checkbox',
         'radio',
         'number-input',
+        // Field types that scaffold a file-input (contract 5/6 of the media brief).
+        'image',
+        'files',
+        'file-input',
     ];
 
-    /** Page property field that makes a page render inside a web modal. */
-    private const FIELD_OPEN_IN_MODAL = 'open_in_modal';
+    private const STATUS_FILTER = '{"mode":"and","children":[{"column":"status","operator":"eq","value":"published"}]}';
 
-    /** Internal language id used for non-translatable page property fields. */
-    private const PROPERTY_LANGUAGE_ID = 1;
+    private const STATUS_QUICK_ACTIONS = '['
+        . '{"id":"publish","label":"Publish","set":{"status":"published"},'
+        . '"when":{"mode":"and","children":[{"column":"status","operator":"eq","value":"draft"}]}},'
+        . '{"id":"unpublish","label":"Unpublish","set":{"status":"draft"},'
+        . '"when":{"mode":"and","children":[{"column":"status","operator":"eq","value":"published"}]}}'
+        . ']';
+
+    private const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+
+    /** The most columns a list may show (the list validator's limit). */
+    private const MAX_LIST_COLUMNS = 30;
+
+    /** Columns of the public view: a card or a row stays readable. */
+    private const MAX_PUBLIC_COLUMNS = 6;
+
+    /** Rows per page of the public view. */
+    private const PUBLIC_PAGE_SIZE = 12;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -65,16 +92,17 @@ class CmsAppWizardService extends BaseService
         private readonly CmsAppRepository $cmsAppRepository,
         private readonly DataService $dataService,
         private readonly DataTableService $dataTableService,
+        private readonly DataQueryEngine $queryEngine,
+        private readonly FormFieldKeyResolver $keyResolver,
         private readonly RouteConflictValidator $conflictValidator,
         private readonly AdminPageService $adminPageService,
         private readonly SectionExportImportService $sectionExportImportService,
-        private readonly PageFieldService $pageFieldService,
         private readonly CmsAppHubSyncService $hubSyncService,
     ) {
     }
 
     /**
-     * Scaffold pages into an existing CMS app (public and/or cms list+detail pairs).
+     * Scaffold pages into an existing CMS app (a CMS list and/or a public list+detail pair).
      *
      * @param array<string, mixed> $input
      * @return array{app_id: int, created: list<array{keyword: string, page_id: int, surface: string, role: string}>}
@@ -96,9 +124,9 @@ class CmsAppWizardService extends BaseService
 
         $createForm = (bool) ($input['create_form'] ?? false);
 
-        // With create_form the wizard scaffolds a form page that OWNS a fresh
-        // data table (named by the new form section id), so no pre-existing
-        // table is needed. Without it, bind to an existing table as before.
+        // With create_form the wizard scaffolds the inline form of the CMS list; it
+        // OWNS a fresh data table (named by the new form section id), so no
+        // pre-existing table is needed. Without it, bind to an existing table.
         $dataTableName = $this->asString($input['data_table'] ?? '');
         if (!$createForm) {
             if ($dataTableName === '' || $this->dataService->getDataTableByName($dataTableName) === null) {
@@ -110,6 +138,9 @@ class CmsAppWizardService extends BaseService
         $createAdmin = !array_key_exists('create_admin', $input) || (bool) $input['create_admin'];
         if (!$createPublic && !$createAdmin) {
             $this->throwBadRequest('At least one of create_public / create_admin must be enabled.');
+        }
+        if ($createForm && !$createAdmin) {
+            $this->throwBadRequest('create_form needs create_admin: the form lives inside the CMS list that manages the records.');
         }
 
         $recordParam = $this->asString($input['record_id_param'] ?? 'record_id');
@@ -127,24 +158,30 @@ class CmsAppWizardService extends BaseService
         // back to the single legacy field so existing callers are unaffected.
         $formFields = $this->parseFormFields($input['form_fields'] ?? null, $formFieldName, $formFieldLabel);
 
+        // Draft/published status field (default on). Editors prepare as draft,
+        // then publish; the public list/detail only show published records.
+        $withStatus = !array_key_exists('with_status', $input) || (bool) $input['with_status'];
+        if ($withStatus && $createForm) {
+            $names = array_column($formFields, 'name');
+            if (!in_array('status', $names, true)) {
+                $formFields[] = ['name' => 'status', 'style' => 'select', 'label' => 'Status', 'kind' => 'status'];
+            }
+        }
+
         $listTitle = $this->asString($input['list_title'] ?? '') ?: ucfirst($baseName);
         $detailTitle = $this->asString($input['detail_title'] ?? '') ?: ($listTitle . ' detail');
         $accessGroups = $this->intList($input['access_groups'] ?? []);
 
         // Build the intended page set (keyword, url, surface, role, route). The
-        // form page (if any) comes FIRST so its owned table id is known before
-        // the list/detail bindings are built.
+        // CMS page (if any) comes FIRST: its inline form owns the table, and
+        // the public pages bind to that table by its new id.
         $plan = [];
-        if ($createForm) {
-            $plan[] = $this->formPagePlan($baseName);
+        if ($createAdmin) {
+            $plan[] = $this->pagePlan('cms-' . $baseName, '/cms/' . $baseName, LookupService::PAGE_SURFACE_CMS, CmsAppRole::CMS_LIST, false, $recordParam);
         }
         if ($createPublic) {
             $plan[] = $this->pagePlan($baseName, '/' . $baseName, LookupService::PAGE_SURFACE_PUBLIC, CmsAppRole::PUBLIC_LIST, false, $recordParam);
             $plan[] = $this->pagePlan($baseName . '-record', '/' . $baseName . '/{' . $recordParam . '}', LookupService::PAGE_SURFACE_PUBLIC, CmsAppRole::PUBLIC_DETAIL, true, $recordParam);
-        }
-        if ($createAdmin) {
-            $plan[] = $this->pagePlan('cms-' . $baseName, '/cms/' . $baseName, LookupService::PAGE_SURFACE_CMS, CmsAppRole::CMS_LIST, false, $recordParam);
-            $plan[] = $this->pagePlan('cms-' . $baseName . '-record', '/cms/' . $baseName . '/{' . $recordParam . '}', LookupService::PAGE_SURFACE_CMS, CmsAppRole::CMS_DETAIL, true, $recordParam);
         }
 
         // Reject scaffold if the app already holds any of the primary roles we
@@ -171,22 +208,13 @@ class CmsAppWizardService extends BaseService
 
         $created = [];
 
-        // True atomicity (the plan's "transactional + conflict-checked"): the
-        // wizard creates several pages, each with its own route + section import
-        // through services that manage their own (now nested) transactions.
-        // Enabling savepoints turns those inner begin/commit/rollback into
-        // savepoints of this single outer transaction, so ANY failure rolls the
-        // whole app creation back — no orphaned pages, routes, or sections. This
-        // replaces the previous best-effort page-deletion cleanup, which could
-        // itself fail and leave dangling data.
-        // Nested begin/commit/rollback from page/section services become
-        // savepoints of this outer transaction (DBAL 4+ default nesting).
+        // True atomicity: the wizard creates several pages, each with its own
+        // route + section import through services that manage their own (now
+        // nested) transactions. Nested begin/commit/rollback become savepoints
+        // of this single outer transaction (DBAL 4+ default nesting), so ANY
+        // failure rolls the whole app creation back: no orphaned pages, routes,
+        // or sections.
         $this->entityManager->beginTransaction();
-        // Set when the create-form page is scaffolded (it comes first in the
-        // plan); the admin list links its "Add new" button here and the admin
-        // detail reuses the form section itself as its edit form.
-        $formUrl = null;
-        $formSectionId = null;
         try {
             foreach ($plan as $entry) {
                 $page = $this->adminPageService->createPage(
@@ -219,54 +247,61 @@ class CmsAppWizardService extends BaseService
                     'role' => $entry['role'],
                 ];
 
-                if ($entry['role'] === CmsAppRole::FORM) {
-                    // Scaffold the create/edit form + its owned data table; bind
-                    // every later list/detail to that table by its new section id.
-                    $formSectionId = $this->scaffoldFormAndTable(
-                        $pageId,
-                        $baseName,
-                        $formFields,
-                        $recordParam,
-                        $contentLocales,
-                        $propertyLocale
-                    );
-                    $dataTableName = (string) $formSectionId;
-                    $formUrl = $entry['url'];
-                    // The create form opens as a modal overlay (CMS-in-CMS create);
-                    // close_modal_on_save (a form section field) closes it after a
-                    // successful submit so the user lands back on the refreshed list.
-                    $this->setPageProperty($page, self::FIELD_OPEN_IN_MODAL, '1');
-                    continue;
-                }
-
-                // The CMS detail opens as a modal overlay too. The public detail
-                // stays a normal, shareable full page.
-                if ($entry['role'] === CmsAppRole::CMS_DETAIL) {
-                    $this->setPageProperty($page, self::FIELD_OPEN_IN_MODAL, '1');
-                }
-
-                // CMS detail = EDIT FORM (record edit mode): reuse the SAME
-                // form-record section as the create page — sections are shared,
-                // so both pages write the same data table. Opened with the
-                // record route param the form prefills that record and submits
-                // an update; opened without (the create page) it stays blank.
-                if ($entry['role'] === CmsAppRole::CMS_DETAIL && $formSectionId !== null) {
-                    $this->adminPageService->addSectionToPage($pageId, [['sectionId' => $formSectionId]]);
+                if ($entry['role'] === CmsAppRole::CMS_LIST) {
+                    if ($createForm) {
+                        // The list and its inline form go in together; the form's
+                        // table is then materialized, so the public pages bind to it.
+                        $formSectionId = $this->scaffoldListAndFormTable(
+                            $pageId,
+                            $baseName,
+                            $listTitle,
+                            $formFields,
+                            $withStatus,
+                            $contentLocales,
+                            $propertyLocale
+                        );
+                        $dataTableName = (string) $formSectionId;
+                    } else {
+                        // An existing table has no form to write it: the CMS list reads it and can delete.
+                        $sections = $this->buildCmsListSections(
+                            $baseName,
+                            $listTitle,
+                            $this->tableColumns($dataTableName),
+                            [],
+                            $this->resolveDataTableId($dataTableName),
+                            false,
+                            false,
+                            $contentLocales,
+                            $propertyLocale
+                        );
+                        $this->sectionExportImportService->importSectionsToPage($pageId, $sections);
+                    }
                     continue;
                 }
 
                 if ($entry['is_detail']) {
-                    $sections = $this->buildDetailSections($baseName, $dataTableName, $recordParam, $detailTitle, $formFields, $contentLocales, $propertyLocale);
-                } elseif ($entry['role'] === CmsAppRole::CMS_LIST) {
-                    // CMS list = full data table (search / sort / pagination /
-                    // delete) bound to the table by numeric id, with an "Add new"
-                    // button (the modal form) + a per-row edit action.
-                    $dataTableId = $this->resolveDataTableId($dataTableName);
-                    $sections = $this->buildAdminTableSections($baseName, $dataTableId, $entry['detail_base'], $listTitle, $formUrl, $contentLocales, $propertyLocale);
+                    $sections = $this->buildDetailSections(
+                        $baseName,
+                        $dataTableName,
+                        $recordParam,
+                        $detailTitle,
+                        $formFields,
+                        $withStatus,
+                        $contentLocales,
+                        $propertyLocale
+                    );
                 } else {
-                    // Public list = cards (one per row, with an "Open" link to the
-                    // public detail page).
-                    $sections = $this->buildListSections($baseName, $dataTableName, $entry['detail_base'], $listTitle, $formFields, $contentLocales, $propertyLocale);
+                    // Public list = read-only data view of the SAME table, with a
+                    // link to the public detail page on every row.
+                    $sections = $this->buildPublicListSections(
+                        $baseName,
+                        $dataTableName,
+                        $listTitle,
+                        $createForm ? $this->formColumns($formFields) : $this->tableColumns($dataTableName),
+                        $withStatus,
+                        $contentLocales,
+                        $propertyLocale
+                    );
                 }
 
                 $this->sectionExportImportService->importSectionsToPage($pageId, $sections);
@@ -295,46 +330,34 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Plan entry for the optional create form page (`/cms/<base>/form`). It owns
-     * a freshly-created data table that the list/detail pages bind to.
+     * Scaffold the CMS list with its inline form (`form-record` + one input per
+     * field), locate the new form section and materialize its owned data table.
+     * Returns the new form section id: it doubles as the data table name the
+     * public pages bind to.
      *
-     * @return array{keyword: string, url: string, surface: string, role: string, is_detail: bool, path_pattern: string, requirements: array<string, string>|null, detail_base: string}
-     */
-    private function formPagePlan(string $baseName): array
-    {
-        $url = '/cms/' . $baseName . '/form';
-
-        return [
-            'keyword' => 'cms-' . $baseName . '-form',
-            'url' => $url,
-            'surface' => LookupService::PAGE_SURFACE_CMS,
-            'role' => CmsAppRole::FORM,
-            'is_detail' => false,
-            'path_pattern' => $url,
-            'requirements' => null,
-            'detail_base' => $url,
-        ];
-    }
-
-    /**
-     * Scaffold the create/edit form (`form-record` + one input per field) into
-     * the form page, locate the new form section, and materialize its owned
-     * data table. Returns the new form section id — it doubles as the data
-     * table name the list/detail pages bind to AND as the shared section the
-     * admin detail page attaches as its edit form.
-     *
-     * @param list<array{name: string, style: string, label: string}> $formFields
+     * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
      * @param list<string> $contentLocales
      */
-    private function scaffoldFormAndTable(
+    private function scaffoldListAndFormTable(
         int $pageId,
         string $baseName,
+        string $listTitle,
         array $formFields,
-        string $recordParam,
+        bool $withStatus,
         array $contentLocales,
         string $propertyLocale
     ): int {
-        $sections = $this->buildFormSections($baseName, $formFields, $recordParam, $contentLocales, $propertyLocale);
+        $sections = $this->buildCmsListSections(
+            $baseName,
+            $listTitle,
+            $this->formColumns($formFields),
+            $formFields,
+            null,
+            true,
+            $withStatus,
+            $contentLocales,
+            $propertyLocale
+        );
         $imported = $this->sectionExportImportService->importSectionsToPage($pageId, $sections);
 
         $formSectionName = $baseName . '-form';
@@ -355,44 +378,22 @@ class CmsAppWizardService extends BaseService
         }
 
         // Owned table is named by the form section id; create it now so the
-        // list/detail bindings resolve before the first submission.
+        // public bindings resolve before the first submission.
         $this->dataTableService->createDataTableForFormSection($formSection);
 
         return $formSectionId;
     }
 
     /**
-     * Set a non-translatable page PROPERTY field (display=0, language 1) on a
-     * freshly created page. Used to flip `open_in_modal` on the CMS create/detail
-     * pages so the frontend opens them as modal overlays.
-     */
-    private function setPageProperty(Page $page, string $fieldName, string $value): void
-    {
-        $field = $this->entityManager->getRepository(Field::class)->findOneBy(['name' => $fieldName]);
-        if (!$field instanceof Field) {
-            throw new ServiceException(
-                sprintf('CMS app creation failed: the "%s" page property field is missing — run the pending migrations.', $fieldName),
-                Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-
-        $this->pageFieldService->updatePageFields($page, [[
-            'fieldId' => (int) $field->getId(),
-            'languageId' => self::PROPERTY_LANGUAGE_ID,
-            'content' => $value,
-        ]]);
-    }
-
-    /**
-     * Resolve the numeric `data_tables.id` for a table name (the entry-table
-     * data binding uses the id, not the name).
+     * Resolve the numeric `data_tables.id` for a table name (a list binds its
+     * table by id).
      */
     private function resolveDataTableId(string $dataTableName): int
     {
         $dataTable = $this->dataService->getDataTableByName($dataTableName);
         if ($dataTable === null) {
             throw new ServiceException(
-                sprintf('CMS app creation failed: data table "%s" could not be resolved for the admin list.', $dataTableName),
+                sprintf('CMS app creation failed: data table "%s" could not be resolved for the list.', $dataTableName),
                 Response::HTTP_INTERNAL_SERVER_ERROR
             );
         }
@@ -401,53 +402,10 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Build the create/edit form: an `entry-record-form` holder with dual-route
-     * create/edit via `load_record_from`. The data table is owned by this section
-     * (materialized on scaffold); `data_table` may point at it explicitly after creation.
-     *
-     * @param list<array{name: string, style: string, label: string}> $formFields
-     * @param list<string> $contentLocales
-     * @return list<array<string, mixed>>
-     */
-    private function buildFormSections(
-        string $baseName,
-        array $formFields,
-        string $recordParam,
-        array $contentLocales,
-        string $propertyLocale
-    ): array {
-        $inputChildren = [];
-        foreach ($formFields as $field) {
-            $inputChildren[] = [
-                'section_name' => $baseName . '-form-' . $field['name'],
-                'style_name' => $field['style'],
-                'fields' => [
-                    'name' => $this->propertyField($field['name'], $propertyLocale),
-                    'label' => $this->contentField($field['label'], $contentLocales),
-                ],
-            ];
-        }
-
-        return [[
-            'section_name' => $baseName . '-form',
-            'style_name' => 'entry-record-form',
-            'fields' => [
-                'alert_success' => $this->contentField('Saved.', $contentLocales),
-                'close_modal_on_save' => $this->propertyField('1', $propertyLocale),
-                'load_record_from' => $this->propertyField($recordParam, $propertyLocale),
-                'own_entries_only' => $this->propertyField('0', $propertyLocale),
-            ],
-            'children' => $inputChildren,
-        ]];
-    }
-
-    /**
-     * @return array{keyword: string, url: string, surface: string, role: string, is_detail: bool, path_pattern: string, requirements: array<string, string>|null, detail_base: string}
+     * @return array{keyword: string, url: string, surface: string, role: string, is_detail: bool, path_pattern: string, requirements: array<string, string>|null}
      */
     private function pagePlan(string $keyword, string $url, string $surface, string $role, bool $isDetail, string $recordParam): array
     {
-        // A list page's `detail_base` is its own url; its generated item links
-        // point at `<detail_base>/{{record_id}}`. Detail pages do not use it.
         return [
             'keyword' => $keyword,
             'url' => $url,
@@ -456,7 +414,6 @@ class CmsAppWizardService extends BaseService
             'is_detail' => $isDetail,
             'path_pattern' => $url,
             'requirements' => $isDetail ? [$recordParam => '\\d+'] : null,
-            'detail_base' => $url,
         ];
     }
 
@@ -464,7 +421,7 @@ class CmsAppWizardService extends BaseService
      * Reject the wizard if any intended keyword already exists or the intended
      * active route set conflicts with existing routes or itself.
      *
-     * @param list<array{keyword: string, url: string, surface: string, role: string, is_detail: bool, path_pattern: string, requirements: array<string, string>|null, detail_base: string}> $plan
+     * @param list<array{keyword: string, url: string, surface: string, role: string, is_detail: bool, path_pattern: string, requirements: array<string, string>|null}> $plan
      */
     private function assertNoConflicts(array $plan): void
     {
@@ -529,12 +486,13 @@ class CmsAppWizardService extends BaseService
 
     /**
      * Normalize the requested form fields into a validated list of
-     * {name, style, label}. When the caller sends no `form_fields`, fall back to
-     * the single legacy field (`form_field_name` / `form_field_label`) so older
-     * callers keep working unchanged.
+     * {name, style, label, kind?}. When the caller sends no `form_fields`, fall
+     * back to the single legacy field so older callers keep working unchanged.
+     * Styles `image` and `files` scaffold a `file-input` with the right accept /
+     * multiple / files_public flags.
      *
      * @param mixed $raw
-     * @return list<array{name: string, style: string, label: string}>
+     * @return list<array{name: string, style: string, label: string, kind?: string}>
      */
     private function parseFormFields(mixed $raw, string $legacyName, string $legacyLabel): array
     {
@@ -553,7 +511,16 @@ class CmsAppWizardService extends BaseService
                     $this->throwBadRequest(sprintf('Form field style "%s" is not supported.', $style));
                 }
                 $label = $this->asString($entry['label'] ?? '') ?: ucfirst(str_replace('_', ' ', $name));
-                $fields[] = ['name' => $name, 'style' => $style, 'label' => $label];
+                $kind = match ($style) {
+                    'image' => 'image',
+                    'files' => 'files',
+                    default => null,
+                };
+                $field = ['name' => $name, 'style' => in_array($style, ['image', 'files'], true) ? 'file-input' : $style, 'label' => $label];
+                if ($kind !== null) {
+                    $field['kind'] = $kind;
+                }
+                $fields[] = $field;
             }
         }
 
@@ -565,8 +532,146 @@ class CmsAppWizardService extends BaseService
         if (count($names) !== count(array_unique($names))) {
             $this->throwBadRequest('Form field names must be unique.');
         }
+        if (count($fields) > self::MAX_LIST_COLUMNS) {
+            $this->throwBadRequest(sprintf('A list shows at most %d fields.', self::MAX_LIST_COLUMNS));
+        }
 
         return $fields;
+    }
+
+    /**
+     * The URL namespace of the lists of an app: the base name as a list key
+     * (`^[a-z][a-z0-9_]{0,31}$`).
+     */
+    private function listKeyFromBaseName(string $baseName): string
+    {
+        $key = trim((string) preg_replace('/[^a-z0-9]+/', '_', $baseName), '_');
+        if ($key === '' || !ctype_alpha($key[0])) {
+            $key = 'l_' . $key;
+        }
+
+        return substr($key, 0, 32);
+    }
+
+    /**
+     * The columns of a list that shows the fields of the scaffolded form: one
+     * per input, named by the input (the import turns the names into the keys of
+     * the new inputs), in the order of the form.
+     *
+     * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
+     * @return list<array{field: string, label: string, sortable: bool, searchable: bool, format: string|null, choice: bool}>
+     */
+    private function formColumns(array $formFields): array
+    {
+        $columns = [];
+        foreach ($formFields as $field) {
+            $kind = $field['kind'] ?? null;
+            $format = match (true) {
+                $kind === 'image' || ($field['style'] === 'file-input' && $kind !== 'files') => 'image',
+                $kind === 'files' || $field['style'] === 'file-input' => 'file',
+                ($field['kind'] ?? null) === 'status' => 'badge',
+                $field['style'] === 'number-input' => 'number',
+                $field['style'] === 'checkbox' => 'boolean',
+                $field['name'] === 'status' && $field['style'] === 'select' => 'badge',
+                default => null,
+            };
+            $columns[] = [
+                'field' => $field['name'],
+                'label' => $field['label'],
+                'sortable' => !in_array($field['style'], ['file-input'], true),
+                'searchable' => in_array($field['style'], ['text-input', 'textarea'], true),
+                'format' => $format,
+                'choice' => in_array($field['style'], ['select', 'radio'], true),
+            ];
+        }
+
+        return $columns;
+    }
+
+    /**
+     * The columns of a list over an existing table: every stored column, named by
+     * its key; the input name is the label when the table belongs to a form.
+     *
+     * @return list<array{field: string, label: string, sortable: bool, searchable: bool, format: string|null, choice: bool}>
+     */
+    private function tableColumns(string $dataTableName): array
+    {
+        $table = $this->dataService->getDataTableByName($dataTableName);
+        if ($table === null) {
+            return [];
+        }
+
+        $names = ctype_digit($dataTableName) ? $this->keyResolver->getFieldKeyToName($dataTableName) : [];
+        $columns = [];
+        foreach ($this->queryEngine->columnsOf((int) $table->getId()) as $key => $column) {
+            $columns[] = [
+                'field' => $key,
+                'label' => $names[$key] ?? $key,
+                'sortable' => true,
+                'searchable' => $column['type'] === LookupService::DATA_COL_VALUE_TYPES_TEXT,
+                'format' => match ($column['type']) {
+                    LookupService::DATA_COL_VALUE_TYPES_NUMBER => 'number',
+                    LookupService::DATA_COL_VALUE_TYPES_DATE => 'date',
+                    LookupService::DATA_COL_VALUE_TYPES_DATETIME => 'datetime',
+                    LookupService::DATA_COL_VALUE_TYPES_BOOLEAN => 'boolean',
+                    default => null,
+                },
+                'choice' => false,
+            ];
+            if (count($columns) >= self::MAX_LIST_COLUMNS) {
+                break;
+            }
+        }
+
+        return $columns;
+    }
+
+    /**
+     * The `list_columns` document of a list over these columns.
+     *
+     * @param list<array{field: string, label: string, sortable: bool, searchable: bool, format: string|null, choice: bool}> $columns
+     */
+    private function columnsJson(array $columns, int $limit): string
+    {
+        $items = [];
+        foreach (array_slice($columns, 0, $limit) as $column) {
+            $item = ['field' => $column['field'], 'label' => $column['label']];
+            if ($column['sortable']) {
+                $item['sortable'] = true;
+            }
+            if ($column['searchable']) {
+                $item['searchable'] = true;
+            }
+            if ($column['format'] !== null) {
+                $item['format'] = $column['format'];
+            }
+            $items[] = $item;
+        }
+
+        return json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]';
+    }
+
+    /**
+     * The visitor controls of a list: a choice of the values of the first
+     * select or radio input, counted inside the visitor's dataset.
+     *
+     * @param list<array{field: string, label: string, sortable: bool, searchable: bool, format: string|null, choice: bool}> $columns
+     */
+    private function controlsJson(array $columns, int $limit): string
+    {
+        foreach (array_slice($columns, 0, $limit) as $column) {
+            if ($column['choice']) {
+                return json_encode([[
+                    'id' => substr($column['field'], 0, 32),
+                    'type' => 'select',
+                    'field' => $column['field'],
+                    'label' => $column['label'],
+                    'options_from' => 'data',
+                ]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]';
+            }
+        }
+
+        return '[]';
     }
 
     /**
@@ -610,116 +715,167 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Public list: an `entry-list` of cards (one per row) with an "Open" link to
-     * the public detail page. The detail is a normal, shareable full page (NOT a
-     * modal), so the public URL stays linkable.
+     * The CMS surface: ONE `entry-form-list` that shows every record, adds,
+     * edits and deletes them in a dialog, offers each record's history, and (with
+     * a form) holds the inline form that defines the inputs. Without a form
+     * (an existing table) the list reads the table by id and can only delete.
      *
-     * @param list<array{name: string, style: string, label: string}> $formFields
+     * @param list<array{field: string, label: string, sortable: bool, searchable: bool, format: string|null, choice: bool}> $columns
+     * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
      * @param list<string> $contentLocales
      * @return list<array<string, mixed>>
      */
-    private function buildListSections(
+    private function buildCmsListSections(
         string $baseName,
-        string $dataTableName,
-        string $detailBase,
         string $listTitle,
+        array $columns,
         array $formFields,
-        array $contentLocales,
-        string $propertyLocale
-    ): array {
-        $dataTableId = $this->resolveDataTableId($dataTableName);
-        $scope = $this->entryScopeFromBaseName($baseName);
-
-        $itemChildren = [
-            [
-                'section_name' => $baseName . '-list-item-title',
-                'style_name' => 'title',
-                'fields' => [
-                    'content' => $this->contentField($listTitle . ' #{{' . $scope . '.record_id}}', $contentLocales),
-                    'title_order' => $this->propertyField('4', $propertyLocale),
-                ],
-            ],
-            // One editable interpolation line showing every field; reshape after.
-            [
-                'section_name' => $baseName . '-list-item-fields',
-                'style_name' => 'text',
-                'fields' => [
-                    'text' => $this->contentField($this->fieldInterpolationBlock($formFields, $scope), $contentLocales),
-                ],
-            ],
-            [
-                'section_name' => $baseName . '-list-item-link',
-                'style_name' => 'link',
-                'fields' => [
-                    'label' => $this->contentField('Open', $contentLocales),
-                    'url' => $this->propertyField($detailBase . '/{{' . $scope . '.record_id}}', $propertyLocale),
-                ],
-            ],
-        ];
-
-        return [[
-            'section_name' => $baseName . '-list',
-            'style_name' => 'entry-list',
-            'fields' => [
-                'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
-                'own_entries_only' => $this->propertyField('0', $propertyLocale),
-                'filter' => $this->propertyField('', $propertyLocale),
-                'scope' => $this->propertyField($scope, $propertyLocale),
-            ],
-            'children' => [[
-                'section_name' => $baseName . '-list-item',
-                'style_name' => 'card',
-                'children' => $itemChildren,
-            ]],
-        ]];
-    }
-
-    /**
-     * Admin list: an `entry-table` DATA TABLE (search / sort / pagination /
-     * CSV) bound to the table by numeric id, showing every record. It gets an
-     * inline delete control (permission-gated), an "Add new" button that opens
-     * the create form modal, and a per-row open/view action that opens the
-     * read-only detail modal (`{record_id}` is substituted by the renderer).
-     *
-     * @param list<string> $contentLocales
-     * @return list<array<string, mixed>>
-     */
-    private function buildAdminTableSections(
-        string $baseName,
-        int $dataTableId,
-        string $detailBase,
-        string $listTitle,
-        ?string $addNewUrl,
+        ?int $dataTableId,
+        bool $withForm,
+        bool $withStatus,
         array $contentLocales,
         string $propertyLocale
     ): array {
         $fields = [
             'title' => $this->contentField($listTitle, $contentLocales),
-            'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
+            'list_key' => $this->propertyField($this->listKeyFromBaseName($baseName), $propertyLocale),
+            'list_layout' => $this->propertyField('table', $propertyLocale),
+            'form_presentation' => $this->propertyField('modal', $propertyLocale),
+            'page_size' => $this->propertyField('25', $propertyLocale),
+            'list_columns' => $this->propertyField($this->columnsJson($columns, self::MAX_LIST_COLUMNS), $propertyLocale),
+            'list_controls' => $this->propertyField($this->controlsJson($columns, self::MAX_LIST_COLUMNS), $propertyLocale),
+            // An editorial list shows every record to the people who may open the page.
             'own_entries_only' => $this->propertyField('0', $propertyLocale),
-            'dt_sortable' => $this->propertyField('1', $propertyLocale),
-            'dt_searching' => $this->propertyField('1', $propertyLocale),
-            'dt_paginate' => $this->propertyField('1', $propertyLocale),
-            'dt_info' => $this->propertyField('1', $propertyLocale),
-            'delete_entry' => $this->propertyField('1', $propertyLocale),
-            // Single-brace placeholder: substituted client-side per row by the
-            // renderer (NOT a {{...}} backend interpolation token).
-            'edit_url' => $this->propertyField($detailBase . '/{record_id}', $propertyLocale),
+            'allow_create' => $this->propertyField($withForm ? '1' : '0', $propertyLocale),
+            'allow_update' => $this->propertyField($withForm ? '1' : '0', $propertyLocale),
+            'allow_delete' => $this->propertyField('1', $propertyLocale),
+            'show_history' => $this->propertyField($withForm ? '1' : '0', $propertyLocale),
         ];
+        if ($withStatus && $withForm) {
+            $fields['quick_actions'] = $this->propertyField(self::STATUS_QUICK_ACTIONS, $propertyLocale);
+        }
+        if ($dataTableId !== null) {
+            $fields['data_table'] = $this->propertyField((string) $dataTableId, $propertyLocale);
+        }
 
-        if ($addNewUrl !== null) {
-            $fields['add_url'] = $this->propertyField($addNewUrl, $propertyLocale);
+        $section = [
+            'section_name' => $baseName . '-cms-list',
+            'style_name' => 'entry-form-list',
+            'fields' => $fields,
+        ];
+        if ($withForm) {
+            $section['children'] = [$this->buildFormSection($baseName, $formFields, $contentLocales, $propertyLocale)];
+        }
+
+        return [$section];
+    }
+
+    /**
+     * The inline form: a `form-record` with one input per field. It owns the
+     * data table (materialized on scaffold).
+     *
+     * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
+     * @param list<string> $contentLocales
+     * @return array<string, mixed>
+     */
+    private function buildFormSection(string $baseName, array $formFields, array $contentLocales, string $propertyLocale): array
+    {
+        $inputChildren = [];
+        foreach ($formFields as $field) {
+            $fields = [
+                'name' => $this->propertyField($field['name'], $propertyLocale),
+                'label' => $this->contentField($field['label'], $contentLocales),
+            ];
+            $kind = $field['kind'] ?? null;
+            if ($field['style'] === 'select' && ($kind === 'status' || $field['name'] === 'status')) {
+                $fields['options'] = $this->propertyField(
+                    '[{"value":"draft","sort":1},{"value":"published","sort":2}]',
+                    $propertyLocale
+                );
+                $fields['option_labels'] = $this->contentField(
+                    '{"draft":"Draft","published":"Published"}',
+                    $contentLocales
+                );
+                $fields['value'] = $this->propertyField('draft', $propertyLocale);
+            }
+            if ($field['style'] === 'file-input') {
+                $fields['files_public'] = $this->propertyField('1', $propertyLocale);
+                if ($kind === 'image' || $kind === null) {
+                    $fields['web_file_input_accept'] = $this->propertyField(self::IMAGE_ACCEPT, $propertyLocale);
+                }
+                if ($kind === 'files') {
+                    $fields['web_file_input_multiple'] = $this->propertyField('1', $propertyLocale);
+                }
+            }
+            $inputChildren[] = [
+                'section_name' => $baseName . '-form-' . $field['name'],
+                'style_name' => $field['style'],
+                'fields' => $fields,
+            ];
+        }
+
+        return [
+            'section_name' => $baseName . '-form',
+            'style_name' => 'form-record',
+            'fields' => [
+                'alert_success' => $this->contentField('Saved.', $contentLocales),
+            ],
+            'children' => $inputChildren,
+        ];
+    }
+
+    /**
+     * The public list: a read-only `data-view` of the table as cards, with a
+     * "Open" link to the public detail page on every row. The detail is a
+     * normal, shareable full page (NOT a modal), so the public URL stays
+     * linkable. Nothing here can write: a data view refuses every write.
+     *
+     * @param list<array{field: string, label: string, sortable: bool, searchable: bool, format: string|null, choice: bool}> $columns
+     * @param list<string> $contentLocales
+     * @return list<array<string, mixed>>
+     */
+    private function buildPublicListSections(
+        string $baseName,
+        string $dataTableName,
+        string $listTitle,
+        array $columns,
+        bool $withStatus,
+        array $contentLocales,
+        string $propertyLocale
+    ): array {
+        $dataTableId = $this->resolveDataTableId($dataTableName);
+        $viewFields = [
+            'title' => $this->contentField($listTitle, $contentLocales),
+            'list_key' => $this->propertyField($this->listKeyFromBaseName($baseName), $propertyLocale),
+            'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
+            'list_layout' => $this->propertyField('cards', $propertyLocale),
+            'page_size' => $this->propertyField((string) self::PUBLIC_PAGE_SIZE, $propertyLocale),
+            'list_columns' => $this->propertyField($this->columnsJson($columns, self::MAX_PUBLIC_COLUMNS), $propertyLocale),
+            'list_controls' => $this->propertyField($this->controlsJson($columns, self::MAX_PUBLIC_COLUMNS), $propertyLocale),
+            'own_entries_only' => $this->propertyField('0', $propertyLocale),
+            'detail_url' => $this->propertyField('/' . $baseName . '/{record_id}', $propertyLocale),
+        ];
+        if ($withStatus) {
+            $viewFields['list_fixed_filter'] = $this->propertyField(self::STATUS_FILTER, $propertyLocale);
         }
 
         return [[
-            'section_name' => $baseName . '-admin-table',
-            'style_name' => StyleNames::STYLE_ENTRY_TABLE,
-            'fields' => $fields,
+            'section_name' => $baseName . '-page',
+            'style_name' => 'container',
+            'fields' => [
+                'size' => $this->propertyField('lg', $propertyLocale),
+                'spacing' => $this->propertyField('{"pt":"xl","pb":"xl","ps":"md","pe":"md"}', $propertyLocale),
+            ],
+            'children' => [[
+                'section_name' => $baseName . '-view',
+                'style_name' => 'data-view',
+                'fields' => $viewFields,
+            ]],
         ]];
     }
 
     /**
-     * @param list<array{name: string, style: string, label: string}> $formFields
+     * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
      * @param list<string> $contentLocales
      * @return list<array<string, mixed>>
      */
@@ -729,38 +885,84 @@ class CmsAppWizardService extends BaseService
         string $recordParam,
         string $detailTitle,
         array $formFields,
+        bool $withStatus,
         array $contentLocales,
         string $propertyLocale
     ): array {
         $dataTableId = $this->resolveDataTableId($dataTableName);
         $scope = $this->entryScopeFromBaseName($baseName);
+        $recordFields = [
+            'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
+            'own_entries_only' => $this->propertyField('0', $propertyLocale),
+            'load_record_from' => $this->propertyField($this->entryRecordRouteParam($recordParam), $propertyLocale),
+            'scope' => $this->propertyField($scope, $propertyLocale),
+        ];
+        // F166: typed fixed_filter bounds the public detail (and its files).
+        if ($withStatus) {
+            $recordFields['fixed_filter'] = $this->propertyField(self::STATUS_FILTER, $propertyLocale);
+        }
+
+        $children = [
+            [
+                'section_name' => $baseName . '-detail-title',
+                'style_name' => 'title',
+                'fields' => [
+                    'content' => $this->contentField($detailTitle, $contentLocales),
+                ],
+            ],
+        ];
+        $imageField = null;
+        $filesField = null;
+        $textFields = [];
+        foreach ($formFields as $field) {
+            $kind = $field['kind'] ?? null;
+            if ($kind === 'image' || ($field['style'] === 'file-input' && $kind !== 'files' && $imageField === null)) {
+                $imageField = $field;
+                continue;
+            }
+            if ($kind === 'files') {
+                $filesField = $field;
+                continue;
+            }
+            if ($field['name'] === 'status') {
+                continue;
+            }
+            $textFields[] = $field;
+        }
+        if ($imageField !== null) {
+            $children[] = [
+                'section_name' => $baseName . '-detail-image',
+                'style_name' => 'image',
+                'fields' => [
+                    'img_src' => $this->contentField('{{' . $scope . '.' . $imageField['name'] . '__url}}', $contentLocales),
+                    'alt' => $this->contentField($imageField['label'], $contentLocales),
+                ],
+            ];
+        }
+        $children[] = [
+            'section_name' => $baseName . '-detail-fields',
+            'style_name' => 'text',
+            'fields' => [
+                'text' => $this->contentField($this->fieldInterpolationBlock($textFields !== [] ? $textFields : $formFields, $scope), $contentLocales),
+            ],
+        ];
+        if ($filesField !== null) {
+            // `__links` is server-built HTML (`<a href>` list) for the existing
+            // `text` style on web and mobile; `__files` stays for authors who need JSON.
+            $children[] = [
+                'section_name' => $baseName . '-detail-downloads',
+                'style_name' => 'text',
+                'fields' => [
+                    'text' => $this->contentField('{{' . $scope . '.' . $filesField['name'] . '__links}}', $contentLocales),
+                ],
+            ];
+        }
 
         return [[
             'section_name' => $baseName . '-detail',
             'style_name' => 'entry-record',
-            'fields' => [
-                'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
-                'own_entries_only' => $this->propertyField('0', $propertyLocale),
-                'load_record_from' => $this->propertyField($this->entryRecordRouteParam($recordParam), $propertyLocale),
-                'scope' => $this->propertyField($scope, $propertyLocale),
-            ],
-            'children' => [
-                [
-                    'section_name' => $baseName . '-detail-title',
-                    'style_name' => 'title',
-                    'fields' => [
-                        'content' => $this->contentField($detailTitle, $contentLocales),
-                    ],
-                ],
-                // One editable interpolation line showing every record field.
-                [
-                    'section_name' => $baseName . '-detail-fields',
-                    'style_name' => 'text',
-                    'fields' => [
-                        'text' => $this->contentField($this->fieldInterpolationBlock($formFields, $scope), $contentLocales),
-                    ],
-                ],
-            ],
+            'fields' => $recordFields,
+            'children' => $children,
         ]];
     }
 

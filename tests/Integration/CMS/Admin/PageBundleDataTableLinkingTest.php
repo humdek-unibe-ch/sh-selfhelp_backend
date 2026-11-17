@@ -9,8 +9,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\CMS\Admin;
 
+use App\Service\Core\LookupService;
 use App\Tests\Support\ExampleBundleTestPaths;
 use App\Tests\Support\QaWebTestCase;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -18,10 +20,11 @@ use PHPUnit\Framework\Attributes\Group;
  * (issue #30, p7): the keystone the audit flagged as missing.
  *
  * Imports the shipped self-contained Team-Members example bundle (which binds
- * its entry-list / entry-record sections to the owning form section via the
+ * its entry-list / entry-record sections to the form inside the CMS list via the
  * portable `fields.data_table = "@section:<owner>"` token and carries sample rows
  * in `data_tables[]`) and asserts the round-trip works end to end:
- *   - all four pages are created (form + public list/detail + admin list);
+ *   - all three pages are created (the CMS list that holds the form, and the
+ *     public list and detail);
  *   - the owner token is relinked to the NEW form section id (a numeric data
  *     table), proven by the public list resolving the SEEDED rows;
  *   - `importData=true` re-inserts the sample rows through the form-save path.
@@ -40,6 +43,7 @@ final class PageBundleDataTableLinkingTest extends QaWebTestCase
     {
         $admin = $this->loginAsQaAdmin();
         $bundle = $this->loadExampleBundle();
+        $importedBefore = $this->importedRevisionCount();
 
         // Import with a qa keyword/route prefix (collision-free) and importData
         // so the owned table is created and the sample rows are seeded.
@@ -55,7 +59,7 @@ final class PageBundleDataTableLinkingTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess($import, 201);
         $created = $data['created'] ?? null;
         self::assertIsArray($created, 'Import must return the created pages.');
-        self::assertCount(4, $created, 'The Team-Members bundle defines four pages.');
+        self::assertCount(3, $created, 'The Team-Members bundle defines three pages.');
 
         $createdPageIds = [];
         foreach ($created as $entry) {
@@ -63,7 +67,12 @@ final class PageBundleDataTableLinkingTest extends QaWebTestCase
                 $createdPageIds[] = $entry['page_id'];
             }
         }
-        self::assertCount(4, $createdPageIds, 'Every created page must expose an integer id.');
+        self::assertCount(3, $createdPageIds, 'Every created page must expose an integer id.');
+        self::assertGreaterThan(
+            $importedBefore,
+            $this->importedRevisionCount(),
+            'The seeded sample rows are records with a history, and the history names the import as their door.'
+        );
 
         try {
             // Resolving the public list proves the entry-list's `@section:` owner
@@ -177,6 +186,18 @@ final class PageBundleDataTableLinkingTest extends QaWebTestCase
             }
         }
         self::assertContains('missing_locale', $codes, 'The missing locale must be reported by code.');
+    }
+
+    /** Revisions of the generic store whose door is an import (the history of the seeded sample rows). */
+    private function importedRevisionCount(): int
+    {
+        $em = $this->service(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+
+        return self::coerceInt($em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM data_revisions r JOIN lookups src ON src.id = r.id_sources WHERE src.lookup_code = :source',
+            ['source' => LookupService::DATA_REVISION_SOURCES_IMPORT],
+        ));
     }
 
     /**

@@ -83,7 +83,7 @@ final class DataServiceTest extends QaKernelTestCase
     {
         [$table, $recordId] = $this->tables->createTableWithRow('qa_ds_delete', $this->userId(), 'qa-doomed');
 
-        $ok = $this->dataService->deleteData($recordId, false);
+        $ok = $this->dataService->deleteData((int) $table->getId(), $recordId, false);
         self::assertTrue($ok);
 
         $visible = $this->dataService->getData((int) $table->getId(), '', false, null, false, true);

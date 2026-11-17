@@ -44,7 +44,9 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         // shape (`[]` -> `{}`); that belongs to the Phase 10 schema-drift work,
         // not this read-only coverage slice.
         self::assertNotEmpty($data, 'Style schema catalog must not be empty.');
-        $first = $data[array_key_first($data)];
+        $firstKey = array_key_first($data);
+        self::assertNotNull($firstKey);
+        $first = $data[$firstKey];
         self::assertIsArray($first, 'Each style schema entry must be an object.');
         self::assertArrayHasKey('fields', $first, 'Each style schema entry exposes its fields.');
     }

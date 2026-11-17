@@ -11,9 +11,13 @@ namespace App\Tests\Controller\Api\V1\Frontend;
 
 use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\DataRow;
+use App\Entity\DataTable;
+use App\Entity\Field;
 use App\Entity\Group;
+use App\Entity\Language;
 use App\Entity\Page;
 use App\Entity\Section;
+use App\Entity\SectionsFieldsTranslation;
 use App\Entity\User;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
@@ -364,10 +368,15 @@ final class FormControllerTest extends QaWebTestCase
         $recordId = $this->assertEnvelopeSuccess($submit)['record_id'] ?? null;
         self::assertIsInt($recordId);
 
+        // F127: a delete trigger acts on ONE data table (the generator and the
+        // entry-list ancestor set it); here the trigger names the form's table.
+        $this->bindSectionToTable($deleteSection, $formSection);
+
         $envelope = $this->jsonRequest('DELETE', self::DELETE, [
             'record_id' => $recordId,
             'page_id' => (int) $page->getId(),
             'section_id' => (int) $deleteSection->getId(),
+            'expected_version' => $this->assertEnvelopeSuccess($submit)['version'] ?? null,
         ], $token);
         $this->assertEnvelopeSuccess($envelope);
 
@@ -380,6 +389,34 @@ final class FormControllerTest extends QaWebTestCase
     }
 
     // -- helpers ------------------------------------------------------------
+
+    /**
+     * Point a section's `data_table` property at the data table of a form section
+     * (the table is named after the form section id and exists after its first
+     * submission).
+     */
+    private function bindSectionToTable(Section $section, Section $formSection): void
+    {
+        $table = $this->em->getRepository(DataTable::class)->findOneBy(['name' => (string) $formSection->getId()]);
+        self::assertInstanceOf(DataTable::class, $table, 'The form submission must have created its data table.');
+        $field = $this->em->getRepository(Field::class)->findOneBy(['name' => 'data_table']);
+        self::assertInstanceOf(Field::class, $field, 'Missing seeded field "data_table".');
+        $language = $this->em->getRepository(Language::class)->find(1);
+        self::assertInstanceOf(Language::class, $language);
+
+        // The request that created the table reset the entity manager, so the
+        // section handed in is detached: re-read it by id.
+        $managedSection = $this->em->getRepository(Section::class)->find($section->getId());
+        self::assertInstanceOf(Section::class, $managedSection);
+
+        $translation = new SectionsFieldsTranslation();
+        $translation->setSection($managedSection);
+        $translation->setField($field);
+        $translation->setLanguage($language);
+        $translation->setContent((string) $table->getId());
+        $this->em->persist($translation);
+        $this->em->flush();
+    }
 
     private function subjectGroup(): Group
     {

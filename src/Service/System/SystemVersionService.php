@@ -19,8 +19,14 @@ use Doctrine\DBAL\Connection;
  *
  * Pure read-only, no Docker, no network: every fact comes from the running
  * application's own configuration and database (current version parameters, the
- * applied Doctrine migration head, and the installed-plugin table). Mirrors the
- * shared `ISystemVersion` contract.
+ * applied Doctrine migration head, the installed-plugin table, and what is
+ * really installed: the frameworks and the backend's direct libraries from
+ * {@see PlatformAboutService}). Mirrors the shared `ISystemVersion` contract.
+ *
+ * The route behind it already needs `admin.system.read`, so `frameworks` and
+ * `libraries` always carry the exact versions here.
+ *
+ * @phpstan-import-type AboutItem from PlatformAboutService
  */
 class SystemVersionService
 {
@@ -28,6 +34,7 @@ class SystemVersionService
         private readonly SystemInstanceService $instance,
         private readonly PluginRepository $pluginRepository,
         private readonly Connection $connection,
+        private readonly PlatformAboutService $platformAbout,
     ) {
     }
 
@@ -43,7 +50,9 @@ class SystemVersionService
      *     deployment: string,
      *     safe_mode: bool,
      *     maintenance_mode: bool,
-     *     installed_plugins: list<array{id: string, version: string, compatible: bool}>
+     *     installed_plugins: list<array{id: string, version: string, compatible: bool}>,
+     *     frameworks: list<AboutItem>,
+     *     libraries: list<AboutItem>
      * }
      */
     public function getVersion(): array
@@ -62,6 +71,8 @@ class SystemVersionService
             'safe_mode' => $this->instance->isSafeMode(),
             'maintenance_mode' => $this->instance->isMaintenanceMode(),
             'installed_plugins' => $this->getInstalledPlugins($cmsVersion),
+            'frameworks' => $this->platformAbout->frameworks(true),
+            'libraries' => $this->platformAbout->libraries(true),
         ];
     }
 

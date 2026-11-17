@@ -14,9 +14,24 @@
               "type": "integer",
               "description": "The ID of the deleted record",
               "minimum": 1
+            },
+            "section_id": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The section ID the delete was sent for"
+            },
+            "page_id": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The ID of the page containing the form"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The record's version after this request."
             }
           },
-          "required": ["record_id"],
+          "required": ["record_id", "version"],
           "additionalProperties": false
         }
       },

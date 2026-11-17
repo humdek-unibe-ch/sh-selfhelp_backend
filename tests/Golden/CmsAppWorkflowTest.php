@@ -9,7 +9,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Golden;
 
+use App\Entity\Page;
+use App\Service\Cache\Core\CacheService;
 use App\Tests\Support\QaWebTestCase;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -17,6 +20,8 @@ use PHPUnit\Framework\Attributes\Group;
  *
  *   create empty shell -> scaffold pages -> delete shell (pages retained) ->
  *   verify app is gone and pages are unassigned.
+ *
+ * Also: draft/publish on a media-capable scaffold (P1-A6 / P1-A7).
  */
 #[Group('golden')]
 final class CmsAppWorkflowTest extends QaWebTestCase
@@ -110,6 +115,171 @@ final class CmsAppWorkflowTest extends QaWebTestCase
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
             }
         }
+    }
+
+    /**
+     * Draft is absent from the public list; publish brings it; unpublish hides it.
+     * Full media file cycle: CmsAppWizardTest::testPublishUnpublishShowsAndHidesPublicListDetailAndFile.
+     */
+    public function testDraftPublishUnpublishOnPublicList(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $this->service(CacheService::class)
+            ->withCategory(CacheService::CATEGORY_STYLES)
+            ->invalidateAllListsInCategory();
+
+        $createdApp = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', '/cms-api/v1/admin/cms-apps', [
+                'name' => 'QA Publish Cycle',
+                'slug' => 'qa-cms-app-publish-cycle',
+            ], $admin),
+            201
+        );
+        $appId = self::coerceInt($createdApp['id'] ?? null);
+        $base = 'qa-cms-wf-pub';
+        $scaffold = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', sprintf('/cms-api/v1/admin/cms-apps/%d/scaffold', $appId), [
+                'base_name' => $base,
+                'create_form' => true,
+                'create_public' => true,
+                'create_admin' => true,
+                'with_status' => true,
+                // Title only: an image column with no upload yet has no data_col
+                // and would 400 the public list. Media cycle is in CmsAppWizardTest.
+                'form_fields' => [
+                    ['name' => 'title', 'style' => 'text-input', 'label' => 'Title'],
+                ],
+            ], $admin),
+            201
+        );
+        $byRole = [];
+        $pageIds = [];
+        foreach (self::asList($scaffold['created'] ?? null) as $entry) {
+            $row = self::asArray($entry);
+            $pageId = self::coerceInt($row['page_id'] ?? null);
+            $pageIds[] = $pageId;
+            $role = self::coerceString($row['role'] ?? null);
+            if ($role !== '') {
+                $byRole[$role] = $pageId;
+            }
+        }
+
+        try {
+            $em = $this->service(EntityManagerInterface::class);
+            foreach (['public_list', 'public_detail'] as $role) {
+                $page = $em->find(Page::class, $byRole[$role]);
+                self::assertInstanceOf(Page::class, $page);
+                $page->setIsOpenAccess(true);
+            }
+            $em->flush();
+
+            $listId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
+            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'form-record', $admin);
+            $viewId = $this->firstSectionIdByStyle($byRole['public_list'], 'data-view', $admin);
+
+            $created = $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+                'page_id' => $byRole['cms_list'],
+                'section_id' => $formId,
+                'form_data' => ['title' => 'Hidden draft', 'status' => 'draft'],
+            ], $admin));
+            $recordId = self::coerceInt($created['record_id'] ?? null);
+            $version = self::coerceInt($created['version'] ?? null);
+
+            $publicState = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                sprintf('/cms-api/v1/lists/%d/state?page_id=%d', $viewId, $byRole['public_list']),
+            ));
+            self::assertSame([], $this->recordIds($publicState));
+
+            $detail = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/' . $base . '/' . $recordId),
+            ));
+            self::assertStringNotContainsString('Hidden draft', json_encode($detail) ?: '');
+
+            $published = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'POST',
+                sprintf('/cms-api/v1/lists/%d/records/%d/actions/publish', $listId, $recordId),
+                ['page_id' => $byRole['cms_list'], 'expected_version' => $version],
+                $admin,
+            ));
+            $version = self::coerceInt($published['version'] ?? null);
+
+            $publicState = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                sprintf('/cms-api/v1/lists/%d/state?page_id=%d', $viewId, $byRole['public_list']),
+            ));
+            self::assertSame([$recordId], $this->recordIds($publicState));
+            $live = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/' . $base . '/' . $recordId),
+            ));
+            self::assertStringContainsString('Hidden draft', json_encode($live) ?: '');
+
+            $this->assertEnvelopeSuccess($this->jsonRequest(
+                'POST',
+                sprintf('/cms-api/v1/lists/%d/records/%d/actions/unpublish', $listId, $recordId),
+                ['page_id' => $byRole['cms_list'], 'expected_version' => $version],
+                $admin,
+            ));
+            $publicState = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                sprintf('/cms-api/v1/lists/%d/state?page_id=%d', $viewId, $byRole['public_list']),
+            ));
+            self::assertSame([], $this->recordIds($publicState));
+            $detailGone = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/' . $base . '/' . $recordId),
+            ));
+            self::assertStringNotContainsString('Hidden draft', json_encode($detailGone) ?: '');
+        } finally {
+            foreach ($pageIds as $pageId) {
+                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
+            }
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $state
+     * @return list<int>
+     */
+    private function recordIds(array $state): array
+    {
+        $ids = [];
+        foreach (self::asList($state['rows'] ?? null) as $row) {
+            $ids[] = self::coerceInt(self::asArray($row)['record_id'] ?? null);
+        }
+
+        return $ids;
+    }
+
+    private function firstSectionIdByStyle(int $pageId, string $styleName, string $token): int
+    {
+        $resp = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d/sections', $pageId), null, $token);
+        $data = $this->assertEnvelopeSuccess($resp);
+        $found = 0;
+        $walk = function ($nodes) use (&$walk, &$found, $styleName): void {
+            if (!is_array($nodes) || $found > 0) {
+                return;
+            }
+            foreach ($nodes as $node) {
+                if (!is_array($node)) {
+                    continue;
+                }
+                $style = is_array($node['style'] ?? null) ? ($node['style']['name'] ?? null) : ($node['style_name'] ?? null);
+                if ($style === $styleName && is_numeric($node['id'] ?? null)) {
+                    $found = (int) $node['id'];
+
+                    return;
+                }
+                $walk($node['children'] ?? null);
+            }
+        };
+        $walk($data['sections'] ?? null);
+        self::assertGreaterThan(0, $found, sprintf('No %s on page %d', $styleName, $pageId));
+
+        return $found;
     }
 
     /**

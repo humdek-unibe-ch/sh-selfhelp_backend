@@ -17,8 +17,9 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * CI guard for the CMS-in-CMS template gallery (issue #30): every shipped
  * template bundle must validate cleanly, import with prefixes + sample data,
- * and render its public entry page with at least two hydrated rows. A template
- * edit that breaks import or hydration fails here, so the gallery cannot rot.
+ * and render its public page with at least two sample records, whether the page
+ * is a composition of entry styles or a data view. A template edit that breaks
+ * import or hydration fails here, so the gallery cannot rot.
  *
  * Imported with a `qa_` keyword prefix AND a `/qa-tpl` route prefix (the exact
  * one-click "Start from template" flow); pages are deleted in a finally block
@@ -156,8 +157,11 @@ final class CmsInCmsTemplateBundlesImportTest extends QaWebTestCase
             $appDetail = $this->assertEnvelopeSuccess(
                 $this->jsonRequest('GET', '/cms-api/v1/admin/cms-apps/by-slug/' . rawurlencode($importedSlug), null, $admin),
             );
-            if (isset($declaredRoles['form'])) {
-                self::assertNotEmpty($appDetail['id_form_section'] ?? null, 'CMS app hub must point at the form section.');
+            // One list holds the one form: no page of its own for the form, none for a second edit page.
+            self::assertArrayNotHasKey('form', $declaredRoles, 'A template defines its inputs once, inside the CMS list.');
+            self::assertArrayNotHasKey('cms_detail', $declaredRoles, 'A template edits records inside the CMS list.');
+            if (isset($declaredRoles['cms_list'])) {
+                self::assertNotEmpty($appDetail['id_form_section'] ?? null, 'CMS app hub must point at the form inside the CMS list.');
             }
             if (isset($declaredRoles['public_list'])) {
                 self::assertNotEmpty($appDetail['id_public_list_page'] ?? null, 'CMS app hub must point at the public list page.');
@@ -166,7 +170,7 @@ final class CmsInCmsTemplateBundlesImportTest extends QaWebTestCase
                 self::assertNotEmpty($appDetail['id_public_detail_page'] ?? null, 'CMS app hub must point at the public detail page.');
             }
             if (isset($declaredRoles['cms_list'])) {
-                self::assertNotEmpty($appDetail['id_cms_list_page'] ?? null, 'CMS app hub must point at the CMS entry-table page.');
+                self::assertNotEmpty($appDetail['id_cms_list_page'] ?? null, 'CMS app hub must point at the CMS list page.');
             }
         } finally {
             foreach ($createdPageIds as $pageId) {

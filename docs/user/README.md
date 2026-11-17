@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: CMS administrators and content editors (non-technical).
 Status: active.
 Applies to: SelfHelp2 admin UI.
-Last verified: 2026-06-29.
+Last verified: 2026-11-13.
 Source of truth: The live admin UI plus the developer/reference docs linked below.
 
 Task-based guides for people who manage content in the SelfHelp admin — no code
@@ -18,6 +18,7 @@ each guide.
 | Guide | Use it for |
 | --- | --- |
 | [cms-apps.md](cms-apps.md) | CMS Apps: import Team Members, Manage content, Live preview, delete shell. |
+| [entry-lists.md](entry-lists.md) | Show a form's records as a list people can search, add to, edit and delete (participant lists, team-managed lists, public data views). |
 | [cms-option-labels.md](cms-option-labels.md) | Configure stable option codes, translated labels, and readable template variables. |
 | [interpolation-and-data-naming.md](interpolation-and-data-naming.md) | Inserting variables into text, and naming your form data so it reads nicely without breaking. |
 | [email-templates.md](email-templates.md) | Editing the system emails (2FA, welcome, password reset) and styling them. |

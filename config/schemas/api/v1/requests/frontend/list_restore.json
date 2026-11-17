@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "List Restore Request",
+  "description": "Previews (dry_run) or performs the restore of an earlier version of a record shown in a list. A restore is a new revision: it never rewinds the history. Without dry_run, expected_version is required.",
+  "required": [
+    "page_id",
+    "version"
+  ],
+  "properties": {
+    "page_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The page the list is on."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The earlier version to restore."
+    },
+    "expected_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The current version the person saw. A restore based on an older version is refused with 409."
+    },
+    "field_keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_]{1,100}$"
+      },
+      "description": "Restore only these fields (the way to resolve a blocked restore). Omit to restore every field that differs."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "description": "Only report what the restore would change and what blocks it; write nothing."
+    },
+    "preview": {
+      "type": "boolean",
+      "description": "Act on the draft of the page instead of its published version. Only for a signed-in person who may read the draft; it must match what the person is looking at (the page endpoint's `preview`). Without it the published version is used. The page access rights, the live data and the permissions stay the same."
+    }
+  },
+  "additionalProperties": false
+}

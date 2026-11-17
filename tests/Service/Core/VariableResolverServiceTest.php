@@ -13,6 +13,8 @@ use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\User;
 use App\Service\Core\VariableResolverService;
 use App\Tests\Support\QaKernelTestCase;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * Behavioural coverage for {@see VariableResolverService::getAllVariables()} —
@@ -75,6 +77,31 @@ final class VariableResolverServiceTest extends QaKernelTestCase
 
         self::assertIsArray($vars['user_group']);
         self::assertContains('subject', $vars['user_group'], 'qa.user belongs to the subject group.');
+    }
+
+    /**
+     * F04: a visitor controls every query and body parameter, so none of them may
+     * become a condition or interpolation variable. Only values the server
+     * defines are variables; route parameters travel separately as `{{route.*}}`.
+     */
+    public function testRequestParametersAreNeverExposedAsVariables(): void
+    {
+        $stack = $this->service(RequestStack::class);
+        $stack->push(new Request(
+            ['injected_query' => 'evil', 'language' => '99', 'user_name' => 'spoofed'],
+            ['injected_body' => 'evil'],
+        ));
+
+        try {
+            $vars = $this->resolver->getAllVariables(null, 1, false);
+        } finally {
+            $stack->pop();
+        }
+
+        self::assertArrayNotHasKey('injected_query', $vars, 'A query parameter must not become a variable.');
+        self::assertArrayNotHasKey('injected_body', $vars, 'A body parameter must not become a variable.');
+        self::assertSame(1, $vars['language'], 'A request parameter must never shadow a system variable.');
+        self::assertSame('', $vars['user_name'], 'A request parameter must never shadow a system variable.');
     }
 
     private function userId(string $email): int

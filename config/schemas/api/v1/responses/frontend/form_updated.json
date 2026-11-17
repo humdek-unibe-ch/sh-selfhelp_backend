@@ -29,13 +29,19 @@
               "type": "string",
               "format": "date-time",
               "description": "Timestamp when the form was updated"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The record's version after this request."
             }
           },
           "required": [
             "record_id",
             "section_id",
             "page_id",
-            "updated_at"
+            "updated_at",
+            "version"
           ],
           "additionalProperties": false
         }

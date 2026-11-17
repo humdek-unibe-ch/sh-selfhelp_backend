@@ -251,7 +251,7 @@ php bin/console app:create-admin-user your.email@example.com "Admin Name" \
     --password='S3cret!' --name=admin
 ```
 
-The created user is `status=active`, `blocked=0`, `intern=0`, in the `admin`
+The created user is `status=active`, `blocked=0`, in the `admin`
 group and bound to the `admin` role. Re-running the command with the same
 email updates the password and re-asserts the admin membership, so the same
 command doubles as a password-reset for the bootstrap admin.

@@ -20,14 +20,24 @@ use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\CmsPreferenceService;
+use App\Service\CMS\Effective\EffectivePage;
+use App\Service\CMS\Effective\EffectivePageResolver;
 use App\Service\Core\BaseService;
 use App\Service\Core\ConditionService;
 use App\Service\Core\InterpolationService;
+use App\Service\Core\ServerBuiltString;
 use App\Service\Core\UserContextAwareService;
 use App\Service\Auth\UserContextService;
+use App\Service\System\PlatformAboutService;
 
 class PageService extends BaseService
 {
+    /**
+     * The scope names of the context of a section that a record or a data view's data_config can never
+     * take over: the visitor and the site, the route and the position of the record in the page.
+     */
+    private const ROW_TEMPLATE_RESERVED_SCOPES = ['system', 'globals', 'route', 'route_requirements', '_index'];
+
     // Default values for language
     private const PROPERTY_LANGUAGE_ID = 1; // Language ID 1 is for properties, not a real language
 
@@ -83,6 +93,11 @@ class PageService extends BaseService
         private readonly \App\Repository\PageTypeRepository $pageTypeRepository,
         private readonly \App\Repository\AssetRepository $assetRepository,
         private readonly \App\Service\CMS\Admin\AssetStorageService $assetStorage,
+        private readonly PlatformAboutService $platformAbout,
+        private readonly EffectivePageResolver $effectivePages,
+        private readonly \App\Service\CMS\FormFileUploadService $formFiles,
+        private readonly \App\Service\CMS\DataQuery\DataQueryEngine $dataQueryEngine,
+        private readonly \App\Service\CMS\FormFieldKeyResolver $formFieldKeys,
     ) {
     }
 
@@ -319,29 +334,33 @@ class PageService extends BaseService
         $routeParams = $resolved['route_params'];
         $routeRequirements = $resolved['route_requirements'];
 
+        // Existence-leak guard (issue #30): a page-ACL denial is remapped to
+        // 404 whether or not the caller asked for a preview, so an unseen
+        // page cannot be told from a missing one by adding `preview=true`.
+        // The preview gate runs afterwards inside resolvePageResponse and
+        // keeps its own 401 (guest) / 403 (no edit rights) on a page the
+        // caller can already see.
         try {
-            $response = $this->resolvePageResponse(
-                $page,
-                (int) $page->getId(),
-                $languageId,
-                $preview,
-                $mode,
-                $routeParams,
-                $routeRequirements
-            );
+            if ($mode !== null) {
+                $this->assertPageAccessForMode($page, $mode);
+            }
+            $this->assertPageReadable($page);
         } catch (\App\Exception\ServiceException $e) {
-            // Existence-leak guard (issue #30 locked decision): the public path
-            // resolver must NEVER reveal that a path maps to a page the caller
-            // cannot access. A page-ACL denial (403 Forbidden) is remapped to a
-            // 404 so an unauthorized caller cannot distinguish "exists but
-            // forbidden" from "does not exist" — critical for cms/surfaced
-            // pages. The 401 preview-auth case is left intact (it is a generic
-            // "authenticate to preview", not a page-specific existence signal).
             if ($e->getCode() === \Symfony\Component\HttpFoundation\Response::HTTP_FORBIDDEN) {
                 $this->throwNotFound('Page not found');
             }
             throw $e;
         }
+
+        $response = $this->resolvePageResponse(
+            $page,
+            (int) $page->getId(),
+            $languageId,
+            $preview,
+            $mode,
+            $routeParams,
+            $routeRequirements
+        );
 
         // Attach route metadata so the frontend/mobile can read params and the
         // canonical URL without re-parsing the slug. route_params is omitted
@@ -359,43 +378,20 @@ class PageService extends BaseService
     }
 
     /**
-     * Shared resolution path used by getPageByKeyword().
+     * Whether the caller may read the page at all: the platform mode, the CMS
+     * surface rule and the page ACL. The page endpoints and every endpoint that
+     * serves a part of a page (the list endpoints) answer with the same errors,
+     * so a section cannot be reached through a side door that the page itself
+     * refuses.
      *
-     * Page-access enforcement:
-     * - Pages flagged `mobile_and_web` are universal and always pass.
-     * - Pages flagged `web` only resolve for `web` callers.
-     * - Pages flagged `mobile` only resolve for `mobile` callers.
-     * - When `$mode` is null (legacy callers / internal callers), the
-     *   check is skipped for back-compat.
-     * - Pages with no `id_page_access_types` are treated as `web` (legacy
-     *   default).
-     *
-     * Preview enforcement:
-     * - `preview=true` serves the unpublished draft, so it requires an
-     *   authenticated caller (anonymous => 401). The page ACL is still
-     *   enforced on top, so a logged-in user can only preview pages they
-     *   already have `select` access to.
-     *
-     * @param array<string, string> $routeParams Public route params ({{route.*}}); empty for keyword resolution.
-     * @param array<string, string> $routeRequirements Matched Symfony route requirements for the public path.
-     * @return array<string, mixed>
+     * @param string|null $mode `web` or `mobile`; null skips the platform check
+     * @param string $permission the ACL permission the caller needs on the page
+     * @throws ServiceException
      */
-    private function resolvePageResponse(
-        \App\Entity\Page $page,
-        int $page_id,
-        int $languageId,
-        bool $preview,
-        ?string $mode = null,
-        array $routeParams = [],
-        array $routeRequirements = []
-    ): array {
+    public function assertPageReadable(\App\Entity\Page $page, ?string $mode = null, string $permission = 'select'): void
+    {
         if ($mode !== null) {
             $this->assertPageAccessForMode($page, $mode);
-        }
-
-        // Drafts are never served anonymously: preview requires authentication.
-        if ($preview && $this->userContextAwareService->getCurrentUser() === null) {
-            $this->throwUnauthorized('Authentication required to preview unpublished drafts');
         }
 
         // CMS-surface pages are Host Admin only (CMS Apps content host / admin
@@ -420,15 +416,136 @@ class PageService extends BaseService
         }
 
         // Check if user has access to the page
-        $this->userContextAwareService->checkAclAccess((string) $page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAclAccess((string) $page->getKeyword(), $permission);
+    }
 
-        // If preview mode is disabled and a published version exists, serve it
-        if (!$preview && $page->getPublishedVersionId()) {
-            return $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements);
+    /**
+     * Shared resolution path used by getPageByKeyword().
+     *
+     * Page-access enforcement:
+     * - Pages flagged `mobile_and_web` are universal and always pass.
+     * - Pages flagged `web` only resolve for `web` callers.
+     * - Pages flagged `mobile` only resolve for `mobile` callers.
+     * - When `$mode` is null (legacy callers / internal callers), the
+     *   check is skipped for back-compat.
+     * - Pages with no `id_page_access_types` are treated as `web` (legacy
+     *   default).
+     *
+     * Preview enforcement:
+     * - Readability is decided first (same 404/403 as without `preview`).
+     * - `preview=true` then serves the unpublished draft only to a caller who
+     *   may edit the page (`admin.page.update` plus the update grant; admin
+     *   passes). Guests get 401; everyone else without those rights gets 403.
+     *   The same rule lives in {@see EffectivePageResolver::assertPreviewAllowed()}.
+     *
+     * @param array<string, string> $routeParams Public route params ({{route.*}}); empty for keyword resolution.
+     * @param array<string, string> $routeRequirements Matched Symfony route requirements for the public path.
+     * @return array<string, mixed>
+     */
+    private function resolvePageResponse(
+        \App\Entity\Page $page,
+        int $page_id,
+        int $languageId,
+        bool $preview,
+        ?string $mode = null,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
+        if ($mode !== null) {
+            $this->assertPageAccessForMode($page, $mode);
         }
 
-        // Otherwise serve the draft version (fresh from database)
-        return $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements);
+        // Page ACL / CMS surface first (rule 4.3): an unseen page answers the
+        // same way with or without preview. Draft edit rights come after.
+        $this->assertPageReadable($page);
+
+        // Draft preview needs edit rights. One decision shared with every list /
+        // form / history route behind the page.
+        $this->effectivePages->assertPreviewAllowed($page, $preview);
+
+        // If preview mode is disabled and a published version exists, serve it;
+        // otherwise serve the draft version (fresh from database). The same decision
+        // ({@see EffectivePageResolver::servesPublished()}) picks the configuration every endpoint
+        // behind the page (lists, form writes, history) acts on, so they cannot disagree with the page.
+        $pageData = $this->effectivePages->servesPublished($page, $preview)
+            ? $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements)
+            : $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements);
+
+        // Both versions leave here, after every cache read: what the `version`
+        // style shows depends on the caller, so it is added last.
+        return $this->withPlatformAboutOnPage($pageData);
+    }
+
+    /**
+     * Add the `about` block to every `version` section of the page payload.
+     *
+     * It belongs to the caller, not to the page: guests and users without
+     * `admin.system.read` get no versions, so it is built here, per request,
+     * after the page cache, and never stored in the cached payload (anonymous
+     * visitors share one cache entry). Pages without a `version` section cost
+     * one walk of the section tree and nothing else.
+     *
+     * @param array<string, mixed> $pageData
+     * @return array<string, mixed>
+     */
+    private function withPlatformAboutOnPage(array $pageData): array
+    {
+        $page = $pageData['page'] ?? null;
+        if (!is_array($page) || !is_array($page['sections'] ?? null)) {
+            return $pageData;
+        }
+
+        if (!$this->containsStyle($page['sections'], StyleNames::STYLE_VERSION)) {
+            return $pageData;
+        }
+
+        $about = $this->platformAbout->aboutForCaller($this->userContextAwareService->getCurrentUser());
+        $page['sections'] = $this->fillPlatformAbout($page['sections'], $about);
+        $pageData['page'] = $page;
+
+        return $pageData;
+    }
+
+    /**
+     * @param array<array-key, mixed> $sections
+     */
+    private function containsStyle(array $sections, string $styleName): bool
+    {
+        foreach ($sections as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            if (($section['style_name'] ?? null) === $styleName) {
+                return true;
+            }
+            if (is_array($section['children'] ?? null) && $this->containsStyle($section['children'], $styleName)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<array-key, mixed> $sections
+     * @param array<string, mixed> $about
+     * @return list<array<string, mixed>>
+     */
+    private function fillPlatformAbout(array $sections, array $about): array
+    {
+        $filled = [];
+        foreach ($sections as $section) {
+            $section = $this->asAssocArray($section);
+            if (($section['style_name'] ?? null) === StyleNames::STYLE_VERSION) {
+                $section['about'] = $about;
+            }
+            if (is_array($section['children'] ?? null)) {
+                $section['children'] = $this->fillPlatformAbout($section['children'], $about);
+            }
+            $filled[] = $section;
+        }
+
+        return $filled;
     }
 
     /**
@@ -532,7 +649,7 @@ class PageService extends BaseService
         $storedPageData = $publishedVersion->getPageJson();
 
         // Hydrate the published page with fresh dynamic elements
-        $hydrated = $this->hydratePublishedPage($storedPageData, $languageId, $routeParams, $routeRequirements);
+        $hydrated = $this->hydratePublishedPage($page_id, $storedPageData, $languageId, $routeParams, $routeRequirements);
 
         // Page settings (title, description, modal) come from the published
         // version, so editing them waits for Publish. A version that holds
@@ -571,6 +688,7 @@ class PageService extends BaseService
      * @return array<string, mixed> The hydrated page data with single language
      */
     private function hydratePublishedPage(
+        int $pageId,
         array $storedPageData,
         int $languageId,
         array $routeParams = [],
@@ -595,7 +713,9 @@ class PageService extends BaseService
             $sections,
             $this->buildRouteScope($routeParams, $routeRequirements),
             $userId,
-            $languageId
+            $languageId,
+            false,
+            $pageId,
         );
 
         // Resolved at serve time (not frozen into the version JSON) so an
@@ -606,6 +726,23 @@ class PageService extends BaseService
         $storedPageData['page']['sections'] = $hydratedSections;
 
         return $storedPageData;
+    }
+
+    /**
+     * The stored section tree of a published page translated for one language, exactly as the page
+     * endpoint prepares it before it processes the sections: no condition is evaluated and no value is
+     * interpolated yet. The layout of one record of a data view is read from here, so a published page
+     * never takes its template from the live sections.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function publishedSections(EffectivePage $effective, int $languageId): array
+    {
+        /** @var array<int, array<string, mixed>> $sections */
+        $sections = $effective->publishedNodes();
+        $this->extractLanguageTranslations($sections, $languageId);
+
+        return array_values($sections);
     }
 
     /**
@@ -992,56 +1129,92 @@ class PageService extends BaseService
                 // (invalidateEntityScope(DATA_TABLE, id) on submit/update/delete)
                 // cannot bust the cached page and the rendered rows stay stale until
                 // a manual cache clear.
+                //
+                // A record form (form-record, entry-record-form) prefills from its own data
+                // table, and the prefill carries the record's version: a save names that version
+                // and is refused when it is old. So a cached prefill has to go with the record it
+                // shows: the table that holds the record is registered for these too. The table of
+                // a form-record, and of an entry-record-form that names none, is the one named
+                // after the section.
                 $entryHolderSectionIds = [];
+                $ownTableSectionIds = [];
                 foreach ($flatSections as $section) {
                     $style = $section['style_name'] ?? null;
+                    $rawSectionId = $section['id'] ?? null;
+                    $sectionId = is_numeric($rawSectionId) ? (int) $rawSectionId : 0;
+                    if ($sectionId <= 0) {
+                        continue;
+                    }
                     if ($style === StyleNames::STYLE_ENTRY_TABLE
                         || $style === StyleNames::STYLE_ENTRY_LIST
-                        || $style === StyleNames::STYLE_ENTRY_RECORD) {
-                        $rawSectionId = $section['id'] ?? null;
-                        $sectionId = is_numeric($rawSectionId) ? (int) $rawSectionId : 0;
-                        if ($sectionId > 0) {
-                            $entryHolderSectionIds[] = $sectionId;
-                        }
+                        || $style === StyleNames::STYLE_ENTRY_RECORD
+                        || $style === StyleNames::STYLE_ENTRY_RECORD_FORM) {
+                        $entryHolderSectionIds[] = $sectionId;
+                    }
+                    if ($style === StyleNames::STYLE_FORM_RECORD || $style === StyleNames::STYLE_ENTRY_RECORD_FORM) {
+                        $ownTableSectionIds[$sectionId] = $style;
                     }
                 }
 
-                if ($entryHolderSectionIds !== []) {
-                    $entryTableProperties = $this->translationRepository->fetchTranslationsForSections(
-                        $entryHolderSectionIds,
-                        self::PROPERTY_LANGUAGE_ID
-                    );
+                $entryTableProperties = $this->translationRepository->fetchTranslationsForSections(
+                    $entryHolderSectionIds,
+                    self::PROPERTY_LANGUAGE_ID
+                );
 
-                    foreach ($entryTableProperties as $fields) {
-                        $dataTableId = isset($fields['data_table']['content'])
-                            ? (int) $this->asString($fields['data_table']['content'])
-                            : 0;
-                        if ($dataTableId <= 0) {
-                            continue;
-                        }
+                foreach ($entryTableProperties as $holderId => $fields) {
+                    $dataTableId = isset($fields['data_table']['content'])
+                        ? (int) $this->asString($fields['data_table']['content'])
+                        : 0;
+                    if ($dataTableId <= 0) {
+                        continue;
+                    }
+                    // A form that names its table is registered by it, not by the section's own name.
+                    unset($ownTableSectionIds[(int) $holderId]);
 
-                        // own_entries_only defaults to true (mirrors applySectionData):
-                        // own-records render is user-scoped, otherwise it is global.
-                        $ownEntriesOnly = !isset($fields['own_entries_only']['content'])
-                            || $this->asString($fields['own_entries_only']['content']) !== '0';
+                    // own_entries_only defaults to true (mirrors applySectionData):
+                    // own-records render is user-scoped, otherwise it is global.
+                    $ownEntriesOnly = !isset($fields['own_entries_only']['content'])
+                        || $this->asString($fields['own_entries_only']['content']) !== '0';
 
-                        if (!isset($dataTableConfigs[$dataTableId])) {
-                            $dataTableConfigs[$dataTableId] = [
-                                'has_current_user_config' => false,
-                                'has_global_config' => false,
-                            ];
-                        }
+                    $this->registerDataTableDependency($dataTableConfigs, $dataTableId, $ownEntriesOnly);
+                }
 
-                        if ($ownEntriesOnly) {
-                            $dataTableConfigs[$dataTableId]['has_current_user_config'] = true;
-                        } else {
-                            $dataTableConfigs[$dataTableId]['has_global_config'] = true;
-                        }
+                foreach ($ownTableSectionIds as $formSectionId => $style) {
+                    // A plain form-record always prefills the person's own record; an
+                    // entry-record-form that names no table does the same on its own table.
+                    $ownTableFields = $entryTableProperties[$formSectionId] ?? [];
+                    $ownEntriesOnly = $style === StyleNames::STYLE_FORM_RECORD
+                        || !isset($ownTableFields['own_entries_only']['content'])
+                        || $this->asString($ownTableFields['own_entries_only']['content']) !== '0';
+                    try {
+                        $ownTable = $this->dataService->getDataTableByName((string) $formSectionId);
+                    } catch (\Exception) {
+                        // A table that cannot be read cannot be a dependency; the page still renders.
+                        $ownTable = null;
+                    }
+                    if ($ownTable !== null) {
+                        $this->registerDataTableDependency($dataTableConfigs, (int) $ownTable->getId(), $ownEntriesOnly);
                     }
                 }
 
                 return $dataTableConfigs;
             });
+    }
+
+    /**
+     * Note that a page depends on a data table: a user's own records scope the cached page to the
+     * person, records everyone sees scope it to the table alone.
+     *
+     * @param array<int, array{has_current_user_config: bool, has_global_config: bool}> $dataTableConfigs
+     */
+    private function registerDataTableDependency(array &$dataTableConfigs, int $dataTableId, bool $ownEntriesOnly): void
+    {
+        $dataTableConfigs[$dataTableId] ??= ['has_current_user_config' => false, 'has_global_config' => false];
+        if ($ownEntriesOnly) {
+            $dataTableConfigs[$dataTableId]['has_current_user_config'] = true;
+        } else {
+            $dataTableConfigs[$dataTableId]['has_global_config'] = true;
+        }
     }
 
     /**
@@ -1097,7 +1270,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements) {
+        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements, $page_id) {
             // Build nested hierarchical structure (without applying data initially)
             $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
 
@@ -1140,7 +1313,9 @@ class PageService extends BaseService
                 $sections,
                 $this->buildRouteScope($routeParams, $routeRequirements),
                 $userId,
-                $languageId
+                $languageId,
+                false,
+                $page_id,
             );
 
             return $sections;
@@ -1248,7 +1423,7 @@ class PageService extends BaseService
      * @param int|null $language_id Explicitly provided language ID
      * @return int The language ID to use
      */
-    private function determineLanguageId(?int $language_id = null): int
+    public function determineLanguageId(?int $language_id = null): int
     {
         // If language_id is explicitly provided, use it
         if ($language_id !== null) {
@@ -1291,14 +1466,14 @@ class PageService extends BaseService
      * @param int $languageId Language ID for data retrieval
      * @return list<array<string, mixed>> Processed sections that pass conditions
      */
-    private function processSectionsRecursively(array $sections, array $parentData = [], ?int $userId = null, int $languageId = 1): array
+    private function processSectionsRecursively(array $sections, array $parentData = [], ?int $userId = null, int $languageId = 1, bool $rowTemplate = false, int $pageId = 0): array
     {
         $processedSections = [];
 
         foreach ($sections as $section) {
             // Step 1: CRITICAL - Interpolate data_config fields using parent data
             // This allows filters like "record_id = {{parent.record_id}}" to work
-            $this->interpolateDataConfigInSection($section, $parentData);
+            $this->interpolateDataConfigInSection($section, $parentData, $rowTemplate);
 
             // Step 2: Apply section data (for form-record sections). Route
             // params flow in so the form-record edit mode (`load_record_from`)
@@ -1312,7 +1487,7 @@ class PageService extends BaseService
             $this->sectionUtilityService->applySectionData($section, $languageId, $routeParams);
 
             // Step 3: Retrieve data from data_config (now with properly interpolated filters)
-            $this->retrieveSectionData($section, $parentData, $languageId);
+            $this->retrieveSectionData($section, $parentData, $languageId, $rowTemplate);
 
             // Step 4: Merge parent data with newly retrieved data efficiently
             $sectionData = $this->mergeDataEfficiently($parentData, $this->asArray($section['retrieved_data'] ?? []));
@@ -1339,7 +1514,7 @@ class PageService extends BaseService
             $isRepeater = $styleName === StyleNames::STYLE_ENTRY_LIST || $styleName === StyleNames::STYLE_LOOP;
             $entryRows = [];
             if ($isRepeater || $styleName === StyleNames::STYLE_ENTRY_RECORD) {
-                $entryRows = $this->resolveEntryRows($section, $sectionData, $languageId);
+                $entryRows = $this->resolveEntryRows($section, $sectionData, $languageId, $pageId);
                 if ($entryRows === [] && $styleName === StyleNames::STYLE_LOOP) {
                     $entryRows = $this->resolveLoopFieldRows($section, $sectionData);
                 }
@@ -1360,16 +1535,33 @@ class PageService extends BaseService
                     $section['record_id'] = ['content' => (string) $recordId, 'meta' => null];
                 }
             }
+            // A delete is refused without the version of the record it is based on (409 when it is old),
+            // so the page also offers the version the bound record has right now, read live next to its
+            // id. A record that no longer exists offers none and the renderers keep the button off.
+            if ($styleName === StyleNames::STYLE_ENTRY_RECORD_DELETE) {
+                $boundId = is_array($section['record_id'] ?? null) ? ($section['record_id']['content'] ?? null) : null;
+                if (is_string($boundId) && ctype_digit($boundId) && (int) $boundId > 0) {
+                    try {
+                        $section['record_version'] = ['content' => (string) $this->dataService->getRecordVersion((int) $boundId), 'meta' => null];
+                    } catch (ServiceException) {
+                        unset($section['record_version']);
+                    }
+                }
+            }
 
             // Step 5: CRITICAL - Interpolate ALL content fields using combined data
             // Now we have both parent data and newly retrieved data available
-            $this->applyOptimizedInterpolationPass($section, $sectionData);
+            // (The condition of a section in a row template is not interpolated as text, not even in debug mode:
+            // its tokens are resolved in the decoded condition at Step 6.)
+            $this->applyOptimizedInterpolationPass($section, $sectionData, !$rowTemplate);
 
             // Step 6: Evaluate condition using fully interpolated data.
             // $languageId is propagated so conditions that reference the `language`
             // system variable match the current render language instead of a
             // hard-coded default of 1 (seen as "English never unlocks for de_CH").
-            $conditionResult = $this->evaluateSectionCondition($section, $userId, $languageId);
+            // Inside the layout of one record of a data view the condition may also read the record and the
+            // route: its `{{tokens}}` are resolved from the data of the section (see evaluateSectionCondition).
+            $conditionResult = $this->evaluateSectionCondition($section, $userId, $languageId, $rowTemplate ? $sectionData : null);
 
             // Step 7: Handle condition results with debug support
             if ($conditionResult['passes']) {
@@ -1384,13 +1576,20 @@ class PageService extends BaseService
                 // are a TEMPLATE cloned once per bound row (the web/mobile
                 // renderers just render the already-cloned children). No rows
                 // -> no children.
+                // A data view is a list whose records are served page by page
+                // by its own endpoint: its children are the TEMPLATE of one
+                // record and stay as stored here; they are rendered once per
+                // record of the list state (renderRowTemplate) and never ship
+                // with the page itself.
                 if (isset($section['children']) && is_array($section['children'])) {
                     /** @var array<int, array<string, mixed>> $children */
                     $children = $section['children'];
-                    if ($isRepeater) {
-                        $section['children'] = $this->hydrateEntryListChildren($children, $entryRows, $sectionData, $userId, $languageId);
+                    if ($styleName === StyleNames::STYLE_DATA_VIEW) {
+                        $section['children'] = $children;
+                    } elseif ($isRepeater) {
+                        $section['children'] = $this->hydrateEntryListChildren($children, $entryRows, $sectionData, $userId, $languageId, $rowTemplate, $pageId);
                     } else {
-                        $section['children'] = $this->processSectionsRecursively($children, $sectionData, $userId, $languageId);
+                        $section['children'] = $this->processSectionsRecursively($children, $sectionData, $userId, $languageId, $rowTemplate, $pageId);
                     }
                 }
 
@@ -1438,7 +1637,7 @@ class PageService extends BaseService
      * @param array<array-key, mixed> $interpolationContext Parent + retrieved helper scopes
      * @return list<array<string, mixed>>
      */
-    private function resolveEntryRows(array $section, array $interpolationContext, int $languageId): array
+    private function resolveEntryRows(array $section, array $interpolationContext, int $languageId, int $pageId = 0): array
     {
         $styleName = $this->asString($section['style_name'] ?? '');
         $dataTableId = (int) $this->getSectionPropertyContent($section, 'data_table');
@@ -1452,10 +1651,12 @@ class PageService extends BaseService
         }
 
         $ownEntriesOnly = $this->getSectionPropertyBool($section, 'own_entries_only', true);
+        $routeRecordId = 0;
 
         // entry-record: same visible contract as entry-record-form —
         // `load_record_from` names the route param; the server builds the
-        // record_id predicate (no author SQL filter). A section with no value,
+        // record_id predicate (no author SQL filter). A typed `fixed_filter`
+        // (F166) may still refuse the row after load. A section with no value,
         // or a blank one, already carries the style default (`record_id`) here
         // (SectionUtilityService fills it), the same rule a bundle import
         // applies to a missing field (F64, F87). A name the route does not have
@@ -1510,14 +1711,26 @@ class PageService extends BaseService
             $rows = [$rows];
         }
 
+        // F166: typed fixed_filter on entry-record — same bound as the file route.
+        // Outside it is treated like a missing record (empty detail, page still 200).
+        if ($styleName === StyleNames::STYLE_ENTRY_RECORD && $rows !== [] && $routeRecordId > 0) {
+            if (!$this->entryRecordPassesFixedFilter(
+                $section,
+                $dataTableId,
+                $ownEntriesOnly,
+                $routeRecordId,
+                $languageId,
+            )) {
+                return [];
+            }
+        }
+
         $tableName = (string) $dataTable->getName();
         if ($rows !== []) {
             $rows = $this->dataService->remapEntriesToInputNames($dataTableId, $rows);
         }
 
-        $scope = $this->getSectionPropertyContent($section, 'scope');
-        $normalized = [];
-        $index = 0;
+        $keyedRows = [];
         foreach ($rows as $row) {
             if (!is_array($row)) {
                 continue;
@@ -1526,9 +1739,31 @@ class PageService extends BaseService
             foreach ($row as $key => $value) {
                 $rowArray[(string) $key] = $value;
             }
+            $keyedRows[] = $rowArray;
+        }
+
+        // The translated labels of option codes (`_<field>_label`) are added
+        // before the rows are put under the `scope`, so `{{scope._<field>_label}}`
+        // resolves exactly like `{{_<field>_label}}`.
+        if ($tableName !== '' && $keyedRows !== []) {
+            $keyedRows = $this->optionLabelHydrator->hydrate($keyedRows, $tableName, $languageId);
+        }
+
+        $scope = $this->getSectionPropertyContent($section, 'scope');
+        $sectionId = is_numeric($section['id'] ?? null) ? (int) $section['id'] : 0;
+        // File URLs must name the page being rendered (contract 1), not the first
+        // page that happens to contain the section. __url / __files are the same
+        // for every viewer of that page; access is decided on the file request
+        // (rule 3.6b: nothing per-user enters the shared page payload shape).
+        $normalized = [];
+        $index = 0;
+        foreach ($keyedRows as $rowArray) {
             if ($styleName === StyleNames::STYLE_ENTRY_LIST) {
                 $rowArray['_index'] = $index;
                 $index++;
+            }
+            if ($sectionId > 0 && $pageId > 0) {
+                $rowArray = $this->withFileTemplateVars($rowArray, $sectionId, $pageId, $tableName);
             }
             if ($scope !== '') {
                 $scoped = [];
@@ -1546,11 +1781,237 @@ class PageService extends BaseService
             $normalized[] = $rowArray;
         }
 
-        if ($tableName !== '' && $normalized !== []) {
-            $normalized = $this->optionLabelHydrator->hydrate($normalized, $tableName, $languageId);
+        return $normalized;
+    }
+
+    /**
+     * Whether the named record sits inside the entry-record's typed fixed filter.
+     *
+     * @param array<string, mixed> $section
+     */
+    private function entryRecordPassesFixedFilter(
+        array $section,
+        int $dataTableId,
+        bool $ownEntriesOnly,
+        int $recordId,
+        int $languageId,
+    ): bool {
+        $raw = trim($this->getSectionPropertyContent($section, 'fixed_filter'));
+        if ($raw === '') {
+            return true;
+        }
+        try {
+            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            if (!is_array($decoded)) {
+                return false;
+            }
+            $group = \App\Service\CMS\DataQuery\DataFilterJson::parse($decoded);
+        } catch (\JsonException|\App\Service\CMS\DataQuery\DataQueryException) {
+            return false;
+        }
+        if ($group->isEmpty()) {
+            return true;
         }
 
-        return $normalized;
+        $group = $this->resolveFixedFilterColumns($group, $dataTableId);
+
+        $user = $this->userContextAwareService->getCurrentUser();
+        $userId = $user !== null ? (int) $user->getId() : null;
+        if ($ownEntriesOnly && $userId === null) {
+            return false;
+        }
+
+        try {
+            $optionalColumns = $this->optionalColumnsForTable($dataTableId);
+            $query = new \App\Service\CMS\DataQuery\DataQuery(
+                tableId: $dataTableId,
+                ownerScope: $ownEntriesOnly
+                    ? \App\Service\CMS\DataQuery\DataQuery::OWNER_USER
+                    : \App\Service\CMS\DataQuery\DataQuery::OWNER_ANY,
+                userId: $userId,
+                filter: $group,
+                columns: [],
+                languageId: $languageId,
+                timezone: $user?->getTimezone()?->getLookupCode() ?? 'UTC',
+                optionalColumns: $optionalColumns,
+            );
+
+            return $this->dataQueryEngine->count($query->forRecord($recordId)) > 0;
+        } catch (\App\Service\CMS\DataQuery\DataQueryException) {
+            return false;
+        }
+    }
+
+    /**
+     * Declared form fields of the table that may not have a `data_cols` row yet (F169).
+     *
+     * @return array<string, string>
+     */
+    private function optionalColumnsForTable(int $dataTableId): array
+    {
+        $dataTable = $this->dataService->getDataTableById($dataTableId);
+        $tableName = $dataTable !== null ? (string) $dataTable->getName() : '';
+        if ($tableName === '' || !ctype_digit($tableName)) {
+            return [];
+        }
+        $types = $this->formFieldKeys->getFieldKeyToValueType($tableName);
+        $optional = [];
+        foreach (array_keys($this->formFieldKeys->getFieldKeyToName($tableName)) as $key) {
+            $optional[$key] = $types[$key] ?? \App\Service\Core\LookupService::DATA_COL_VALUE_TYPES_TEXT;
+        }
+
+        return $optional;
+    }
+
+    private function resolveFixedFilterColumns(
+        \App\Service\CMS\DataQuery\DataFilterGroup $group,
+        int $dataTableId,
+    ): \App\Service\CMS\DataQuery\DataFilterGroup {
+        if ($group->isEmpty()) {
+            return $group;
+        }
+        $dataTable = $this->dataService->getDataTableById($dataTableId);
+        $tableName = $dataTable !== null ? (string) $dataTable->getName() : '';
+        if ($tableName === '') {
+            return $group;
+        }
+        $nameToKey = $this->formFieldKeys->getNameToFieldKey($tableName);
+        if ($nameToKey === []) {
+            return $group;
+        }
+        $map = static fn (string $name): string => $nameToKey[$name] ?? $name;
+        $rewritten = \App\Service\CMS\FormList\FormListColumnReferences::rewrite(
+            \App\Service\CMS\FormList\FormListColumnReferences::FIELD_FIXED_FILTER,
+            json_encode(\App\Service\CMS\DataQuery\DataFilterJson::toArray($group), JSON_THROW_ON_ERROR),
+            $map,
+        );
+        if ($rewritten === null) {
+            return $group;
+        }
+        try {
+            $decoded = json_decode($rewritten, true, 512, JSON_THROW_ON_ERROR);
+
+            return is_array($decoded)
+                ? \App\Service\CMS\DataQuery\DataFilterJson::parse($decoded)
+                : $group;
+        } catch (\JsonException|\App\Service\CMS\DataQuery\DataQueryException) {
+            return $group;
+        }
+    }
+
+    /**
+     * For every file-input cell of a record shown by entry-list / entry-record /
+     * a data-view row template: `{{field__url}}` (first file), `{{field__files}}`
+     * (JSON list) and `{{field__links}}` (HTML `<a>` list for the `text` style).
+     * URLs are section-scoped; names are HTML-escaped. Never a storage path.
+     * The same string for every viewer of that page (rule 3.6b): access is
+     * decided on the file request, nothing per-caller enters the page cache.
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function withFileTemplateVars(array $row, int $sectionId, int $pageId, string $tableName): array
+    {
+        $recordId = is_numeric($row['record_id'] ?? null) ? (int) $row['record_id'] : 0;
+        if ($recordId <= 0 || $tableName === '') {
+            return $row;
+        }
+
+        foreach ($row as $key => $value) {
+            if ($key === '' || str_contains($key, '.') || str_starts_with($key, '_')) {
+                continue;
+            }
+            // Structured file cells (already shaped for list display) expose
+            // their section-scoped URL directly for {{field__url}}.
+            if (is_array($value) && isset($value['files']) && is_array($value['files'])) {
+                $files = [];
+                foreach ($value['files'] as $i => $file) {
+                    if (!is_array($file)) {
+                        continue;
+                    }
+                    $files[] = [
+                        'index' => is_numeric($file['index'] ?? null) ? (int) $file['index'] : (int) $i,
+                        'name' => is_string($file['name'] ?? null) ? $file['name'] : '',
+                        'mime' => is_string($file['mime'] ?? null) ? $file['mime'] : null,
+                        'size' => is_numeric($file['size'] ?? null) ? (int) $file['size'] : 0,
+                        'url' => sprintf(
+                            '/lists/%d/records/%d/files/%s?page_id=%d&index=%d',
+                            $sectionId,
+                            $recordId,
+                            rawurlencode((string) $key),
+                            $pageId,
+                            is_numeric($file['index'] ?? null) ? (int) $file['index'] : (int) $i,
+                        ),
+                    ];
+                }
+                $row[$key . '__url'] = new ServerBuiltString($files[0]['url'] ?? '');
+                $row[$key . '__files'] = json_encode($files, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
+                $row[$key . '__links'] = new ServerBuiltString(self::fileLinksHtml($files));
+                continue;
+            }
+            $text = is_scalar($value) ? (string) $value : '';
+            if ($text === '' || !\App\Service\CMS\FormFileUploadService::cellHoldsFiles($text)) {
+                continue;
+            }
+            if (!$this->formFiles->isFileInputField($key, $tableName)) {
+                continue;
+            }
+            $keys = \App\Service\CMS\FormFileUploadService::keysIn($text);
+            $files = [];
+            foreach ($keys as $i => $logical) {
+                $absolute = $this->formFiles->resolveKey($logical);
+                if ($absolute === null) {
+                    continue;
+                }
+                $files[] = [
+                    'index' => $i,
+                    'name' => $this->formFiles->originalName($absolute),
+                    'mime' => mime_content_type($absolute) ?: null,
+                    'size' => (int) filesize($absolute),
+                    'url' => sprintf(
+                        '/lists/%d/records/%d/files/%s?page_id=%d&index=%d',
+                        $sectionId,
+                        $recordId,
+                        rawurlencode($key),
+                        $pageId,
+                        $i,
+                    ),
+                ];
+            }
+            $row[$key . '__url'] = new ServerBuiltString($files[0]['url'] ?? '');
+            $row[$key . '__files'] = json_encode($files, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
+            $row[$key . '__links'] = new ServerBuiltString(self::fileLinksHtml($files));
+        }
+
+        return $row;
+    }
+
+    /**
+     * Ready HTML for the `text` style: one `<a>` per file (escaped name, same
+     * section-scoped URL as `__files`). Empty string when there are no files.
+     *
+     * @param array<mixed> $files
+     */
+    public static function fileLinksHtml(array $files): string
+    {
+        $parts = [];
+        foreach ($files as $file) {
+            if (!is_array($file)) {
+                continue;
+            }
+            $url = is_string($file['url'] ?? null) ? $file['url'] : '';
+            if ($url === '') {
+                continue;
+            }
+            $name = is_string($file['name'] ?? null) && $file['name'] !== '' ? $file['name'] : $url;
+            $parts[] = sprintf(
+                '<a href="%s">%s</a>',
+                htmlspecialchars($url, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+                htmlspecialchars($name, ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            );
+        }
+
+        return $parts === [] ? '' : implode('<br>', $parts);
     }
 
     /**
@@ -1620,6 +2081,116 @@ class PageService extends BaseService
     }
 
     /**
+     * Render the row template of a data view once per record of a list page.
+     *
+     * The sections placed inside a data view are the layout of ONE record. Like
+     * the children of an `entry-list`, they are processed once per row with the
+     * row's values as interpolation data, so `{{title}}`, `{{record_id}}` and
+     * `{{_<field>_label}}` resolve per record and every normal section feature
+     * (translations, conditions, classes) keeps working. The values arrive
+     * already limited to what the list shows, keyed by the stored field key; they
+     * are mapped to the input names of a form-owned table and get the translated
+     * option labels exactly as the rows of an `entry-list` do.
+     *
+     * The context of every section is built in one order, and what comes first cannot be changed by what
+     * comes later:
+     *
+     * 1. the identity of the visitor and the site (`{{system.*}}`, `{{globals.*}}`), set fresh for every section;
+     * 2. the declared context of the page: the route (`{{route.*}}`, validated by the page's routes) and the
+     *    values the author gave the data view itself (its `data_config`, read once for the whole list), each
+     *    under the scope name the author chose;
+     * 3. the record: its projected columns, `record_id`, `entry_date` and `_index`, at the top level.
+     *
+     * A column whose name is also a scope name (a form input called `route` or `system`) is therefore not
+     * available as a bare `{{token}}` in the layout; it never replaces a scope. A condition of a section of
+     * the layout reads the same context (see {@see self::evaluateSectionCondition()}); a section's own
+     * `data_config` filters may name the record (`{{record_id}}`) and the route (`{{route.id}}`).
+     *
+     * @param list<array<string, mixed>> $template the sections inside the data view, as the page tree holds them
+     * @param list<array<string, mixed>> $rows one token map per record
+     * @param array<string, string> $routeParams the route parameters of the page ({{route.*}}), already validated
+     * @param array<string, string> $routeRequirements the requirements of the route that matched
+     * @param mixed $supportingConfig the stored `data_config` of the data view itself (JSON text, array or null)
+     * @return list<list<array<string, mixed>>> the processed sections of each record, in the order of $rows
+     */
+    public function renderRowTemplate(
+        array $template,
+        array $rows,
+        int $dataTableId,
+        ?int $userId,
+        int $languageId,
+        array $routeParams = [],
+        array $routeRequirements = [],
+        mixed $supportingConfig = null,
+    ): array {
+        if ($rows === []) {
+            return [];
+        }
+        if ($template === []) {
+            return array_fill(0, count($rows), []);
+        }
+
+        $keyed = [];
+        foreach ($this->dataService->remapEntriesToInputNames($dataTableId, $rows) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $rowArray = [];
+            foreach ($row as $key => $value) {
+                $rowArray[(string) $key] = $value;
+            }
+            $keyed[] = $rowArray;
+        }
+
+        $dataTable = $this->dataService->getDataTableById($dataTableId);
+        $tableName = $dataTable !== null ? (string) $dataTable->getName() : '';
+        if ($tableName !== '' && $keyed !== []) {
+            $keyed = $this->optionLabelHydrator->hydrate($keyed, $tableName, $languageId);
+        }
+
+        $declared = $this->buildRouteScope($routeParams, $routeRequirements);
+        $declared = array_merge($this->supportingScopes($supportingConfig, $declared, $languageId), $declared);
+        $reserved = array_fill_keys(array_merge(array_keys($declared), self::ROW_TEMPLATE_RESERVED_SCOPES), true);
+
+        $rendered = [];
+        foreach ($keyed as $index => $rowArray) {
+            $context = array_merge(array_diff_key($rowArray, $reserved), $declared);
+            $context['_index'] = $index;
+            $rendered[] = $this->processSectionsRecursively($template, $context, $userId, $languageId, true);
+        }
+
+        return $rendered;
+    }
+
+    /**
+     * The supporting values the author gave a data view itself: its `data_config`, read once for the whole
+     * list with the route as the only context (the same way any section reads its data_config), one scope
+     * per entry. A scope can never be called like the identity scopes or the route.
+     *
+     * @param array<array-key, mixed> $declared the route scope
+     * @return array<string, mixed> scope name => values
+     */
+    private function supportingScopes(mixed $config, array $declared, int $languageId): array
+    {
+        if ($config === null || $config === '' || $config === []) {
+            return [];
+        }
+
+        $holder = ['data_config' => $config];
+        $this->interpolateDataConfigInSection($holder, $declared, true);
+        $this->retrieveSectionData($holder, $declared, $languageId, true);
+
+        $scopes = [];
+        foreach ($this->asArray($holder['retrieved_data'] ?? []) as $name => $values) {
+            if (is_string($name) && !in_array($name, self::ROW_TEMPLATE_RESERVED_SCOPES, true)) {
+                $scopes[$name] = $values;
+            }
+        }
+
+        return $scopes;
+    }
+
+    /**
      * Clone the entry-list / loop child template once per bound row and
      * process each clone with the row's columns flattened into the
      * interpolation data (so `{{name}}` / `{{record_id}}` resolve per row).
@@ -1631,7 +2202,7 @@ class PageService extends BaseService
      * @param array<array-key, mixed> $sectionData
      * @return list<array<string, mixed>>
      */
-    private function hydrateEntryListChildren(array $templateChildren, array $rows, array $sectionData, ?int $userId, int $languageId): array
+    private function hydrateEntryListChildren(array $templateChildren, array $rows, array $sectionData, ?int $userId, int $languageId, bool $rowTemplate = false, int $pageId = 0): array
     {
         $hydrated = [];
         foreach ($rows as $row) {
@@ -1639,7 +2210,7 @@ class PageService extends BaseService
             if (isset($sectionData['route'])) {
                 $rowData['route'] = $sectionData['route'];
             }
-            foreach ($this->processSectionsRecursively($templateChildren, $rowData, $userId, $languageId) as $child) {
+            foreach ($this->processSectionsRecursively($templateChildren, $rowData, $userId, $languageId, $rowTemplate, $pageId) as $child) {
                 $hydrated[] = $child;
             }
         }
@@ -1710,7 +2281,7 @@ class PageService extends BaseService
      * @param array<string, mixed> &$section The section to process
      * @param array<array-key, mixed> $parentData Parent data for interpolation
      */
-    private function interpolateDataConfigInSection(array &$section, array $parentData): void
+    private function interpolateDataConfigInSection(array &$section, array $parentData, bool $strict = false): void
     {
         if (empty($parentData) || !isset($section['data_config'])) {
             return;
@@ -1728,7 +2299,7 @@ class PageService extends BaseService
         // Interpolate each config entry
         foreach ($dataConfig as $configIndex => $configEntry) {
             if (is_array($configEntry)) {
-                $dataConfig[$configIndex] = $this->interpolateDataConfig($this->toConfigArray($configEntry), $parentData);
+                $dataConfig[$configIndex] = $this->interpolateDataConfig($this->toConfigArray($configEntry), $parentData, $strict);
             }
         }
 
@@ -1743,7 +2314,7 @@ class PageService extends BaseService
      * @param array<string, mixed> &$section The section to interpolate
      * @param array<array-key, mixed> $interpolationData The combined data to use for interpolation
      */
-    private function applyOptimizedInterpolationPass(array &$section, array $interpolationData): void
+    private function applyOptimizedInterpolationPass(array &$section, array $interpolationData, bool $conditionAsText = true): void
     {
         if (empty($interpolationData)) {
             return;
@@ -1751,13 +2322,14 @@ class PageService extends BaseService
 
         // Check if debug is enabled for this section
         $isDebugEnabled = isset($section['debug']) && $section['debug'];
+        $interpolateCondition = $isDebugEnabled && $conditionAsText;
 
         // Update section's retrieved_data for interpolation access
         $section['retrieved_data'] = $interpolationData;
 
         // Interpolate direct string fields that exist
         $directStringFields = ['css', 'css_mobile'];
-        if ($isDebugEnabled) {
+        if ($interpolateCondition) {
             $directStringFields[] = 'condition';
         }
 
@@ -1777,7 +2349,7 @@ class PageService extends BaseService
         }
 
         // Interpolate only fields that actually exist in this section
-        $this->interpolateExistingContentFields($section, $interpolationData, $isDebugEnabled);
+        $this->interpolateExistingContentFields($section, $interpolationData, $interpolateCondition);
     }
 
     /**
@@ -1819,7 +2391,7 @@ class PageService extends BaseService
      * @param array<array-key, mixed> $availableData Available data for interpolation (parent data)
      * @param int $languageId The language ID for data retrieval
      */
-    private function retrieveSectionData(array &$section, array $availableData, int $languageId): void
+    private function retrieveSectionData(array &$section, array $availableData, int $languageId, bool $strict = false): void
     {
         // Handle data_config field - parse and retrieve data
         if (isset($section['data_config'])) {
@@ -1838,7 +2410,7 @@ class PageService extends BaseService
                     try {
                         // Interpolate the config before retrieving data
                         // availableData contains the structured parent data (system, globals, parent scopes)
-                        $interpolatedConfig = $this->interpolateDataConfig($this->toConfigArray($config), $availableData);
+                        $interpolatedConfig = $this->interpolateDataConfig($this->toConfigArray($config), $availableData, $strict);
                         $configData = $this->sectionUtilityService->retrieveData(
                             $interpolatedConfig,
                             [],
@@ -1872,9 +2444,12 @@ class PageService extends BaseService
      *
      * @param array<string, mixed> $config The data config to interpolate
      * @param array<array-key, mixed> $availableData Available data for interpolation
+     * @param bool $strict a filter that cannot be resolved (a route token on a request without that route parameter, an
+     *                     unsafe fragment) matches nothing instead of turning into "no filter"; used for the layout of a
+     *                     data view, whose supporting values are bound to its record and its route
      * @return array<string, mixed> The interpolated config
      */
-    private function interpolateDataConfig(array $config, array $availableData): array
+    private function interpolateDataConfig(array $config, array $availableData, bool $strict = false): array
     {
         if (empty($availableData)) {
             return $config;
@@ -1888,11 +2463,16 @@ class PageService extends BaseService
         foreach ($fieldsToInterpolate as $field) {
             if (isset($interpolatedConfig[$field]) && is_string($interpolatedConfig[$field])) {
                 if ($field === 'filter') {
-                    $interpolatedConfig[$field] = $this->dataTableFilterService->prepareFilter(
+                    $prepared = $this->dataTableFilterService->prepareFilter(
                         $interpolatedConfig[$field],
                         $availableData,
                         $this->asStringKeyedMap($availableData['route_requirements'] ?? null),
                     );
+                    if ($strict && trim($interpolatedConfig[$field]) !== '' && $prepared === '') {
+                        // Record ids start at 1: this fragment is valid and finds no record.
+                        $prepared = 'AND record_id = 0';
+                    }
+                    $interpolatedConfig[$field] = $prepared;
                 } else {
                     $interpolatedConfig[$field] = $this->interpolationService->interpolate($interpolatedConfig[$field], $availableData);
                 }
@@ -1935,9 +2515,11 @@ class PageService extends BaseService
      * @param int|null $userId User ID for condition evaluation
      * @param int $languageId Language of the current render; forwarded to ConditionService
      *                        so the `language` system variable matches the request language.
+     * @param array<array-key, mixed>|null $tokenData The data a `{{token}}` of the condition is read from; given for the
+     *                        sections of a record template only (the condition of any other section is left as it is)
      * @return array{passes: bool, debug?: array<string, mixed>} Result with 'passes' boolean and optional 'debug' info
      */
-    private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = 1): array
+    private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = 1, ?array $tokenData = null): array
     {
         if (!isset($section['condition']) || empty($section['condition'])) {
             return ['passes' => true];
@@ -1952,6 +2534,15 @@ class PageService extends BaseService
             return ['passes' => true];
         }
 
+        // A section inside the layout of one record of a data view: the condition may name the record and the
+        // route (`{"==": [{"var": "{{status}}"}, "late"]}`, `{{route.record_id}}`). Its tokens are resolved in
+        // the decoded condition from the data of the section, so a value can never change the shape of the
+        // condition or pick a system variable. Everything else evaluates the stored condition as it always did.
+        $authored = $condition;
+        if ($tokenData !== null) {
+            $condition = $this->interpolationService->interpolateCondition($condition, $tokenData);
+        }
+
         /** @var array{result: bool, fields?: mixed, debug?: array<string, mixed>} $conditionResult */
         $conditionResult = $this->conditionService->evaluateCondition(
             $condition,
@@ -1960,9 +2551,14 @@ class PageService extends BaseService
             $languageId
         );
 
+        // `condition_debug` travels with the section to every visitor. The condition of a record template is shown
+        // as the author wrote it (with its tokens): the values it was resolved with belong to a record or to a
+        // supporting table and may be cells the layout never draws. Only a section with `debug` switched on shows them.
+        $shown = $tokenData !== null && empty($section['debug']) ? $authored : $condition;
+
         return [
             'passes' => $conditionResult['result'],
-            'debug' => $this->conditionService->buildConditionDebug($conditionResult, $condition),
+            'debug' => $this->conditionService->buildConditionDebug($conditionResult, $shown),
         ];
     }
 

@@ -9,12 +9,16 @@ declare(strict_types=1);
 
 namespace App\Tests\Support\Factories;
 
+use App\Entity\Field;
 use App\Entity\Group;
+use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Entity\Page;
 use App\Entity\PagesSection;
 use App\Entity\PageType;
 use App\Entity\Section;
+use App\Entity\SectionsFieldsTranslation;
+use App\Entity\SectionsHierarchy;
 use App\Entity\Style;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
@@ -113,6 +117,54 @@ final class PageSectionFactory
         $this->invalidatePageScopedCaches();
 
         return $link;
+    }
+
+    /**
+     * Put a section inside another one (`rel_sections_hierarchy`), like a form
+     * inside a list.
+     */
+    public function linkSectionToParent(Section $parent, Section $child, int $position = 10): SectionsHierarchy
+    {
+        $link = new SectionsHierarchy();
+        $link->setParentSection($parent);
+        $link->setChildSection($child);
+        $link->setPosition($position);
+        $this->em->persist($link);
+        $this->em->flush();
+
+        $this->invalidatePageScopedCaches();
+
+        return $link;
+    }
+
+    /**
+     * Store the content of a field of a section (property fields use language 1).
+     * A field that was set before is overwritten.
+     */
+    public function setSectionField(Section $section, string $fieldName, string $content, int $languageId = 1): void
+    {
+        $field = $this->em->getRepository(Field::class)->findOneBy(['name' => $fieldName]);
+        $language = $this->em->getRepository(Language::class)->find($languageId);
+        if (!$field instanceof Field || !$language instanceof Language) {
+            throw new \RuntimeException(sprintf('Missing field "%s" or language %d.', $fieldName, $languageId));
+        }
+
+        $translation = $this->em->getRepository(SectionsFieldsTranslation::class)->findOneBy([
+            'section' => $section,
+            'field' => $field,
+            'language' => $language,
+        ]);
+        if (!$translation instanceof SectionsFieldsTranslation) {
+            $translation = new SectionsFieldsTranslation();
+            $translation->setSection($section);
+            $translation->setField($field);
+            $translation->setLanguage($language);
+        }
+        $translation->setContent($content);
+        $this->em->persist($translation);
+        $this->em->flush();
+
+        $this->invalidatePageScopedCaches();
     }
 
     /**

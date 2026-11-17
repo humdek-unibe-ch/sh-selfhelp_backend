@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Form List Version Response",
+  "description": "One revision of a record shown in a list: what the revision changed and what the record looked like at that version.",
+  "allOf": [
+    {
+      "$ref": "../common/_response_envelope.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["revision", "state"],
+          "properties": {
+            "revision": {
+              "type": "object",
+              "required": ["revision", "changes"],
+              "properties": {
+                "revision": { "type": "object" },
+                "changes": { "type": "array", "items": { "type": "object" } }
+              },
+              "additionalProperties": false
+            },
+            "state": {
+              "type": "object",
+              "required": ["version", "current_version", "fields"],
+              "properties": {
+                "version": { "type": "integer", "minimum": 1 },
+                "current_version": { "type": "integer", "minimum": 1 },
+                "fields": { "type": "array", "items": { "type": "object" } }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

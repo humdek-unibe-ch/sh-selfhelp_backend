@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin Data Record History Response",
+  "description": "A page of revisions of a data-browser record. Access: admin.data.read + table UPDATE. Files are described, never exposed by path.",
+  "allOf": [
+    {
+      "$ref": "../../common/_response_envelope.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "required": ["items", "total", "page", "page_size", "current_version"],
+          "properties": {
+            "items": { "type": "array", "items": { "type": "object" } },
+            "total": { "type": "integer", "minimum": 0 },
+            "page": { "type": "integer", "minimum": 1 },
+            "page_size": { "type": "integer", "minimum": 1 },
+            "current_version": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

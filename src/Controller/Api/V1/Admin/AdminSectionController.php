@@ -32,12 +32,18 @@ class AdminSectionController extends AbstractController
     public function getSection(int $page_id, int $section_id): Response
     {
         $section = $this->adminSectionService->getSection($page_id, $section_id);
+        $data = [
+            'section' => $section['section'] ?? $section,
+            'fields' => $section['fields'] ?? [],
+            'languages' => $section['languages'] ?? [],
+        ];
+        // Only a list section carries what its editor may offer (the fields of its table).
+        if (isset($section['list_source'])) {
+            $data['list_source'] = $section['list_source'];
+        }
+
         return $this->apiResponseFormatter->formatSuccess(
-            [
-                'section' => $section['section'] ?? $section,
-                'fields' => $section['fields'] ?? [],
-                'languages' => $section['languages'] ?? [],
-            ],
+            $data,
             'responses/admin/sections/section',
             Response::HTTP_OK
         );
