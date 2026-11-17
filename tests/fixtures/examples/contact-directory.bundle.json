@@ -11,10 +11,10 @@
         "directory",
         "translatable"
     ],
-    "_comment": "CMS-in-CMS template: a Contact Directory in two pages (list only, no detail page). PUBLIC: /contacts is a read-only data view as a table (search in name, department and mail, sort, filter by department, paging) of the table of the form \"@section:contacts-form\". CMS: /cms/contacts is ONE entry-form-list that holds the form: add and edit contacts in a dialog, delete them and restore earlier versions. The inputs are defined once, in the form inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). The department is translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
+    "_comment": "CMS-in-CMS template: a Contact Directory in two pages (list only, no detail page). PUBLIC: /contacts is a read-only data view as a table (search in name, department and mail, sort, filter by department, paging) of the table of the list \"@section:contacts-cms-list\". CMS: /cms/contacts is ONE entry-form-list that is the form: add and edit contacts in a dialog, delete them and restore earlier versions. The inputs sit directly inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). The department is translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
     "data_tables": [
         {
-            "owner_section_name": "contacts-form",
+            "owner_section_name": "contacts-cms-list",
             "columns": [
                 "name",
                 "department",
@@ -224,136 +224,128 @@
                             "en-GB": {
                                 "content": "Delete this contact?"
                             }
+                        },
+                        "alert_success": {
+                            "de-CH": {
+                                "content": "Kontakt gespeichert."
+                            },
+                            "en-GB": {
+                                "content": "Contact saved."
+                            }
+                        },
+                        "btn_save_label": {
+                            "de-CH": {
+                                "content": "Speichern"
+                            },
+                            "en-GB": {
+                                "content": "Save"
+                            }
+                        },
+                        "btn_update_label": {
+                            "de-CH": {
+                                "content": "Aktualisieren"
+                            },
+                            "en-GB": {
+                                "content": "Update"
+                            }
                         }
                     },
                     "children": [
                         {
-                            "section_name": "contacts-form",
-                            "style_name": "form-record",
+                            "section_name": "contacts-form-name",
+                            "style_name": "text-input",
                             "fields": {
-                                "alert_success": {
-                                    "de-CH": {
-                                        "content": "Kontakt gespeichert."
-                                    },
-                                    "en-GB": {
-                                        "content": "Contact saved."
+                                "name": {
+                                    "all": {
+                                        "content": "name"
                                     }
                                 },
-                                "btn_save_label": {
+                                "label": {
                                     "de-CH": {
-                                        "content": "Speichern"
+                                        "content": "Name"
                                     },
                                     "en-GB": {
-                                        "content": "Save"
+                                        "content": "Name"
                                     }
                                 },
-                                "btn_update_label": {
-                                    "de-CH": {
-                                        "content": "Aktualisieren"
-                                    },
-                                    "en-GB": {
-                                        "content": "Update"
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
                                     }
                                 }
-                            },
-                            "children": [
-                                {
-                                    "section_name": "contacts-form-name",
-                                    "style_name": "text-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "name"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Name"
-                                            },
-                                            "en-GB": {
-                                                "content": "Name"
-                                            }
-                                        },
-                                        "is_required": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        }
+                            }
+                        },
+                        {
+                            "section_name": "contacts-form-department",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "department"
                                     }
                                 },
-                                {
-                                    "section_name": "contacts-form-department",
-                                    "style_name": "text-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "department"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Abteilung"
-                                            },
-                                            "en-GB": {
-                                                "content": "Department"
-                                            }
-                                        },
-                                        "translatable": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        }
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Abteilung"
+                                    },
+                                    "en-GB": {
+                                        "content": "Department"
                                     }
                                 },
-                                {
-                                    "section_name": "contacts-form-phone",
-                                    "style_name": "text-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "phone"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Telefon"
-                                            },
-                                            "en-GB": {
-                                                "content": "Phone"
-                                            }
-                                        },
-                                        "placeholder": {
-                                            "all": {
-                                                "content": "+41 31 000 00 00"
-                                            }
-                                        }
-                                    }
-                                },
-                                {
-                                    "section_name": "contacts-form-email",
-                                    "style_name": "text-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "email"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "E-Mail"
-                                            },
-                                            "en-GB": {
-                                                "content": "Email"
-                                            }
-                                        },
-                                        "placeholder": {
-                                            "all": {
-                                                "content": "name@example.org"
-                                            }
-                                        }
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
                                     }
                                 }
-                            ]
+                            }
+                        },
+                        {
+                            "section_name": "contacts-form-phone",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "phone"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Telefon"
+                                    },
+                                    "en-GB": {
+                                        "content": "Phone"
+                                    }
+                                },
+                                "placeholder": {
+                                    "all": {
+                                        "content": "+41 31 000 00 00"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "contacts-form-email",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "email"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "E-Mail"
+                                    },
+                                    "en-GB": {
+                                        "content": "Email"
+                                    }
+                                },
+                                "placeholder": {
+                                    "all": {
+                                        "content": "name@example.org"
+                                    }
+                                }
+                            }
                         }
                     ]
                 }
@@ -571,7 +563,7 @@
                                 },
                                 "data_table": {
                                     "all": {
-                                        "content": "@section:contacts-form"
+                                        "content": "@section:contacts-cms-list"
                                     }
                                 },
                                 "list_row_css": {
