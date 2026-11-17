@@ -98,9 +98,8 @@ class DataTableService extends BaseService
             $dataTable->setName((string) $formName);
             $dataTable->setTimestamp(new \DateTime());
             
-            // Set displayName from section's displayName field if available
-            $displayName = $this->getDisplayNameFromSection($section);
-            if ($displayName) {
+            $displayName = $this->getNameFieldContentFromSection($section);
+            if ($displayName !== null) {
                 $dataTable->setDisplayName($displayName);
             }
 
@@ -163,7 +162,7 @@ class DataTableService extends BaseService
 
         // Respect a manual lock: once an admin renames the table in the Data
         // browser its provenance becomes `manual`, so the form section's
-        // `displayName` field must not overwrite it on save (issue #56).
+        // `name` field must not overwrite it on save (issue #56).
         if ($dataTable->isDisplayNameManual()) {
             return false;
         }
@@ -222,27 +221,45 @@ class DataTableService extends BaseService
     }    
 
     /**
-     * Get display name from section's "displayName" field
-     * 
-     * @param Section $section The section
-     * @return string|null The display name
+     * When a form-section table is created at runtime (first submit) or still
+     * lacks a display_name, copy the label from the owning section's `name`
+     * field. Respects a manual lock (issue #56).
      */
-    private function getDisplayNameFromSection(Section $section): ?string
+    public function backfillAutoDisplayNameFromOwningSection(DataTable $dataTable): void
     {
-        $qb = $this->entityManager->createQueryBuilder();
-        $qb->select('sft')
-           ->from(SectionsFieldsTranslation::class, 'sft')
-           ->join('sft.field', 'f')
-           ->where('sft.section = :section')
-           ->andWhere('f.name = :fieldName')
-           ->setParameter('section', $section)
-           ->setParameter('fieldName', 'displayName')
-           ->setMaxResults(1);
-        
-        /** @var SectionsFieldsTranslation|null $translation */
-        $translation = $qb->getQuery()->getOneOrNullResult();
-        
-        return $translation ? $translation->getContent() : null;
+        if ($dataTable->isDisplayNameManual()) {
+            return;
+        }
+
+        $current = $dataTable->getDisplayName();
+        if (is_string($current) && $current !== '') {
+            return;
+        }
+
+        $tableName = (string) $dataTable->getName();
+        if (!ctype_digit($tableName) || (int) $tableName <= 0) {
+            return;
+        }
+
+        $section = $this->entityManager->getRepository(Section::class)->find((int) $tableName);
+        if ($section === null || !$this->isFormSection($section)) {
+            return;
+        }
+
+        $label = $this->getNameFieldContentFromSection($section);
+        if ($label === null) {
+            return;
+        }
+
+        $dataTable->setDisplayName($label);
+        $this->transactionService->logTransaction(
+            LookupService::TRANSACTION_TYPES_UPDATE,
+            LookupService::TRANSACTION_BY_BY_SYSTEM,
+            'data_tables',
+            $dataTable->getId(),
+            false,
+            'Data table display name set from the form section name field'
+        );
     }
 
     /**
@@ -667,7 +684,7 @@ class DataTableService extends BaseService
     /**
      * Manually curate a data table's human label from the Data browser. Sets
      * display_name and marks provenance `manual` so the form section's
-     * `displayName` field never overwrites it again. Clearing the label
+     * `name` field never overwrites it again. Clearing the label
      * (null/empty) reverts to `auto` and re-derives the label from the owning
      * form section so the table is not left blank (issue #56).
      *
