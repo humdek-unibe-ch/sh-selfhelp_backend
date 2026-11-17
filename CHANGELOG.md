@@ -1,3 +1,21 @@
+# Unreleased
+
+**The plugin installer writes a plugin's catalogue rows from its manifest (rule
+7.8, F112).** New `PluginCatalogueSynchronizer` runs on install and update,
+after the plugin's migrations and before the route sync. It writes the style
+groups, field types, fields, styles with their field lists, permissions
+(`defaultRoles` granted once, on creation) and lookup entries the manifest
+declares, all tagged with `id_plugins`. A name held by core or another plugin
+is refused; `renamedFrom` renames a plugin's style or field in place, so
+sections keep their content; permissions, lookup entries and style-field links
+no longer declared are removed, styles and fields never are. Manifest sections
+a plugin does not declare are left untouched, so plugins that still seed their
+catalogue in a migration keep working. Migration `Version20261117095959` adds
+`id_plugins` to `field_types` and `style_groups`; purge now also deletes those.
+Manifest schema: new `styleGroups`, `fieldTypes`, `fields`, and `group`,
+`renamedFrom`, `fields` on a style (copies of the schema in plugin repos and the
+registry must be updated to stay byte-identical).
+
 # v0.1.44
 
 **Navigation `item_limit`:** web_header default raised from 5 to 8 when still on

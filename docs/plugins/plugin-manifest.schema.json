@@ -355,6 +355,49 @@
                 }
             }
         },
+        "styleGroups": {
+            "description": "Style groups the plugin adds to the page builder. Written by the host installer into `style_groups`, tagged with the plugin id (rule 7.8).",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name"],
+                "additionalProperties": false,
+                "properties": {
+                    "name": {"type": "string", "minLength": 1, "maxLength": 100},
+                    "description": {"type": "string"},
+                    "position": {"type": "integer"}
+                }
+            }
+        },
+        "fieldTypes": {
+            "description": "Field types (the editor control of a field) the plugin adds. Written into `field_types`, tagged with the plugin id. Names are kebab-case.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name"],
+                "additionalProperties": false,
+                "properties": {
+                    "name": {"type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$", "maxLength": 100},
+                    "position": {"type": "integer"}
+                }
+            }
+        },
+        "fields": {
+            "description": "Fields the plugin owns. Written into `fields`, tagged with the plugin id. Names are snake_case. `renamedFrom` lists earlier names of this plugin's field: the installer renames the row in place, so section values stay attached.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name", "type"],
+                "additionalProperties": false,
+                "properties": {
+                    "name": {"type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$", "maxLength": 100},
+                    "type": {"type": "string", "minLength": 1},
+                    "translatable": {"type": "boolean", "description": "True for content shown to participants, stored per language (fields.display = 1)."},
+                    "config": {"type": ["object", "null"]},
+                    "renamedFrom": {"type": "array", "items": {"type": "string", "minLength": 1}}
+                }
+            }
+        },
         "styles": {
             "type": "array",
             "items": {
@@ -365,7 +408,26 @@
                     "name": {"type": "string"},
                     "description": {"type": "string"},
                     "canHaveChildren": {"type": "boolean"},
-                    "capability": {"type": "string"}
+                    "capability": {"type": "string"},
+                    "group": {"type": "string", "description": "Name of the style group (core or declared under `styleGroups`). Required when the installer creates the style."},
+                    "renamedFrom": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Earlier names of this plugin's style; the installer renames the row in place."},
+                    "fields": {
+                        "description": "The style's fields: the plugin's own fields or core fields such as `own_entries_only`. `css`, `css_mobile`, `condition`, `data_config` and `debug` are section-level global fields and are not listed. When present, the installer makes the style's field links match this list exactly.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["name"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "name": {"type": "string", "minLength": 1},
+                                "title": {"type": "string"},
+                                "help": {"type": "string"},
+                                "default": {"type": ["string", "null"]},
+                                "hidden": {"type": "boolean"},
+                                "disabled": {"type": "boolean"}
+                            }
+                        }
+                    }
                 }
             }
         },

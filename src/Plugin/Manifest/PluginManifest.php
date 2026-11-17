@@ -314,6 +314,52 @@ final class PluginManifest
         return $list;
     }
 
+    /**
+     * `null` when the manifest has no `styleGroups` key, so the
+     * installer leaves the catalogue untouched for plugins that do not
+     * declare it.
+     *
+     * @return list<array<string,mixed>>|null
+     */
+    public function getStyleGroups(): ?array
+    {
+        return $this->listOrNull('styleGroups');
+    }
+
+    /** @return list<array<string,mixed>>|null */
+    public function getFieldTypes(): ?array
+    {
+        return $this->listOrNull('fieldTypes');
+    }
+
+    /** @return list<array<string,mixed>>|null */
+    public function getFields(): ?array
+    {
+        return $this->listOrNull('fields');
+    }
+
+    /** @return list<array<string,mixed>>|null */
+    private function listOrNull(string $key): ?array
+    {
+        if (!array_key_exists($key, $this->data) || !is_array($this->data[$key])) {
+            return null;
+        }
+        $list = [];
+        foreach ($this->data[$key] as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $row = [];
+            foreach ($entry as $field => $value) {
+                if (is_string($field)) {
+                    $row[$field] = $value;
+                }
+            }
+            $list[] = $row;
+        }
+        return $list;
+    }
+
     /** @return array<int, array<string,mixed>> */
     public function getApiRoutes(): array
     {

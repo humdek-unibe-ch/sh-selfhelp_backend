@@ -122,6 +122,64 @@ Key rules:
 
 See `plugin-manifest.schema.json` for the full property list.
 
+### Catalogue rows: styles, fields, permissions, lookups (rule 7.8)
+
+Everything a plugin adds to core catalogue tables is declared in the
+manifest and written by the host installer
+(`PluginCatalogueSynchronizer`), tagged with `id_plugins`. A plugin
+migration creates and changes only the plugin's own tables.
+
+```json
+{
+  "styleGroups": [{ "name": "Plugin: Example", "position": 900 }],
+  "fieldTypes": [{ "name": "select-example", "position": 100 }],
+  "fields": [
+    { "name": "example_source", "type": "select-example" },
+    { "name": "example_label", "type": "markdown-inline", "translatable": true, "renamedFrom": ["exampleLabel"] }
+  ],
+  "styles": [
+    {
+      "name": "example-banner",
+      "description": "A banner style contributed by the example plugin.",
+      "canHaveChildren": true,
+      "group": "Plugin: Example",
+      "fields": [
+        { "name": "example_source", "title": "Source", "help": "Where the banner reads from.", "default": "" },
+        { "name": "example_label", "title": "Label" },
+        { "name": "own_entries_only", "title": "Own entries only", "default": "0" }
+      ]
+    }
+  ],
+  "permissions": [{ "key": "example.banners.manage", "description": "Manage banners", "defaultRoles": ["admin"] }],
+  "lookups": { "extends": [{ "typeCode": "exampleStatus", "ownership": "plugin_owned", "entries": [{ "code": "on", "value": "On" }] }] }
+}
+```
+
+How the installer treats them, on install and on every update:
+
+- **Order.** After the plugin's migrations, before the API route sync
+  (routes link to the permissions written here).
+- **Ownership.** A name that core or another plugin already holds is
+  refused, and the install or update fails. Style groups and field types
+  used only by this plugin, and entries of a lookup type core does not
+  know, are adopted, because they had no owner before.
+- **A style's `fields`** is the complete list of its field links: the
+  plugin's own fields or core fields. `css`, `css_mobile`, `condition`,
+  `data_config` and `debug` are global section fields and are not listed.
+  Links missing from the list are removed.
+- **Renames.** `renamedFrom` on a field or style renames the existing row
+  in place. Sections reference styles and field values by id, so they keep
+  their content.
+- **Removal.** Permissions and lookup entries the manifest no longer
+  declares are removed. Styles, fields, field types and style groups are
+  never removed on update, because sections may still use them; purge
+  removes them.
+- **`defaultRoles`** is granted once, when the permission is created.
+  Later changes on the role screen are the admin's.
+- **Sections left out.** When the manifest has no `styleGroups`,
+  `fieldTypes` or `fields`, or a style has no `fields`, that part of the
+  catalogue is left as it is.
+
 ---
 
 ## 3. The SDK (`@selfhelp/shared/plugin-sdk`)

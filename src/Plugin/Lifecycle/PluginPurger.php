@@ -476,6 +476,8 @@ final class PluginPurger
         if ($idPlugins === null) {
             return;
         }
+        // Styles and fields before style groups and field types:
+        // deleting a group cascades to the styles in it.
         $taggedTables = [
             'styles',
             'api_routes',
@@ -483,6 +485,8 @@ final class PluginPurger
             'permissions',
             'lookups',
             'data_tables',
+            'style_groups',
+            'field_types',
         ];
         foreach ($taggedTables as $table) {
             $this->connection->executeStatement(
