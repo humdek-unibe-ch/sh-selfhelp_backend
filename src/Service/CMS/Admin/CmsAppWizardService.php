@@ -330,10 +330,9 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Scaffold the CMS list with its inline form (`form-record` + one input per
-     * field), locate the new form section and materialize its owned data table.
-     * Returns the new form section id: it doubles as the data table name the
-     * public pages bind to.
+     * Scaffold the CMS list that is also the form (inputs directly inside it),
+     * locate the list section and materialize its owned data table. Returns the
+     * list section id: it doubles as the data table name the public pages bind to.
      *
      * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
      * @param list<string> $contentLocales
@@ -360,28 +359,28 @@ class CmsAppWizardService extends BaseService
         );
         $imported = $this->sectionExportImportService->importSectionsToPage($pageId, $sections);
 
-        $formSectionName = $baseName . '-form';
-        $formSectionId = null;
+        $listSectionName = $baseName . '-cms-list';
+        $listSectionId = null;
         foreach ($imported as $importedSection) {
-            if ($this->asString($importedSection['source_name'] ?? '') === $formSectionName && is_numeric($importedSection['id'] ?? null)) {
-                $formSectionId = (int) $importedSection['id'];
+            if ($this->asString($importedSection['source_name'] ?? '') === $listSectionName && is_numeric($importedSection['id'] ?? null)) {
+                $listSectionId = (int) $importedSection['id'];
                 break;
             }
         }
-        if ($formSectionId === null) {
-            throw new ServiceException('CMS app creation failed: the scaffolded form section could not be located.', Response::HTTP_INTERNAL_SERVER_ERROR);
+        if ($listSectionId === null) {
+            throw new ServiceException('CMS app creation failed: the scaffolded list section could not be located.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        $formSection = $this->sectionRepository->find($formSectionId);
-        if (!$formSection instanceof Section) {
-            throw new ServiceException('CMS app creation failed: the scaffolded form section could not be loaded.', Response::HTTP_INTERNAL_SERVER_ERROR);
+        $listSection = $this->sectionRepository->find($listSectionId);
+        if (!$listSection instanceof Section) {
+            throw new ServiceException('CMS app creation failed: the scaffolded list section could not be loaded.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        // Owned table is named by the form section id; create it now so the
+        // Owned table is named by the list section id; create it now so the
         // public bindings resolve before the first submission.
-        $this->dataTableService->createDataTableForFormSection($formSection);
+        $this->dataTableService->createDataTableForFormSection($listSection);
 
-        return $formSectionId;
+        return $listSectionId;
     }
 
     /**
@@ -715,10 +714,10 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * The CMS surface: ONE `entry-form-list` that shows every record, adds,
-     * edits and deletes them in a dialog, offers each record's history, and (with
-     * a form) holds the inline form that defines the inputs. Without a form
-     * (an existing table) the list reads the table by id and can only delete.
+     * The CMS surface: ONE `entry-form-list` that is also the form. It shows
+     * every record, adds, edits and deletes them in a dialog, offers history,
+     * and holds the inputs as its children. Without a form (an existing table)
+     * the list reads the table by id and can only delete and run quick actions.
      *
      * @param list<array{field: string, label: string, sortable: bool, searchable: bool, format: string|null, choice: bool}> $columns
      * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
@@ -751,6 +750,9 @@ class CmsAppWizardService extends BaseService
             'allow_delete' => $this->propertyField('1', $propertyLocale),
             'show_history' => $this->propertyField($withForm ? '1' : '0', $propertyLocale),
         ];
+        if ($withForm) {
+            $fields['alert_success'] = $this->contentField('Saved.', $contentLocales);
+        }
         if ($withStatus && $withForm) {
             $fields['quick_actions'] = $this->propertyField(self::STATUS_QUICK_ACTIONS, $propertyLocale);
         }
@@ -764,21 +766,20 @@ class CmsAppWizardService extends BaseService
             'fields' => $fields,
         ];
         if ($withForm) {
-            $section['children'] = [$this->buildFormSection($baseName, $formFields, $contentLocales, $propertyLocale)];
+            $section['children'] = $this->buildListInputChildren($baseName, $formFields, $contentLocales, $propertyLocale);
         }
 
         return [$section];
     }
 
     /**
-     * The inline form: a `form-record` with one input per field. It owns the
-     * data table (materialized on scaffold).
+     * The inputs of the list-as-form: one child section per field.
      *
      * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
      * @param list<string> $contentLocales
-     * @return array<string, mixed>
+     * @return list<array<string, mixed>>
      */
-    private function buildFormSection(string $baseName, array $formFields, array $contentLocales, string $propertyLocale): array
+    private function buildListInputChildren(string $baseName, array $formFields, array $contentLocales, string $propertyLocale): array
     {
         $inputChildren = [];
         foreach ($formFields as $field) {
@@ -814,14 +815,7 @@ class CmsAppWizardService extends BaseService
             ];
         }
 
-        return [
-            'section_name' => $baseName . '-form',
-            'style_name' => 'form-record',
-            'fields' => [
-                'alert_success' => $this->contentField('Saved.', $contentLocales),
-            ],
-            'children' => $inputChildren,
-        ];
+        return $inputChildren;
     }
 
     /**
