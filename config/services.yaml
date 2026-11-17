@@ -221,6 +221,12 @@ services:
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
     
+    # Extension point for plugin endpoints (rule 7.7, F109): may the caller use
+    # this section on this page, and which variables does it see. Public so it
+    # stays in the container when no core service injects it.
+    App\Service\CMS\Effective\PublicSectionAccessService:
+        public: true
+
     # API Database Route Loader
     App\Routing\ApiRouteLoader:
         tags: [routing.loader]

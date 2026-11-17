@@ -1,0 +1,25 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin Resource Types Response Schema",
+    "description": "Schema for the admin/data-access/plugin-resource-types endpoint: data-access resource types that enabled plugins add (H6).",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["id", "code", "label", "plugin_id"],
+                "additionalProperties": false,
+                "properties": {
+                    "id": { "type": "integer", "description": "Id of the resourceTypes lookup row, used as resource_type_id in role permissions" },
+                    "code": { "type": "string", "description": "Lookup code of the type, as passed to the data-access check" },
+                    "label": { "type": "string", "description": "Display name of the type" },
+                    "plugin_id": { "type": "string", "description": "Manifest id of the plugin that declares the type" }
+                }
+            }
+        }
+    }
+}

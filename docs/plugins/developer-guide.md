@@ -573,6 +573,50 @@ Manifest-driven surfaces consumed without tags or events:
   the manifest as a static alternative to subscribing to
   `LookupRegistryEvent`.
 
+### Public section endpoints: access and variables (rule 7.7, F109)
+
+A plugin endpoint that serves or accepts data for a section on a page
+(a survey, a map) decides like a core form. Call
+`App\Service\CMS\Effective\PublicSectionAccessService` first:
+
+```php
+$scope = $this->sectionAccess->forSection($pageId, $sectionId, 'surveyjs', $preview);
+$surveyKey = $scope->field('survey_js');          // read settings from the section, never the request
+$variables = $this->sectionAccess->variables($scope, $languageId, $routeParams);
+$definition = $this->interpolation->interpolateArray($definition, $variables);
+```
+
+- `forSection()` refuses (403) a page the caller may not see (page ACL
+  `select`; a guest needs an open page), a section that is not on the
+  page or is hidden by its condition or an ancestor's; 400 a section of
+  another style; 401/403 a preview without edit rights on the page. It
+  acts on the published version for visitors.
+- `variables()` returns what `{{name}}` resolves to in that section on
+  that page for the current user: user and system values, globals,
+  route parameters and the data its and its ancestors' `data_config`
+  load. Replace on text values (`InterpolationService::interpolateArray`),
+  never on serialized JSON. An unknown variable becomes empty, as on the
+  page.
+
+### Data-access resource types (H6)
+
+A plugin can make its own resources (for example each survey) grantable
+per role, next to pages, data tables, assets and groups:
+
+1. Declare the type as an entry of the core `resourceTypes` lookup:
+   `"lookups": { "extends": [{ "typeCode": "resourceTypes", "ownership": "plugin_extendable", "entries": [{ "code": "surveyjs_survey", "value": "Surveys" }] }] }`.
+   The installer writes it, tagged with the plugin.
+2. List the resources: subscribe to `App\Plugin\Event\DataAccessResourcesEvent`
+   and call `addResource($id, $name, $description)` when
+   `$event->resourceTypeCode` is your code. The "Permissions for role"
+   screen shows one entry per type and stores grants in `role_data_access`.
+3. Check a grant like any other:
+   `DataAccessSecurityService::hasPermission($userId, 'surveyjs_survey', $surveyId, DataAccessSecurityService::PERMISSION_UPDATE)`.
+   The admin role passes every check.
+
+Removing the entry from the manifest, or purging the plugin, deletes the
+lookup row; the database removes its grants with it.
+
 Field renderers, page-lifecycle hooks, and other surfaces from
 earlier proposals are **not** consumed by the host. Do not register
 tags such as `selfhelp.plugin.field_renderer` — nothing iterates

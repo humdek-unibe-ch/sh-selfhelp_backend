@@ -1,5 +1,24 @@
 # Unreleased
 
+**Plugin extension points for public section endpoints and data access
+(SurveyJS upgrade, wave 3).**
+
+- `PublicSectionAccessService::forSection()` (H4): a plugin endpoint decides
+  like a core form (rule 7.7, F109): page ACL or open page, section on the
+  effective page and not hidden by a condition, expected style; returns the
+  section's stored fields. `variables()` (H1, through the new
+  `PageService::variablesForSection()`) returns the variables that section
+  sees on its page, computed by processing only its ancestors and itself.
+- Plugin data-access resource types (H6): the `resourceTypes` lookup is now
+  `plugin_extendable`, so a plugin declares its type in `lookups.extends` and
+  the installer writes it. New event `DataAccessResourcesEvent` lists a type's
+  resources; new admin routes `GET /admin/data-access/plugin-resource-types`
+  and `.../{typeCode}/resources` (`admin.role.read`, migration
+  `Version20261117103339`). Grants are stored and checked like page grants;
+  the lookup row's `ON DELETE CASCADE` removes them on purge. The frontend's
+  role screen needs these routes: raise `supports.frontend` / the frontend's
+  `supports.core` to the releases that ship them.
+
 **The plugin installer writes a plugin's catalogue rows from its manifest (rule
 7.8, F112).** New `PluginCatalogueSynchronizer` runs on install and update,
 after the plugin's migrations and before the route sync. It writes the style

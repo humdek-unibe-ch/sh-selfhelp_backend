@@ -1271,36 +1271,7 @@ class PageService extends BaseService
         }
 
         return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements, $page_id) {
-            // Build nested hierarchical structure (without applying data initially)
-            $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
-
-            // Extract all section IDs from the hierarchical structure
-            $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
-
-            // Get default language ID for fallback translations
-            $defaultLanguageId = null;
-            try {
-                $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
-            } catch (\Exception $e) {
-                // If there's an error getting the default language, continue without fallback
-            }
-
-            // Fetch all translations for these sections with fallback to default language
-            $translations = $this->translationRepository->fetchTranslationsForSectionsWithFallback(
-                $sectionIds,
-                $languageId,
-                $defaultLanguageId
-            );
-
-            // Fetch property translations (language ID 1) for fields of type 1
-            $propertyTranslations = $this->translationRepository->fetchTranslationsForSections(
-                $sectionIds,
-                self::PROPERTY_LANGUAGE_ID
-            );
-
-            // Apply translations to the sections recursively
-            // Note: fallback is now handled internally by fetchTranslationsForSectionsWithFallback
-            $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
+            $sections = $this->translatedDraftSections($flatSections, $languageId);
 
             // Process sections recursively with proper data inheritance and sequential operations
             // This replaces the bulk applySectionsData, interpolation, and condition filtering.
@@ -1320,6 +1291,170 @@ class PageService extends BaseService
 
             return $sections;
         });
+    }
+
+    /**
+     * The live (draft) section tree of a page, nested and translated for one language, before any data is
+     * retrieved, value interpolated or condition evaluated.
+     *
+     * @param list<array<string, mixed>> $flatSections rows from {@see SectionRepository::fetchSectionsHierarchicalByPageId()}
+     * @return array<int, array<string, mixed>>
+     */
+    private function translatedDraftSections(array $flatSections, int $languageId): array
+    {
+        // Build nested hierarchical structure (without applying data initially)
+        $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
+
+        // Extract all section IDs from the hierarchical structure
+        $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
+
+        // Get default language ID for fallback translations
+        $defaultLanguageId = null;
+        try {
+            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+        } catch (\Exception $e) {
+            // If there's an error getting the default language, continue without fallback
+        }
+
+        // Fetch all translations for these sections with fallback to default language
+        $translations = $this->translationRepository->fetchTranslationsForSectionsWithFallback(
+            $sectionIds,
+            $languageId,
+            $defaultLanguageId
+        );
+
+        // Fetch property translations (language ID 1) for fields of type 1
+        $propertyTranslations = $this->translationRepository->fetchTranslationsForSections(
+            $sectionIds,
+            self::PROPERTY_LANGUAGE_ID
+        );
+
+        // Apply translations to the sections recursively
+        // Note: fallback is now handled internally by fetchTranslationsForSectionsWithFallback
+        $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
+
+        return $sections;
+    }
+
+    /**
+     * The variables one section of a page sees when the page is drawn for the current user, in one
+     * language: user and system values, global values, route parameters, and the data that the
+     * section's and its ancestors' `data_config` load. This is what `{{name}}` in that section's
+     * content resolves to. A plugin uses it to replace variables in content it serves outside the
+     * page response (H1, e.g. the questions of a survey).
+     *
+     * Built exactly like the page: only the section's ancestors and the section itself are
+     * processed, in page order, each with its own data configuration. Returns an empty array when
+     * the section is not on the page or an ancestor is hidden by its condition; whether the caller
+     * may see the section at all is checked before, by the caller.
+     *
+     * @param array<string, string> $routeParams public route params ({{route.*}})
+     * @return array<array-key, mixed>
+     */
+    public function variablesForSection(EffectivePage $effective, int $sectionId, int $languageId, array $routeParams = []): array
+    {
+        if (!$effective->contains($sectionId)) {
+            return [];
+        }
+        $sections = $effective->isPublished()
+            ? $this->publishedSections($effective, $languageId)
+            : array_values($this->translatedDraftSections(
+                $this->listOfStringKeyedRows($this->sectionRepository->fetchSectionsHierarchicalByPageId($effective->pageId)),
+                $languageId
+            ));
+
+        $chain = $this->sectionChain($sections, $sectionId);
+        if ($chain === null) {
+            return [];
+        }
+        // Debug keeps `retrieved_data` (the section's variables) on the processed section.
+        $target = array_pop($chain);
+        $node = $target;
+        $node['children'] = [];
+        $node['debug'] = true;
+        while (($parent = array_pop($chain)) !== null) {
+            $parent['children'] = [$node];
+            $node = $parent;
+        }
+
+        $user = $this->userContextAwareService->getCurrentUser();
+        $processed = $this->processSectionsRecursively(
+            [$node],
+            $this->buildRouteScope($routeParams, []),
+            $user ? (int) $user->getId() : null,
+            $languageId,
+            false,
+            $effective->pageId,
+        );
+
+        $current = $processed[0] ?? null;
+        while (is_array($current)) {
+            if ($this->asInt($current['id'] ?? null) === $sectionId) {
+                return $this->asArray($current['retrieved_data'] ?? []);
+            }
+            $children = $this->asArray($current['children'] ?? []);
+            $current = $children[0] ?? null;
+        }
+
+        return [];
+    }
+
+    /**
+     * The path from a top-level section to the section with the given id, both included; null when it is
+     * not in the tree.
+     *
+     * @param array<array-key, mixed> $sections
+     * @return list<array<string, mixed>>|null
+     */
+    private function sectionChain(array $sections, int $sectionId): ?array
+    {
+        foreach ($sections as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $row = $this->stringKeyed($section);
+            if ($this->asInt($row['id'] ?? null) === $sectionId) {
+                return [$row];
+            }
+            $below = $this->sectionChain($this->asArray($row['children'] ?? []), $sectionId);
+            if ($below !== null) {
+                return [$row, ...$below];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<array-key, mixed> $rows
+     * @return list<array<string, mixed>>
+     */
+    private function listOfStringKeyedRows(array $rows): array
+    {
+        $list = [];
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                $list[] = $this->stringKeyed($row);
+            }
+        }
+
+        return $list;
+    }
+
+    /**
+     * @param array<array-key, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function stringKeyed(array $row): array
+    {
+        $out = [];
+        foreach ($row as $key => $value) {
+            if (is_string($key)) {
+                $out[$key] = $value;
+            }
+        }
+
+        return $out;
     }
 
     /**

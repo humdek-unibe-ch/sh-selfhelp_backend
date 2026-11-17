@@ -57,9 +57,11 @@ final class LookupPolicyRegistry
         LookupService::ACTION_TRIGGER_TYPES => LookupExtensionPolicy::CLOSED,
         LookupService::AUDIT_ACTIONS => LookupExtensionPolicy::CLOSED,
         LookupService::PERMISSION_RESULTS => LookupExtensionPolicy::CLOSED,
-        LookupService::RESOURCE_TYPES => LookupExtensionPolicy::CLOSED,
 
         // --- Core, plugin-extendable ---
+        // A plugin adds its own data-access resource type (e.g. a survey) so roles
+        // get view/create/update/delete grants on its resources (H6).
+        LookupService::RESOURCE_TYPES => LookupExtensionPolicy::PLUGIN_EXTENDABLE,
         LookupService::JOB_TYPES => LookupExtensionPolicy::PLUGIN_EXTENDABLE,
         LookupService::NOTIFICATION_TYPES => LookupExtensionPolicy::PLUGIN_EXTENDABLE,
         LookupService::PLUGINS => LookupExtensionPolicy::PLUGIN_EXTENDABLE,

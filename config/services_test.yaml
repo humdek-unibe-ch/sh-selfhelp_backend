@@ -26,3 +26,9 @@ services:
         autoconfigure: true
         autowire: true
         public: true
+
+    # H6: a plugin listing the resources of its data-access resource type, so
+    # AdminPluginResourceTypeControllerTest drives the real event dispatch.
+    App\Tests\Support\Plugin\QaResourceTypeSubscriber:
+        autoconfigure: true
+        autowire: true
