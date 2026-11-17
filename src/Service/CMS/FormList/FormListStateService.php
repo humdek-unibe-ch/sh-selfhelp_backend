@@ -303,9 +303,10 @@ class FormListStateService extends BaseService
             return $none;
         }
 
+        // Update grant is independent of allow_update: quick actions need it on a
+        // foreign-table list where the form edit modal stays off.
         return [
-            'update' => $ctx->config->allowUpdate
-                && $this->security->hasPermission($ctx->userId, 'data_table', $ctx->tableId, DataAccessSecurityService::PERMISSION_UPDATE),
+            'update' => $this->security->hasPermission($ctx->userId, 'data_table', $ctx->tableId, DataAccessSecurityService::PERMISSION_UPDATE),
             'delete' => $ctx->config->allowDelete
                 && $this->security->hasPermission($ctx->userId, 'data_table', $ctx->tableId, DataAccessSecurityService::PERMISSION_DELETE),
         ];
@@ -326,7 +327,7 @@ class FormListStateService extends BaseService
 
         $can = $this->capabilitiesOf($ctx, $isOwn, $grants);
         $actions = [];
-        if ($can['update']) {
+        if ($can['act']) {
             foreach ($config->quickActions as $action) {
                 if (isset($qualifying[$action->id][$recordId])) {
                     $actions[] = $action->id;
@@ -423,20 +424,28 @@ class FormListStateService extends BaseService
 
     /**
      * @param array{update: bool, delete: bool} $grants
-     * @return array{update: bool, delete: bool, history: bool}
+     * @return array{update: bool, delete: bool, history: bool, act: bool}
      */
     private function capabilitiesOf(FormListContext $ctx, bool $isOwn, array $grants): array
     {
         $config = $ctx->config;
         if (!$config->isEditable()) {
-            return ['update' => false, 'delete' => false, 'history' => false];
+            return ['update' => false, 'delete' => false, 'history' => false, 'act' => false];
         }
         $signedIn = $ctx->userId !== null;
+        $mayChange = $signedIn && $this->security->canUpdateOwnedRecord($config->ownEntriesOnly, $isOwn, $grants['update']);
 
         return [
-            'update' => $signedIn && $config->allowUpdate && $this->security->canUpdateOwnedRecord($config->ownEntriesOnly, $isOwn, $grants['update']),
+            'update' => $mayChange && $config->allowUpdate,
             'delete' => $signedIn && $config->allowDelete && $this->security->canDeleteOwnedRecord($config->ownEntriesOnly, $isOwn, $grants['delete']),
-            'history' => $signedIn && $config->showHistory && ($config->ownEntriesOnly || $isOwn || $grants['update']),
+            // History keeps the pre-task rule: a foreign record needs Allow edit
+            // and the table update grant. Quick actions use `act` without Allow edit.
+            'history' => $signedIn && $config->showHistory && (
+                $config->ownEntriesOnly
+                || $isOwn
+                || ($config->allowUpdate && $grants['update'])
+            ),
+            'act' => $mayChange,
         ];
     }
 
@@ -674,7 +683,7 @@ class FormListStateService extends BaseService
         }
 
         $actions = [];
-        if ($can['update']) {
+        if ($can['act']) {
             $qualifying = $this->qualifyingActions($ctx, [$url->recordId]);
             foreach ($config->quickActions as $action) {
                 if (isset($qualifying[$action->id][$url->recordId])) {
