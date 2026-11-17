@@ -94,7 +94,7 @@ final class PageBundleEntryTableFieldsMapImportTest extends QaWebTestCase
             self::assertNotContains('name', $fieldsMap);
             self::assertNotContains('email', $fieldsMap);
 
-            $formSectionId = $this->firstSectionIdByStyle($cmsListPageId, 'form-record', $admin);
+            $formSectionId = $this->firstSectionIdByStyle($cmsListPageId, 'entry-form-list', $admin);
             self::assertGreaterThan(0, $formSectionId);
             self::assertNotSame(
                 $dataTableId,
@@ -138,8 +138,8 @@ final class PageBundleEntryTableFieldsMapImportTest extends QaWebTestCase
             }
             $list = self::asArray(self::asList($page['sections'] ?? [])[0] ?? []);
             self::assertSame('entry-form-list', $list['style_name'] ?? null);
-            $form = self::asArray(self::asList($list['children'] ?? [])[0] ?? []);
-            self::assertSame('form-record', $form['style_name'] ?? null);
+            // The list is the form (and the table owner). Keep it beside a legacy entry-table.
+            $form = $list;
 
             $page['sections'] = [
                 [
@@ -231,7 +231,7 @@ final class PageBundleEntryTableFieldsMapImportTest extends QaWebTestCase
                 if ($insideForm && is_numeric($node['id'] ?? null)) {
                     $ids[] = (int) $node['id'];
                 }
-                $walk($node['children'] ?? null, $insideForm || $style === 'form-record');
+                $walk($node['children'] ?? null, $insideForm || $style === 'entry-form-list');
             }
         };
         $walk($data['sections'] ?? $data, false);
