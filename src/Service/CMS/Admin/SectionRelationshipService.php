@@ -14,6 +14,7 @@ use App\Entity\PagesSection;
 use App\Entity\SectionsHierarchy;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\Traits\RelationshipManagerTrait;
+use App\Service\CMS\FormList\FormListNestingGuard;
 use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
@@ -41,6 +42,7 @@ class SectionRelationshipService extends BaseService
         private readonly SectionRepository $sectionRepository,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly FormListNestingGuard $formListNestingGuard,
     ) {
     }
 
@@ -209,6 +211,9 @@ class SectionRelationshipService extends BaseService
                 if (!$childSection) {
                     $this->throwNotFound("Child section {$childSectionId} not found");
                 }
+
+                $childStyle = (string) ($childSection->getStyle()?->getName() ?? '');
+                $this->formListNestingGuard->assertChildAllowed($pageId, $parentSectionId, $childStyle);
 
                 // Prevent a section from being added anywhere inside its own
                 // subtree. Walk all ancestors of the parent — if the child's ID
