@@ -1612,14 +1612,21 @@ class SectionExportImportService extends BaseService
             }
 
             // A list is checked for shape; its table is created by the import, so the
-            // columns are checked when the list is saved afterwards.
+            // columns are checked when the list is saved afterwards. A form nested
+            // inside an entry-form-list is refused before anything is created.
             if (is_array($fields) && in_array($styleName, StyleNames::LIST_STYLE_NAMES, true)) {
-                foreach ($this->listConfigValidator->importProblems($styleName, $fields) as $problem) {
-                    $errors[] = [
-                        'path' => $sectionPath . '.fields.' . $problem['field'],
-                        'type' => 'invalid_list_config',
+                foreach ($this->listConfigValidator->importProblems($styleName, $fields, $sectionData) as $problem) {
+                    $error = [
+                        'path' => $problem['field'] === 'children'
+                            ? $sectionPath . '.children'
+                            : $sectionPath . '.fields.' . $problem['field'],
+                        'type' => $problem['field'] === 'children' ? 'form_inside_list' : 'invalid_list_config',
                         'detail' => $problem['message'],
                     ];
+                    if ($problem['field'] === 'children') {
+                        $error['reason'] = 'form_inside_list';
+                    }
+                    $errors[] = $error;
                 }
             }
 
