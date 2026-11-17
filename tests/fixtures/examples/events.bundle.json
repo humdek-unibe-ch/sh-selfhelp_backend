@@ -11,10 +11,10 @@
         "quick actions",
         "translatable"
     ],
-    "_comment": "CMS-in-CMS template: an Events app in three pages. PUBLIC: /events is a read-only data view (cards, search, filters by location and date, paging) and /events/{record_id} renders the full event page; both read the table of the form through \"@section:events-form\". CMS: /cms/events is ONE entry-form-list that holds the form: add and edit events in a dialog, delete them, restore earlier versions, and cancel or reopen an event with one click (quick actions that change the status). The inputs are defined once, in the form inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). Title, location and description are translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
+    "_comment": "CMS-in-CMS template: an Events app in three pages. PUBLIC: /events is a read-only data view (cards, search, filters by location and date, paging) and /events/{record_id} renders the full event page; both read the table of the form through \"@section:events-cms-list\". CMS: /cms/events is ONE entry-form-list that is the form: add and edit events in a dialog, delete them, restore earlier versions, and cancel or reopen an event with one click (quick actions that change the status). The inputs sit directly inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). Title, location and description are translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
     "data_tables": [
         {
-            "owner_section_name": "events-form",
+            "owner_section_name": "events-cms-list",
             "columns": [
                 "title",
                 "event_date",
@@ -235,206 +235,198 @@
                             "en-GB": {
                                 "content": "Delete this event?"
                             }
+                        },
+                        "alert_success": {
+                            "de-CH": {
+                                "content": "Veranstaltung gespeichert."
+                            },
+                            "en-GB": {
+                                "content": "Event saved."
+                            }
+                        },
+                        "btn_save_label": {
+                            "de-CH": {
+                                "content": "Speichern"
+                            },
+                            "en-GB": {
+                                "content": "Save"
+                            }
+                        },
+                        "btn_update_label": {
+                            "de-CH": {
+                                "content": "Aktualisieren"
+                            },
+                            "en-GB": {
+                                "content": "Update"
+                            }
                         }
                     },
                     "children": [
                         {
-                            "section_name": "events-form",
-                            "style_name": "form-record",
+                            "section_name": "events-form-title",
+                            "style_name": "text-input",
                             "fields": {
-                                "alert_success": {
-                                    "de-CH": {
-                                        "content": "Veranstaltung gespeichert."
-                                    },
-                                    "en-GB": {
-                                        "content": "Event saved."
+                                "name": {
+                                    "all": {
+                                        "content": "title"
                                     }
                                 },
-                                "btn_save_label": {
+                                "label": {
                                     "de-CH": {
-                                        "content": "Speichern"
+                                        "content": "Titel"
                                     },
                                     "en-GB": {
-                                        "content": "Save"
+                                        "content": "Title"
                                     }
                                 },
-                                "btn_update_label": {
-                                    "de-CH": {
-                                        "content": "Aktualisieren"
-                                    },
-                                    "en-GB": {
-                                        "content": "Update"
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
                                     }
                                 }
-                            },
-                            "children": [
-                                {
-                                    "section_name": "events-form-title",
-                                    "style_name": "text-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "title"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Titel"
-                                            },
-                                            "en-GB": {
-                                                "content": "Title"
-                                            }
-                                        },
-                                        "is_required": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        },
-                                        "translatable": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        }
+                            }
+                        },
+                        {
+                            "section_name": "events-form-date",
+                            "style_name": "datepicker",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "event_date"
                                     }
                                 },
-                                {
-                                    "section_name": "events-form-date",
-                                    "style_name": "datepicker",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "event_date"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Datum und Zeit"
-                                            },
-                                            "en-GB": {
-                                                "content": "Date and time"
-                                            }
-                                        },
-                                        "is_required": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        },
-                                        "web_datepicker_type": {
-                                            "all": {
-                                                "content": "datetime"
-                                            }
-                                        },
-                                        "web_datepicker_format": {
-                                            "all": {
-                                                "content": "YYYY-MM-DD HH:mm"
-                                            }
-                                        },
-                                        "datepicker_placeholder": {
-                                            "all": {
-                                                "content": "2026-07-06 14:30"
-                                            }
-                                        }
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Datum und Zeit"
+                                    },
+                                    "en-GB": {
+                                        "content": "Date and time"
                                     }
                                 },
-                                {
-                                    "section_name": "events-form-location",
-                                    "style_name": "text-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "location"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Ort"
-                                            },
-                                            "en-GB": {
-                                                "content": "Location"
-                                            }
-                                        },
-                                        "translatable": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        }
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
                                     }
                                 },
-                                {
-                                    "section_name": "events-form-status",
-                                    "style_name": "select",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "status"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Status"
-                                            },
-                                            "en-GB": {
-                                                "content": "Status"
-                                            }
-                                        },
-                                        "options": {
-                                            "all": {
-                                                "content": "[{\"value\":\"Scheduled\",\"sort\":1},{\"value\":\"Cancelled\",\"sort\":2}]"
-                                            }
-                                        },
-                                        "option_labels": {
-                                            "de-CH": {
-                                                "content": "{\"Scheduled\":\"Geplant\",\"Cancelled\":\"Abgesagt\"}"
-                                            },
-                                            "en-GB": {
-                                                "content": "{\"Scheduled\":\"Scheduled\",\"Cancelled\":\"Cancelled\"}"
-                                            }
-                                        },
-                                        "value": {
-                                            "all": {
-                                                "content": "Scheduled"
-                                            }
-                                        }
+                                "web_datepicker_type": {
+                                    "all": {
+                                        "content": "datetime"
                                     }
                                 },
-                                {
-                                    "section_name": "events-form-description",
-                                    "style_name": "textarea",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "description"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Beschreibung"
-                                            },
-                                            "en-GB": {
-                                                "content": "Description"
-                                            }
-                                        },
-                                        "description": {
-                                            "de-CH": {
-                                                "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
-                                            },
-                                            "en-GB": {
-                                                "content": "Translatable — enter a separate text per language."
-                                            }
-                                        },
-                                        "translatable": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        },
-                                        "rows": {
-                                            "all": {
-                                                "content": "5"
-                                            }
-                                        }
+                                "web_datepicker_format": {
+                                    "all": {
+                                        "content": "YYYY-MM-DD HH:mm"
+                                    }
+                                },
+                                "datepicker_placeholder": {
+                                    "all": {
+                                        "content": "2026-07-06 14:30"
                                     }
                                 }
-                            ]
+                            }
+                        },
+                        {
+                            "section_name": "events-form-location",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "location"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Ort"
+                                    },
+                                    "en-GB": {
+                                        "content": "Location"
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "events-form-status",
+                            "style_name": "select",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "status"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Status"
+                                    },
+                                    "en-GB": {
+                                        "content": "Status"
+                                    }
+                                },
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"Scheduled\",\"sort\":1},{\"value\":\"Cancelled\",\"sort\":2}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"Scheduled\":\"Geplant\",\"Cancelled\":\"Abgesagt\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"Scheduled\":\"Scheduled\",\"Cancelled\":\"Cancelled\"}"
+                                    }
+                                },
+                                "value": {
+                                    "all": {
+                                        "content": "Scheduled"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "events-form-description",
+                            "style_name": "textarea",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "description"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Beschreibung"
+                                    },
+                                    "en-GB": {
+                                        "content": "Description"
+                                    }
+                                },
+                                "description": {
+                                    "de-CH": {
+                                        "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
+                                    },
+                                    "en-GB": {
+                                        "content": "Translatable — enter a separate text per language."
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "rows": {
+                                    "all": {
+                                        "content": "5"
+                                    }
+                                }
+                            }
                         }
                     ]
                 }
@@ -652,7 +644,7 @@
                                 },
                                 "data_table": {
                                     "all": {
-                                        "content": "@section:events-form"
+                                        "content": "@section:events-cms-list"
                                     }
                                 },
                                 "detail_url": {
@@ -1171,7 +1163,7 @@
                             "fields": {
                                 "data_table": {
                                     "all": {
-                                        "content": "@section:events-form"
+                                        "content": "@section:events-cms-list"
                                     }
                                 },
                                 "own_entries_only": {
