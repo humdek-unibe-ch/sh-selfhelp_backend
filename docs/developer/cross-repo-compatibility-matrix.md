@@ -95,9 +95,11 @@ the same change wave:
 - raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
   adopts it.
 
-> **Current floor (2026-11-17):** **frontend `>=0.1.72` ⇄ core `>=0.1.45`** (the
-> list-is-the-form wave; 0.1.72 is the first frontend of that wave).
-> The floor before it was frontend `>=0.1.70` ⇄ core `>=0.1.43` (the 0.1.43 wave).
+> **Current floor (2026-11-18):** **frontend `>=0.1.73` ⇄ core `>=0.1.46`** (scaffold
+> `form_fields[].translatable` for text / text area; 0.1.73 is the first frontend of
+> that wave).
+> The floor before it was frontend `>=0.1.72` ⇄ core `>=0.1.45` (list-is-the-form).
+> Earlier: frontend `>=0.1.70` ⇄ core `>=0.1.43` (the 0.1.43 wave).
 > Historical note, kept for context: the earlier floor
 > was the **core 0.1.17** style-schema contract
 > (built up across the 0.1.15 → 0.1.17 style waves; `selfhelp.cms_version` was
@@ -659,13 +661,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.45` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.46` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.24.0` | npm (1.21.x wave + rate-limit helpers / `alert_rate_limited` in 1.22.0 + `files_public` in 1.22.1; entry-list types, URL grammar and form-error helpers in 1.24.0). Not published yet: the consumers already pin `1.24.0`, so a registry-backed `npm ci` fails with a 404 until it is published. Do not use staged git tags `v2*` / `v3*` from this branch. |
-| `sh-selfhelp_frontend` | `0.1.71` | entry lists (`entry-form-list`, `data-view`), record history and conflict handling, visual list editors |
+| `sh-selfhelp_frontend` | `0.1.73` | scaffold wizard sends `form_fields[].translatable`; remembered splitter, inspector search, sidebar header (P2/P3 of admin-editor-polish) |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.24.0` (not on npm yet) | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` + rate-limit helpers + `files_public`; 1.24.0 adds the entry-list types, URL grammar and form-error helpers |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.45 <0.2.0` | core 0.1.45 wave (list is the form) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.72 <0.2.0` | frontend 0.1.72 adopts the core 0.1.45 wave |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.46 <0.2.0` | core 0.1.46 wave (scaffold `translatable`) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.73 <0.2.0` | frontend 0.1.73 adopts the core 0.1.46 wave |
 | `sh-selfhelp_backend` → manager (`release-manifest.json` `supports.manager`) | `>=1.7.0` | manager that backs up form_files/assets/plugin volumes (registry `requiresManager` raised at publish) |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.35` | entry lists on the phone; floor-neutral for manager |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.45 <0.2.0` | list is the form; pair via `supports.core` |

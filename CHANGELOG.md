@@ -1,3 +1,21 @@
+# v0.1.46
+
+## CMS app scaffold: translatable text fields
+
+- `POST /admin/cms-apps/{id}/scaffold` accepts optional `form_fields[].translatable`
+  (boolean). Allowed `true` only for `text-input` and `textarea`; other styles answer
+  `400` with `Form field "<name>" of type "<style>" cannot be translatable.` and create
+  nothing.
+- When set, the wizard writes the input section's existing `translatable` property as
+  `1` (one cell per language in the same row). Missing or `false` leaves the style default.
+
+## Compatibility
+
+- `release-manifest.json`: `supports.frontend` is raised to `>=0.1.73 <0.2.0`
+  (the first frontend that sends `translatable` from the scaffold wizard).
+- Pairs with frontend `supports.core` `>=0.1.46`.
+- `selfhelp_cms_version_default` is `0.1.46`.
+
 # v0.1.45
 
 ## Entry List with Form is its own form
