@@ -207,7 +207,7 @@ Return a file uploaded through a form.
 
 **Endpoint:** `GET /cms-api/v1/forms/files/{record_id}/{field}?index=0`
 
-- `field`: the `file-input` name (or its `section_<id>` column key).
+- `field`: the `file-input` name (or its `section_<id>` column key), or a column declared with the value type `file` (a plugin's upload column). A cell may hold one key, a list of keys, or JSON with keys inside (a plugin's answer object); `index` counts the keys in that order.
 - `index`: which file of a multi-file field (default `0`).
 
 **Authentication:** JWT required. Allowed for the user who submitted the record, or a user with READ on the form's data table (admins always). The field's `files_public` switch no longer opens this route to anyone with the link (F165); page viewers use the section-scoped list file route instead ([22-form-lists.md](22-form-lists.md#current-file-of-a-shown-record)). No route-level permission; access is checked per record.
