@@ -220,14 +220,7 @@ final class FormRecordBindingTest extends QaWebTestCase
         $deleteA = $this->pages->createSection($prefix . '_delete_a', 'entry-record-delete');
         $this->pages->linkSectionToPage($pageA, $deleteA, 30);
         foreach ([$pageA, $pageB] as $page) {
-            $this->pages->grantGroupAcl(
-                $page,
-                $this->subjectGroup(),
-                select: true,
-                insert: true,
-                update: true,
-                delete: true,
-            );
+            $this->pages->grantGroupAcl($page, $this->subjectGroup());
         }
         if ($sharedA) {
             $this->setSectionField($sectionA, 'own_entries_only', '0');

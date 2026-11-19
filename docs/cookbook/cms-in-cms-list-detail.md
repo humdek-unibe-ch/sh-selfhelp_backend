@@ -79,9 +79,14 @@ under a list `scope`. A `data-view` and a list cell show the stored value as it 
      keywords and URLs.
    - **Create a new form + data table** (`create_form`) — when on, the CMS list gets
      the fields of the multi-field builder as **direct children** (text, text area, select,
-     checkbox, radio, number) and **creates and owns** the data table; leave **Data table**
+     checkbox, radio, number, image, files) and **creates and owns** the data table; leave **Data table**
      empty. It needs the CMS list (`create_admin`). When off, supply an existing **Data table**:
      the CMS list then shows, deletes and runs quick actions on those records but cannot add or edit them.
+   - **Translatable** (`form_fields[].translatable`) — optional boolean, only for
+     `text-input` and `textarea`. When `true`, the wizard sets the input's existing
+     `translatable` switch so editors enter one value per language and the store keeps
+     one cell per language in the same row. Other styles with `translatable: true` are
+     refused (`400`). Omit the key or send `false` for the style default.
    - **Detail route parameter** — defaults to `record_id` (snake_case).
    - **Additional access groups** — optional groups on top of surface defaults
      (`cms` = admin/editor-only, `public` = public).

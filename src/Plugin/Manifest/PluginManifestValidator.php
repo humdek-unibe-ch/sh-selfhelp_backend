@@ -28,7 +28,10 @@ use JsonSchema\Validator;
  *     the backend declares `migrationsNamespace`;
  *   - `security.capabilities` must include `mobileStyles` when
  *     `mobile` is present;
- *   - `security.trustLevel: 'untrusted'` forbids `backend.*` entirely.
+ *   - `security.trustLevel: 'untrusted'` forbids `backend.*` entirely;
+ *   - every `adminPages[].permission` must be a `permissions[].key` the
+ *     same manifest declares (rule 4.13: a plugin admin page is guarded
+ *     by one of the plugin's own permissions).
  */
 final class PluginManifestValidator
 {
@@ -123,6 +126,49 @@ final class PluginManifestValidator
 
         if (!empty($data['styles']) && !in_array('frontendStyles', $capabilities, true)) {
             $errors[] = '[security.capabilities] must include "frontendStyles" when `styles` are declared.';
+        }
+
+        return array_merge($errors, $this->validateAdminPagePermissions($data));
+    }
+
+    /**
+     * Rule 4.13: an admin page's permission must be one the plugin declares
+     * in its own `permissions` block. Only the key is compared; the name is
+     * not checked against any convention.
+     *
+     * @param array<string,mixed> $data
+     * @return list<string>
+     */
+    private function validateAdminPagePermissions(array $data): array
+    {
+        $adminPages = is_array($data['adminPages'] ?? null) ? $data['adminPages'] : [];
+        if ($adminPages === []) {
+            return [];
+        }
+
+        $declared = [];
+        $permissions = is_array($data['permissions'] ?? null) ? $data['permissions'] : [];
+        foreach ($permissions as $permission) {
+            if (is_array($permission) && is_string($permission['key'] ?? null)) {
+                $declared[$permission['key']] = true;
+            }
+        }
+
+        $errors = [];
+        foreach ($adminPages as $page) {
+            if (!is_array($page)) {
+                continue;
+            }
+            $key = $page['permission'] ?? null;
+            if (!is_string($key) || isset($declared[$key])) {
+                continue;
+            }
+            $slug = is_scalar($page['slug'] ?? null) ? (string) $page['slug'] : '';
+            $errors[] = sprintf(
+                'Admin page "%s" uses permission "%s", which the plugin does not declare.',
+                $slug,
+                $key,
+            );
         }
 
         return $errors;

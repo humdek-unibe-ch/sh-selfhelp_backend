@@ -274,7 +274,7 @@ trait InteractsWithFormLists
 
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $this->pages->grantGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $subject);
 
         // The list's table is named after the list section; its columns are `title` and `status`.
         $tableId = $this->grid->table((string) $list->getId(), ['title' => 'text', 'status' => 'text']);
@@ -323,7 +323,7 @@ trait InteractsWithFormLists
 
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $this->pages->grantGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $subject);
 
         $keys = [];
         $types = [];

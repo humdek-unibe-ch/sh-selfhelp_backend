@@ -858,9 +858,6 @@ CREATE TABLE `page_acl_groups` (
   `id_groups`   INT NOT NULL,
   `id_pages`    INT NOT NULL,
   `acl_select`  TINYINT(1) NOT NULL DEFAULT '1',
-  `acl_insert`  TINYINT(1) NOT NULL DEFAULT '0',
-  `acl_update`  TINYINT(1) NOT NULL DEFAULT '0',
-  `acl_delete`  TINYINT(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id_groups`, `id_pages`)
 );
 ```
@@ -907,9 +904,6 @@ class ACLService
                 // Map accessType to column
                 $modeMap = [
                     'select' => 'acl_select',
-                    'insert' => 'acl_insert',
-                    'update' => 'acl_update',
-                    'delete' => 'acl_delete',
                 ];
                 $aclColumn = $modeMap[$accessType];
 

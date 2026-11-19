@@ -73,15 +73,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         self::assertInstanceOf(DataTable::class, $dataTable);
 
         $detailPage = $this->pages->createPage('qa_er_detail', openAccess: false);
-        $this->pages->grantGroupAcl(
-            $detailPage,
-            $this->subjectGroup(),
-            select: true,
-            insert: false,
-            update: false,
-            delete: false,
-            affectedUserIds: [],
-        );
+        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), affectedUserIds: []);
 
         $route = new PageRoute();
         $route->setPage($detailPage);
@@ -147,15 +139,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         self::assertInstanceOf(DataTable::class, $dataTable);
 
         $detailPage = $this->pages->createPage('qa_er_mal_detail', openAccess: false);
-        $this->pages->grantGroupAcl(
-            $detailPage,
-            $this->subjectGroup(),
-            select: true,
-            insert: false,
-            update: false,
-            delete: false,
-            affectedUserIds: [],
-        );
+        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), affectedUserIds: []);
 
         $route = new PageRoute();
         $route->setPage($detailPage);
@@ -228,7 +212,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $tableName = (string) $dataTable->getName();
 
         $detailPage = $this->pages->createPage('qa_er_helper_detail', openAccess: false);
-        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup());
 
         $route = new PageRoute();
         $route->setPage($detailPage);
@@ -289,7 +273,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $tableName = (string) $dataTable->getName();
 
         $detailPage = $this->pages->createPage('qa_er_legacy_cfg_detail', openAccess: false);
-        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup());
 
         $route = new PageRoute();
         $route->setPage($detailPage);
@@ -348,7 +332,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         self::assertInstanceOf(DataTable::class, $dataTable);
 
         $detailPage = $this->pages->createPage('qa_er_wrong_param_detail', openAccess: false);
-        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup());
 
         $route = new PageRoute();
         $route->setPage($detailPage);
@@ -418,7 +402,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         self::assertInstanceOf(DataTable::class, $dataTable);
 
         $detailPage = $this->pages->createPage('qa_er_no_filter_detail', openAccess: false);
-        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup());
 
         $route = new PageRoute();
         $route->setPage($detailPage);

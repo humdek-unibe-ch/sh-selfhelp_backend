@@ -128,7 +128,7 @@ final class FilterSafetyTest extends QaWebTestCase
         [$tableId] = $this->seedSingleRowTable('qa_fs_elist');
 
         $listPage = $this->pages->createPage('qa_fs_elist_page', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup());
 
         $listSection = $this->pages->createSection('qa_fs_elist_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -158,7 +158,7 @@ final class FilterSafetyTest extends QaWebTestCase
         [$tableId] = $this->seedSingleRowTable('qa_fs_erec');
 
         $detailPage = $this->pages->createPage('qa_fs_erec_detail', openAccess: false);
-        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup());
 
         $route = new PageRoute();
         $route->setPage($detailPage);

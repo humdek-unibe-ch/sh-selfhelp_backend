@@ -268,7 +268,7 @@ class ProfileService extends BaseService
             }
 
             // Prevent deletion of system users
-            if (in_array(strtolower($managedUser->getName() ?? ''), ['admin', 'tpf'])) {
+            if ($managedUser->isSystem()) {
                 throw new \InvalidArgumentException('Cannot delete system accounts');
             }
 

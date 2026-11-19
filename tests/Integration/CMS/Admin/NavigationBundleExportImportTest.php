@@ -423,9 +423,6 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
             ]);
             self::assertInstanceOf(PageAclGroup::class, $acl, 'Missing default-group ACL for ' . $importedPage['keyword']);
             self::assertTrue($acl->isAclSelect(), 'The default group should see ' . $importedPage['keyword']);
-            self::assertFalse($acl->isAclInsert(), 'The default group gets select only: ' . $importedPage['keyword']);
-            self::assertFalse($acl->isAclUpdate(), 'The default group gets select only: ' . $importedPage['keyword']);
-            self::assertFalse($acl->isAclDelete(), 'The default group gets select only: ' . $importedPage['keyword']);
         }
 
         // Regression (issue: "pages were not wrapped in the navigation"): the

@@ -102,7 +102,7 @@ class ApiExceptionListener
         // the framework's error logger has already recorded the bubbled
         // exception, so no extra logging is needed here.
         if ($statusCode >= Response::HTTP_INTERNAL_SERVER_ERROR && !$this->kernel->isDebug()) {
-            $message = 'Internal Server Error';
+            $message = ApiResponseFormatter::GENERIC_UNEXPECTED_ERROR;
         }
 
         // Use the ApiResponseFormatter for consistent error responses

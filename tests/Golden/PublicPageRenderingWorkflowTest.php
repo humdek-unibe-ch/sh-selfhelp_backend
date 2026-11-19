@@ -95,15 +95,7 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
         ];
 
         // 2. Grant the subject group ACL select; the qa.user persona is a member.
-        $this->pages->grantGroupAcl(
-            $page,
-            $this->subjectGroup(),
-            select: true,
-            insert: false,
-            update: false,
-            delete: false,
-            affectedUserIds: [$this->qaUserId()],
-        );
+        $this->pages->grantGroupAcl($page, $this->subjectGroup(), affectedUserIds: [$this->qaUserId()]);
 
         $pageId = (int) $page->getId();
         $token = $this->loginAsQaUser();
@@ -158,14 +150,7 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
     {
         $page = $this->pages->createPage('qa_public_render_anon_admin', openAccess: false);
         $this->pages->linkSectionToPage($page, $this->pages->createSection('qa_render_anon_admin_s'), 10);
-        $this->pages->grantGroupAcl(
-            $page,
-            $this->groupOfUserOne(),
-            select: true,
-            insert: false,
-            update: false,
-            delete: false,
-        );
+        $this->pages->grantGroupAcl($page, $this->groupOfUserOne());
 
         // No token => genuinely anonymous request (the route is permission-less).
         $envelope = $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/qa_public_render_anon_admin');

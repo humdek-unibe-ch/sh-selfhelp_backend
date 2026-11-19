@@ -68,14 +68,32 @@ class UserPermissionService
      */
     public function getRoutePermissions(string $routeName): array
     {
-        /** @var list<string> $permissions */
-        $permissions = $this->cache
+        return $this->getRouteGuard($routeName)['permissions'];
+    }
+
+    /**
+     * Whether the route is declared public (`api_routes.is_public`).
+     */
+    public function isRoutePublic(string $routeName): bool
+    {
+        return $this->getRouteGuard($routeName)['is_public'];
+    }
+
+    /**
+     * Cached route guard: permissions plus the public flag (F09).
+     *
+     * @return array{permissions: list<string>, is_public: bool}
+     */
+    public function getRouteGuard(string $routeName): array
+    {
+        /** @var array{permissions: list<string>, is_public: bool} $guard */
+        $guard = $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->getItem("route_permissions_{$routeName}", function () use ($routeName) {
-                return $this->fetchRoutePermissionsFromRouter($routeName);
+            ->getItem("route_guard_{$routeName}", function () use ($routeName) {
+                return $this->fetchRouteGuardFromRouter($routeName);
             });
 
-        return $permissions;
+        return $guard;
     }
 
     /**
@@ -106,23 +124,26 @@ class UserPermissionService
     }
 
     /**
-     * Fetch route permissions from router
+     * Fetch route permissions and public flag from the router collection.
      *
-     * @return list<string>
+     * @return array{permissions: list<string>, is_public: bool}
      */
-    private function fetchRoutePermissionsFromRouter(string $routeName): array
+    private function fetchRouteGuardFromRouter(string $routeName): array
     {
-        // Get route from router collection (already cached by ApiRouteLoader)
         $route = $this->router->getRouteCollection()->get($routeName);
         if (!$route) {
-            // Route not found, return empty permissions
-            return [];
+            // Unknown route name under /cms-api/: treat as non-public with no
+            // permissions so ApiSecurityListener refuses it (F09).
+            return ['permissions' => [], 'is_public' => false];
         }
 
-        // Get permissions from route options
         /** @var list<string> $permissions */
         $permissions = $route->getOption('permissions') ?? [];
+        $isPublic = (bool) ($route->getOption('is_public') ?? false);
 
-        return $permissions;
+        return [
+            'permissions' => $permissions,
+            'is_public' => $isPublic,
+        ];
     }
 }

@@ -112,6 +112,10 @@ final class PluginManifestController extends AbstractController
                     'frontendRuntimeFormat' => $plugin->getFrontendRuntimeFormat(),
                     'mobilePackage' => $plugin->getMobilePackage(),
                     'mobilePackageVersion' => $plugin->getMobilePackageVersion(),
+                    // Rule 4.13: each admin page carries the one permission
+                    // that opens it, so the frontend server guard can check
+                    // it when the page is requested.
+                    'adminPages' => $this->adminPages($manifestArray),
                 ];
                 // Only emit `compatibility` when non-empty: an empty PHP array
                 // would JSON-encode as `[]` and fail the schema's `type: object`.
@@ -137,6 +141,47 @@ final class PluginManifestController extends AbstractController
             }
             return $this->responseFormatter->formatError($e->getMessage(), $status);
         }
+    }
+
+    /**
+     * Public projection of `adminPages`: slug, label, permission and the
+     * optional icon. Entries without a string slug or permission are
+     * dropped (the manifest validator refuses them at install).
+     *
+     * @param array<string,mixed> $manifestArray
+     * @return list<array{slug: string, label: string, permission: string, icon?: string}>
+     */
+    private function adminPages(array $manifestArray): array
+    {
+        $raw = $manifestArray['adminPages'] ?? null;
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $pages = [];
+        foreach ($raw as $page) {
+            if (!is_array($page)) {
+                continue;
+            }
+            $slug = $page['slug'] ?? null;
+            $permission = $page['permission'] ?? null;
+            if (!is_string($slug) || $slug === '' || !is_string($permission) || $permission === '') {
+                continue;
+            }
+            $label = $page['label'] ?? null;
+            $item = [
+                'slug' => $slug,
+                'label' => is_string($label) ? $label : $slug,
+                'permission' => $permission,
+            ];
+            $icon = $page['icon'] ?? null;
+            if (is_string($icon) && $icon !== '') {
+                $item['icon'] = $icon;
+            }
+            $pages[] = $item;
+        }
+
+        return $pages;
     }
 
     private function versionedAssetUrl(?string $url, \App\Entity\Plugin\Plugin $plugin): ?string

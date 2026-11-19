@@ -49,21 +49,23 @@ final class AclRepositoryTest extends QaKernelTestCase
     {
         $user = $this->user(QaBaselineFixture::QA_USER_EMAIL);
         $page = $this->pages->createPage('qa_acl_repo_granted', openAccess: false);
-        $this->pages->grantGroupAcl($page, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($page, $this->subjectGroup());
 
         $acl = $this->repository->getUserAcl((int) $user->getId(), (int) $page->getId());
 
         self::assertNotEmpty($acl, 'A group member must receive an ACL row for the granted page.');
         self::assertArrayHasKey('acl_select', $acl[0]);
         self::assertSame(1, $this->coerceInt($acl[0]['acl_select']), 'The granted select flag must be set.');
-        self::assertSame(0, $this->coerceInt($acl[0]['acl_insert']), 'Ungranted insert must remain off.');
+        self::assertArrayNotHasKey('acl_insert', $acl[0], 'get_user_acl returns no insert column (F03).');
+        self::assertArrayNotHasKey('acl_update', $acl[0]);
+        self::assertArrayNotHasKey('acl_delete', $acl[0]);
     }
 
     public function testGetUserAclDeniesNonMember(): void
     {
         $guest = $this->user(QaBaselineFixture::QA_GUEST_EMAIL);
         $page = $this->pages->createPage('qa_acl_repo_denied', openAccess: false);
-        $this->pages->grantGroupAcl($page, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($page, $this->subjectGroup());
 
         self::assertSame(
             [],
@@ -76,7 +78,7 @@ final class AclRepositoryTest extends QaKernelTestCase
     {
         $user = $this->user(QaBaselineFixture::QA_USER_EMAIL);
         $page = $this->pages->createPage('qa_acl_repo_stable', openAccess: false);
-        $this->pages->grantGroupAcl($page, $this->subjectGroup(), select: true, insert: true, update: false, delete: false);
+        $this->pages->grantGroupAcl($page, $this->subjectGroup());
 
         self::assertSame(
             $this->repository->getUserAcl((int) $user->getId(), (int) $page->getId()),

@@ -160,9 +160,9 @@ class FormController extends AbstractController
             // API exception listener builds the standard answer with the list of errors.
             throw $e;
         } catch (\Exception $e) {
-            return $this->apiResponseFormatter->formatError(
-                $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR
+            return $this->apiResponseFormatter->formatThrowable(
+                $e,
+                is_string($request->attributes->get('_route')) ? $request->attributes->get('_route') : null
             );
         }
     }
@@ -370,9 +370,9 @@ class FormController extends AbstractController
             // API exception listener builds the standard answer with the list of errors.
             throw $e;
         } catch (\Exception $e) {
-            return $this->apiResponseFormatter->formatError(
-                $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR
+            return $this->apiResponseFormatter->formatThrowable(
+                $e,
+                is_string($request->attributes->get('_route')) ? $request->attributes->get('_route') : null
             );
         }
     }
@@ -510,9 +510,9 @@ class FormController extends AbstractController
             // API exception listener builds the standard answer with the list of errors.
             throw $e;
         } catch (\Exception $e) {
-            return $this->apiResponseFormatter->formatError(
-                $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR
+            return $this->apiResponseFormatter->formatThrowable(
+                $e,
+                is_string($request->attributes->get('_route')) ? $request->attributes->get('_route') : null
             );
         }
     }

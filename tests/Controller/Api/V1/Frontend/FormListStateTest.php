@@ -178,7 +178,7 @@ final class FormListStateTest extends QaWebTestCase
         $subject = $em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Page::class, $livePage);
         self::assertInstanceOf(Group::class, $subject);
-        $pages->grantGroupAcl($livePage, $subject, select: true, insert: false, update: false, delete: false);
+        $pages->grantGroupAcl($livePage, $subject);
         $this->assertEnvelopeSuccess($this->state($page, $view, '', $token));
     }
 

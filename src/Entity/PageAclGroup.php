@@ -11,12 +11,10 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Page-level ACL: per-group CRUD rights against a single page.
+ * Page-level ACL: per-group "see this page" right against a single page.
  *
- * Renamed from `AclGroup` (legacy `acl_groups` table) to
- * `PageAclGroup` (`page_acl_groups`) under the strict_split policy:
- * because this join table carries the four boolean CRUD columns it is
- * a first-class domain entity, not a pure relation.
+ * Groups see; roles edit. A row means the group may see the page and use its
+ * forms (`acl_select`). The leftover insert/update/delete bits are gone (F03).
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'page_acl_groups')]
@@ -35,15 +33,6 @@ class PageAclGroup
 
     #[ORM\Column(name: 'acl_select', type: 'boolean', options: ['default' => 1])]
     private bool $aclSelect = true;
-
-    #[ORM\Column(name: 'acl_insert', type: 'boolean', options: ['default' => 0])]
-    private bool $aclInsert = false;
-
-    #[ORM\Column(name: 'acl_update', type: 'boolean', options: ['default' => 0])]
-    private bool $aclUpdate = false;
-
-    #[ORM\Column(name: 'acl_delete', type: 'boolean', options: ['default' => 0])]
-    private bool $aclDelete = false;
 
     public function getGroup(): ?Group
     {
@@ -74,51 +63,9 @@ class PageAclGroup
         return $this;
     }
 
-    public function getAclInsert(): bool { return $this->aclInsert; }
-
-    public function setAclInsert(bool $aclInsert): static
-    {
-        $this->aclInsert = $aclInsert;
-
-        return $this;
-    }
-
-    public function getAclUpdate(): bool { return $this->aclUpdate; }
-
-    public function setAclUpdate(bool $aclUpdate): static
-    {
-        $this->aclUpdate = $aclUpdate;
-
-        return $this;
-    }
-
-    public function getAclDelete(): bool { return $this->aclDelete; }
-
-    public function setAclDelete(bool $aclDelete): static
-    {
-        $this->aclDelete = $aclDelete;
-
-        return $this;
-    }
-
     public function isAclSelect(): ?bool
     {
         return $this->aclSelect;
-    }
-
-    public function isAclInsert(): ?bool
-    {
-        return $this->aclInsert;
-    }
-
-    public function isAclUpdate(): ?bool
-    {
-        return $this->aclUpdate;
-    }
-
-    public function isAclDelete(): ?bool
-    {
-        return $this->aclDelete;
     }
 }
 // ENTITY RULE

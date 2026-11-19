@@ -111,10 +111,10 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
             );
         }
 
-        $adminRole = $manager->getRepository(Role::class)->findOneBy(['name' => 'admin']);
+        $adminRole = $manager->getRepository(Role::class)->findOneBy(['isSuperuser' => true]);
         if (!$adminRole instanceof Role) {
             throw new \RuntimeException(
-                'QA baseline cannot seed qa.admin: the seeded "admin" role is missing. '
+                'QA baseline cannot seed qa.admin: no role with is_superuser is present. '
                 . 'The schema baseline migrations must run first.'
             );
         }

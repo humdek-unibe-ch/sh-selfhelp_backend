@@ -12,6 +12,7 @@ namespace App\Controller\Api\V1\Frontend;
 use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\FormFileUploadService;
+use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
 use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -48,6 +49,7 @@ final class FormFileController extends AbstractController
         private readonly FormFileUploadService $formFileUploadService,
         private readonly UserContextService $userContextService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly ApiResponseFormatter $responseFormatter,
     ) {
     }
 
@@ -90,6 +92,8 @@ final class FormFileController extends AbstractController
             $zipPath = $this->formFileUploadService->buildZip($entries);
         } catch (ServiceException $e) {
             return new Response($e->getMessage(), $e->getCode());
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatThrowable($e);
         }
 
         return self::zipResponse($zipPath, sprintf('record_%d_%s.zip', $record_id, $field));

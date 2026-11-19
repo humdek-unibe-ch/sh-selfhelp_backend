@@ -292,15 +292,14 @@ class AdminUserServiceTest extends QaKernelTestCase
      */
     public function testDeleteSystemUserThrowsException(): void
     {
-        // The QA baseline ships no `admin`/`tpf` system account, so promote a
-        // throwaway qa user to a protected name at the entity level (DAMA rolls
-        // it back) to exercise AdminUserService::SYSTEM_USERS deletion guard.
+        // The QA baseline ships no system account, so promote a throwaway qa
+        // user with is_system at the entity level (DAMA rolls it back).
         $created = $this->createQaUser('sysguard');
         $userId = $this->asInt($created['id']);
 
         $entity = $this->em->getRepository(User::class)->find($userId);
         self::assertInstanceOf(User::class, $entity);
-        $entity->setName('admin');
+        $entity->setIsSystem(true);
         $this->em->flush();
 
         $this->expectException(ServiceException::class);
@@ -534,7 +533,7 @@ class AdminUserServiceTest extends QaKernelTestCase
 
         $entity = $this->em->getRepository(User::class)->find($userId);
         self::assertInstanceOf(User::class, $entity);
-        $entity->setName('admin');
+        $entity->setIsSystem(true);
         $this->em->flush();
 
         $this->expectException(ServiceException::class);

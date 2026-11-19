@@ -83,15 +83,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         // 2. A list page with an entry-list bound to that table and a child
         //    template interpolating the submitted column.
         $listPage = $this->pages->createPage('qa_el_list', openAccess: false);
-        $this->pages->grantGroupAcl(
-            $listPage,
-            $this->subjectGroup(),
-            select: true,
-            insert: false,
-            update: false,
-            delete: false,
-            affectedUserIds: [],
-        );
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), affectedUserIds: []);
 
         $listSection = $this->pages->createSection('qa_el_list_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -229,7 +221,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $tableName = (string) $row->getDataTable()?->getName();
 
         $listPage = $this->pages->createPage('qa_el_select_list', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false, affectedUserIds: []);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), affectedUserIds: []);
 
         $listSection = $this->pages->createSection('qa_el_select_list_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -294,7 +286,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         self::assertInstanceOf(DataTable::class, $dataTable);
 
         $listPage = $this->pages->createPage('qa_el_scope_list', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup());
 
         $listSection = $this->pages->createSection('qa_el_scope_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -321,14 +313,7 @@ final class EntryListHydrationTest extends QaWebTestCase
     public function testEntryListOwnEntriesOnlyDefaultShowsOnlyCurrentUserRows(): void
     {
         [$formPage, $formSection] = $this->pages->createFormPage('qa_el_own', openAccess: false);
-        $this->pages->grantGroupAcl(
-            $formPage,
-            $this->subjectGroup(),
-            select: true,
-            insert: true,
-            update: false,
-            delete: false,
-        );
+        $this->pages->grantGroupAcl($formPage, $this->subjectGroup());
 
         $ownerEnvelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
             'page_id' => (int) $formPage->getId(),
@@ -350,7 +335,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         self::assertInstanceOf(DataTable::class, $dataTable);
 
         $listPage = $this->pages->createPage('qa_el_own_list', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup());
 
         $listSection = $this->pages->createSection('qa_el_own_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -418,7 +403,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         self::assertNotSame('', $fieldKey, 'Form-owned table must expose a non-standard field key.');
 
         $listPage = $this->pages->createPage('qa_el_cols_list', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup());
 
         $listSection = $this->pages->createSection('qa_el_cols_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -470,7 +455,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $categoryFieldKey = 'section_' . $categoryInput->getId();
 
         $listPage = $this->pages->createPage('qa_el_helper_list', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup());
 
         $listSection = $this->pages->createSection('qa_el_helper_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -527,7 +512,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $tableName = (string) $dataTable->getName();
 
         $listPage = $this->pages->createPage('qa_el_legacy_cfg_list', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup());
 
         $listSection = $this->pages->createSection('qa_el_legacy_cfg_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -577,7 +562,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $tableName = (string) $dataTable->getName();
 
         $listPage = $this->pages->createPage('qa_el_dual_cfg_list', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup());
 
         $listSection = $this->pages->createSection('qa_el_dual_cfg_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
@@ -633,7 +618,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $categoryFieldKey = 'section_' . $categoryInput->getId();
 
         $listPage = $this->pages->createPage('qa_el_unsafe_helper_list', openAccess: false);
-        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup());
 
         $listSection = $this->pages->createSection('qa_el_unsafe_helper_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);

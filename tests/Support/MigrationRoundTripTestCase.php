@@ -102,7 +102,29 @@ abstract class MigrationRoundTripTestCase extends TestCase
         $this->assertSchemaInSync(sprintf('after round-trip of migration %s', $version));
     }
 
-    private function migrate(string $target): void
+    /**
+     * Run one integer-valued SQL expression on the throwaway database, for
+     * tests that check the data a migration writes or removes between steps.
+     */
+    protected function queryInt(string $expression): int
+    {
+        $result = $this->console(['dbal:run-sql', sprintf("SELECT CONCAT('qa_result=', (%s)) AS r", $expression)]);
+        self::assertSame(0, $result['exit'], sprintf("dbal:run-sql failed:\n%s", $result['output']));
+        if (preg_match('/qa_result=(\d+)/', $result['output'], $match) !== 1) {
+            self::fail(sprintf("dbal:run-sql returned no qa_result:\n%s", $result['output']));
+        }
+
+        return (int) $match[1];
+    }
+
+    /** Run a write statement on the throwaway database. */
+    protected function execSql(string $sql): void
+    {
+        $result = $this->console(['dbal:run-sql', $sql]);
+        self::assertSame(0, $result['exit'], sprintf("dbal:run-sql failed:\n%s", $result['output']));
+    }
+
+    protected function migrate(string $target): void
     {
         $result = $this->console(['doctrine:migrations:migrate', $target, '--no-interaction', '--allow-no-migration']);
         self::assertSame(
@@ -112,7 +134,7 @@ abstract class MigrationRoundTripTestCase extends TestCase
         );
     }
 
-    private function assertSchemaInSync(string $context): void
+    protected function assertSchemaInSync(string $context): void
     {
         // `doctrine:schema:validate` checks BOTH the mapping and DB sync; its
         // exit code is non-zero if either fails and the output names which.

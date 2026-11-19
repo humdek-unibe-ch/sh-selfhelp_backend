@@ -48,6 +48,13 @@ class ApiRoute
     #[ORM\Column(length: 10, options: ['default' => 'v1'])]
     private ?string $version = 'v1';
 
+    /**
+     * Declared public route: no permission row required; ApiSecurityListener
+     * lets any caller through (F09). Mutually exclusive with permissions.
+     */
+    #[ORM\Column(name: 'is_public', type: 'boolean', options: ['default' => 0])]
+    private bool $is_public = false;
+
     /** @var Collection<int, Permission> */
     #[ORM\ManyToMany(targetEntity: Permission::class, inversedBy: 'apiRoutes')]
     #[ORM\JoinTable(name: 'rel_api_routes_permissions',
@@ -172,6 +179,18 @@ class ApiRoute
     public function setVersion(string $version): static
     {
         $this->version = $version;
+
+        return $this;
+    }
+
+    public function isPublic(): bool
+    {
+        return $this->is_public;
+    }
+
+    public function setIsPublic(bool $isPublic): static
+    {
+        $this->is_public = $isPublic;
 
         return $this;
     }

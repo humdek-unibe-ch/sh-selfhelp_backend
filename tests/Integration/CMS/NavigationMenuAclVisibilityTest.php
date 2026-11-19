@@ -84,7 +84,7 @@ final class NavigationMenuAclVisibilityTest extends QaWebTestCase
         self::assertInstanceOf(Group::class, $subjectGroup);
         $aclService = self::getContainer()->get(\App\Service\ACL\ACLService::class);
         self::assertInstanceOf(\App\Service\ACL\ACLService::class, $aclService);
-        $aclService->addGroupAcl($page, $subjectGroup, true, false, false, false, $em);
+        $aclService->addGroupAcl($page, $subjectGroup, $em);
         $em->flush();
         $this->invalidateNavigationAndPermissionCaches();
 

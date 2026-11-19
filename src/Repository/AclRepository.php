@@ -31,9 +31,9 @@ class AclRepository extends ServiceEntityRepository
 
     /**
      * Get all ACLs for a user, optionally filtered by page
-     * 
+     *
      * Uses unified CacheService for caching ACL data within permissions category
-     * 
+     *
      * @param int $userId User ID to get ACLs for
      * @param int $pageId Optional page ID to filter by (-1 for all pages)
      * @return list<array<string, mixed>> Array of page ACLs with access rights
@@ -62,7 +62,7 @@ class AclRepository extends ServiceEntityRepository
     }
 
     /**
-     * Every page with full rights, in the shape {@see getUserAcl()} returns.
+     * Every page with select rights, in the shape {@see getUserAcl()} returns.
      *
      * For the admin role, which may open any page by its address
      * (`ACLService::hasAccess`): menus, search and page lists must answer
@@ -78,9 +78,6 @@ class AclRepository extends ServiceEntityRepository
                 CAST(:userId AS SIGNED) AS id_users,
                 p.id AS id_pages,
                 1 AS acl_select,
-                1 AS acl_insert,
-                1 AS acl_update,
-                1 AS acl_delete,
                 p.keyword,
                 p.url,
                 p.id_parent_page,

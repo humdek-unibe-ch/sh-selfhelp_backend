@@ -278,9 +278,6 @@ CREATE TABLE `page_acl_groups` (
   `id_groups` int NOT NULL,
   `id_pages` int NOT NULL,
   `acl_select` tinyint(1) NOT NULL DEFAULT '1',
-  `acl_insert` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_update` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id_groups`,`id_pages`),
   CONSTRAINT `fk_page_acl_groups_id_pages`  FOREIGN KEY (`id_pages`)  REFERENCES `pages` (`id`)  ON DELETE CASCADE,
   CONSTRAINT `fk_page_acl_groups_id_groups` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
@@ -289,9 +286,6 @@ CREATE TABLE `page_acl_groups` (
 
 **ACL Permission Types:**
 - **`acl_select`**: Read access (view page/content)
-- **`acl_insert`**: Create access (add new content)
-- **`acl_update`**: Update access (modify existing content)
-- **`acl_delete`**: Delete access (remove content)
 
 ### 5. Multi-language Support Tables
 
@@ -814,9 +808,6 @@ CREATE PROCEDURE get_user_acl(IN userId INT, IN pageId INT)
 BEGIN
     SELECT
         MAX(ag.acl_select) as acl_select,
-        MAX(ag.acl_insert) as acl_insert,
-        MAX(ag.acl_update) as acl_update,
-        MAX(ag.acl_delete) as acl_delete
     FROM users u
     LEFT JOIN rel_groups_users ug ON u.id = ug.id_users
     LEFT JOIN page_acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId

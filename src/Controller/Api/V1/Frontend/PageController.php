@@ -75,10 +75,9 @@ class PageController extends AbstractController
                 Response::HTTP_OK
             );
         } catch (\Throwable $e) {
-            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $statusCode
+            return $this->responseFormatter->formatThrowable(
+                $e,
+                is_string($request->attributes->get('_route')) ? $request->attributes->get('_route') : null
             );
         }
     }
@@ -123,10 +122,9 @@ class PageController extends AbstractController
 
             return $response;
         } catch (\Throwable $e) {
-            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $statusCode
+            return $this->responseFormatter->formatThrowable(
+                $e,
+                is_string($request->attributes->get('_route')) ? $request->attributes->get('_route') : null
             );
         }
     }
@@ -184,10 +182,9 @@ class PageController extends AbstractController
 
             return $response;
         } catch (\Throwable $e) {
-            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $statusCode
+            return $this->responseFormatter->formatThrowable(
+                $e,
+                is_string($request->attributes->get('_route')) ? $request->attributes->get('_route') : null
             );
         }
     }

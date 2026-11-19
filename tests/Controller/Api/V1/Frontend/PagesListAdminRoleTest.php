@@ -53,7 +53,7 @@ final class PagesListAdminRoleTest extends QaWebTestCase
 
         $subject = $em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $factory->grantGroupAcl($shared, $subject, select: true, insert: false, update: false, delete: false);
+        $factory->grantGroupAcl($shared, $subject);
 
         // The admin account has the admin role and no group, and sees all three.
         $admin = $this->listedKeywords($this->loginAsQaAdmin());

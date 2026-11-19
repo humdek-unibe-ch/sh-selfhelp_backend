@@ -722,9 +722,9 @@ class AdminUserControllerTest extends BaseControllerTest
     }
 
     /**
-     * The CMS protects "system" accounts (name in {admin, tpf}) from deletion.
+     * The CMS protects system accounts (`users.is_system`) from deletion.
      * The QA baseline contains no such account, so we promote a throwaway qa
-     * user to a protected name at the entity level (DAMA rolls the change back)
+     * user with the flag at the entity level (DAMA rolls the change back)
      * and assert the API refuses to delete it with 403.
      *
      * @group user-management
@@ -736,7 +736,7 @@ class AdminUserControllerTest extends BaseControllerTest
 
         $entity = $this->entityManager->getRepository(User::class)->find($userId);
         self::assertInstanceOf(User::class, $entity);
-        $entity->setName('admin'); // AdminUserService::SYSTEM_USERS guard trigger
+        $entity->setIsSystem(true);
         $this->entityManager->flush();
 
         $this->client->request(

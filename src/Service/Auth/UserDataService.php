@@ -203,7 +203,10 @@ class UserDataService
             return [
                 'id' => $role->getId(),
                 'name' => $role->getName(),
-                'description' => $role->getDescription()
+                'description' => $role->getDescription(),
+                // Rule 4.11 / F10: the client reads "superuser" from this
+                // flag, never from the role name.
+                'is_superuser' => $role->isSuperuser(),
             ];
         }, $user->getUserRoles()->toArray());
     }

@@ -287,7 +287,7 @@ final class FormFileDeliveryTest extends QaWebTestCase
         if ($withNote) {
             $this->addInput($form, 'text-input', 'qa_fd_note', 'qa_note', 20);
         }
-        $this->pages->grantGroupAcl($page, $this->subjectGroup(), select: true, insert: true, update: false, delete: false, affectedUserIds: [$this->qaUserId()]);
+        $this->pages->grantGroupAcl($page, $this->subjectGroup(), affectedUserIds: [$this->qaUserId()]);
 
         $uploads = [];
         foreach ([$fileName => $contents] + $moreFiles as $name => $body) {

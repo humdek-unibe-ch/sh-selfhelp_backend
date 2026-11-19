@@ -427,7 +427,8 @@ Authorization: Bearer your_jwt_token
       {
         "id": 1,
         "name": "admin",
-        "description": "Administrator role"
+        "description": "Administrator role",
+        "is_superuser": true
       }
     ],
     "permissions": [

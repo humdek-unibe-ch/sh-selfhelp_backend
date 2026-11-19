@@ -153,6 +153,13 @@ class AdminRoleService extends BaseService
         $this->entityManager->beginTransaction();
 
         try {
+            if (array_key_exists('is_superuser', $roleData)) {
+                throw new ServiceException(
+                    'The is_superuser flag cannot be changed through the API.',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+
             $this->validateRoleData($roleData);
 
             $role = new Role();
@@ -205,6 +212,26 @@ class AdminRoleService extends BaseService
             $role = $this->entityManager->getRepository(Role::class)->find($roleId);
             if (!$role) {
                 throw new ServiceException('Role not found', Response::HTTP_NOT_FOUND);
+            }
+
+            // is_superuser is flag-only (F10): refuse if the client tries to set it.
+            if (array_key_exists('is_superuser', $roleData)) {
+                throw new ServiceException(
+                    'The is_superuser flag cannot be changed through the API.',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+
+            // Renaming is allowed, including for the superuser role (C2 / F10).
+            if (isset($roleData['name'])) {
+                $newName = $this->asString($roleData['name']);
+                if ($newName !== $role->getName()) {
+                    $existing = $this->entityManager->getRepository(Role::class)->findOneBy(['name' => $newName]);
+                    if ($existing instanceof Role && $existing->getId() !== $role->getId()) {
+                        throw new ServiceException('Role name already exists', Response::HTTP_CONFLICT);
+                    }
+                    $role->setName($newName);
+                }
             }
 
             if (isset($roleData['description'])) {
@@ -299,6 +326,13 @@ class AdminRoleService extends BaseService
             $role = $this->entityManager->getRepository(Role::class)->find($roleId);
             if (!$role) {
                 throw new ServiceException('Role not found', Response::HTTP_NOT_FOUND);
+            }
+
+            if ($role->isSuperuser()) {
+                throw new ServiceException(
+                    'This role holds full access and cannot be deleted.',
+                    Response::HTTP_CONFLICT
+                );
             }
 
             // Check if role has users
@@ -540,6 +574,7 @@ class AdminRoleService extends BaseService
             'id' => $role->getId(),
             'name' => $role->getName(),
             'description' => $role->getDescription(),
+            'is_superuser' => $role->isSuperuser(),
             'permissions_count' => $role->getPermissions()->count(),
             'users_count' => $role->getUsers()->count()
         ];
@@ -556,6 +591,7 @@ class AdminRoleService extends BaseService
             'id' => $role->getId(),
             'name' => $role->getName(),
             'description' => $role->getDescription(),
+            'is_superuser' => $role->isSuperuser(),
             'permissions_count' => $role->getPermissions()->count(),
             'users_count' => $role->getUsers()->count(),
             'permissions' => array_map([$this, 'formatPermissionForResponse'], $role->getPermissions()->toArray()),

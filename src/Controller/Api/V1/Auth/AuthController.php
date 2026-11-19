@@ -278,7 +278,7 @@ class AuthController extends AbstractController
             throw $e;
         } catch (AuthenticationException $e) {
             return $this->responseFormatter->formatError(
-                $e->getMessage(),
+                'Invalid or expired refresh token.',
                 Response::HTTP_UNAUTHORIZED
             );
         } catch (\JsonException $e) {

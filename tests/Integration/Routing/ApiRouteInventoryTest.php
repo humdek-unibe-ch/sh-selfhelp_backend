@@ -15,121 +15,18 @@ use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Routing\RouterInterface;
 
 /**
- * Guardrail inventory for the database-backed `/cms-api` route system
- * (plan "Test Foundation And Guardrails").
+ * Guardrail inventory for the database-backed `/cms-api` route system.
  *
- * Every row in `api_routes` is loaded by {@see \App\Routing\ApiRouteLoader}
- * into the router collection and dispatched by name. These tests load the
- * REAL router collection and assert, for every DB route:
- *   - it is registered in the collection under `<logical_route_name>_<version>`;
- *   - its `_controller` resolves to an existing `Class::method`;
- *   - it declares at least one valid HTTP method;
- *   - it is permission-guarded UNLESS it is a known, reviewed public route.
- *
- * The public allowlist makes adding a new UNGUARDED core route impossible to
- * do silently: the route either gets a permission row or a conscious entry
- * here (plan "permission coverage checklist"). The list is derived from the
- * current seeded baseline; every entry is a route that authenticates via JWT
- * + internal ACL/self checks rather than a route-permission row.
+ * Every row in `api_routes` is either declared public (`is_public`) with no
+ * permission rows, or not public with at least one permission (F09). The old
+ * PHP allowlist was moved into the seed migration; this test asserts the
+ * invariant on live data.
  */
 #[Group('security')]
 final class ApiRouteInventoryTest extends QaKernelTestCase
 {
     /** @var list<string> */
     private const VALID_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'];
-
-    /**
-     * Core (non-plugin) `/cms-api` routes that intentionally carry NO route
-     * permission. Each relies on JWT authentication plus an internal ACL /
-     * self / always-allowed check instead of a `rel_api_routes_permissions`
-     * row. Keys are the router-collection names (`<logical_route_name>_<version>`).
-     *
-     * @var list<string>
-     */
-    private const INTENTIONALLY_PUBLIC = [
-        // Auth / session lifecycle.
-        'auth_login_v1',
-        'auth_logout_v1',
-        'auth_refresh_token_v1',
-        'auth_set_language_v1',
-        'auth_2fa_verify_v1',
-        'auth_events_stream_v1',
-        // Public self-registration (creates a blocked account + validation email).
-        'auth_register_v1',
-        // Public password-recovery flow (JWT-not-required, token-based).
-        'auth_forgot_password_v1',
-        'auth_reset_password_v1',
-        // Self-service profile: JWT-authenticated, operates only on the caller.
-        'auth_user_data_get_v1',
-        'auth_user_account_delete_v1',
-        'auth_user_name_update_v1',
-        'auth_user_password_update_v1',
-        'auth_user_timezone_update_v1',
-        'auth_user_communication_preferences_update_v1',
-        // Stop-impersonation is ALWAYS allowed by ApiSecurityListener (only
-        // way out of an impersonation session).
-        'admin_users_stop_impersonate_v1',
-        // Frontend forms enforce their own page/section ACL inside the service.
-        'form_submit_v1',
-        'form_update_v1',
-        'form_delete_v1',
-        // Form file delivery: owner or READ on the form's data table, checked per record.
-        'form_files_serve_v1',
-        'form_files_zip_v1',
-        // Entry-form-list / data-view: the list's page ACL, the record's owner / table
-        // grant and the list's own switches are enforced inside FormListContextResolver
-        // and the list services (a public data-view is readable by guests by design).
-        'form_list_state_v1',
-        'form_list_quick_action_v1',
-        'form_list_history_v1',
-        'form_list_version_v1',
-        'form_list_compare_v1',
-        'form_list_restore_v1',
-        'form_list_version_file_v1',
-        // Current-file delivery for list / data-view / entry-list / entry-record
-        // (F165): page ACL, list boundary and files_public checked per request,
-        // same pattern as form_list_version_file_v1. Seeded by
-        // migrations/Version20261114191922.php.
-        'form_list_current_file_v1',
-        // Public frontend reads (page ACL handled per-page; lookups/languages
-        // and CSS classes are public catalogue data).
-        'frontend_css_classes_get_all_v1',
-        'languages_get_all_v1',
-        'system_lookups_v1',
-        'pages_get_all_v1',
-        'pages_get_by_keyword_v1',
-        'pages_get_all_with_language_v1',
-        // DB-driven public path resolve: open route, page ACL / CMS-surface
-        // denial remapped to 404 inside PageService (issue #30).
-        'pages_resolve_path_v1',
-        // Public navigation + search payloads (ACL / access-type filtered in
-        // NavigationMenuService / SearchService). Last-visited is JWT-optional
-        // and only writes the caller's own preference when authenticated.
-        'navigation_get_v1',
-        'navigation_last_visited_put_v1',
-        'search_get_v1',
-        'search_pages_get_v1',
-        'plugins_manifest_v1',
-        // Health probe + the public user-validation (set-password) flow.
-        'health_v1',
-        // Public mobile-preview one-time-code exchange. The code is the credential.
-        'mobile_preview_session_exchange_v1',
-        'user_validate_token_v1',
-        'user_complete_validation_v1',
-        // Manager update loop (machine-to-machine): permission-less like the
-        // health probe, but gated in-controller by the per-instance manager
-        // bearer token (constant-time check, denied when SELFHELP_MANAGER_TOKEN
-        // is unset) and scoped to the server-derived instance id. Denial paths
-        // are covered by SystemManagerControllerSecurityTest; seeded by
-        // migrations/Version20260608174905.php.
-        'manager_system_update_pending_v1',
-        'manager_system_update_status_v1',
-        // ACL-enforced asset delivery: access is resource-side (per asset, in
-        // AssetAccessService::assertCanRead) so anonymous callers can read
-        // guest-group assets. Denial paths are covered by AssetDeliveryAclTest;
-        // seeded by migrations/Version20261103112133.php.
-        'assets_serve_by_uuid_v1',
-    ];
 
     public function testEveryDatabaseRouteResolvesToARealControllerMethod(): void
     {
@@ -183,63 +80,29 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         );
     }
 
-    public function testEveryCoreRouteIsGuardedUnlessIntentionallyPublic(): void
+    public function testEveryRouteIsPublicXorPermissionGuarded(): void
     {
         $rows = $this->service(ApiRouteRepository::class)->findAllRoutesWithPermissionsAsArray();
 
-        $unguarded = [];
+        $violations = [];
         foreach ($rows as $row) {
-            // Plugin-owned routes follow the plugin manifest convention, not
-            // the core public allowlist.
-            if (($row['id_plugins'] ?? null) !== null) {
-                continue;
-            }
-
             $permissions = is_array($row['permission_names'] ?? null) ? $row['permission_names'] : [];
-            if ($permissions !== []) {
-                continue;
-            }
-
+            $isPublic = (bool) ($row['is_public'] ?? false);
             $name = $this->routeName($row);
-            if (!in_array($name, self::INTENTIONALLY_PUBLIC, true)) {
-                $unguarded[] = $name;
+
+            if ($isPublic && $permissions !== []) {
+                $violations[] = $name . ' is public and has permissions';
+            }
+            if (!$isPublic && $permissions === []) {
+                $violations[] = $name . ' is neither public nor permission-guarded';
             }
         }
 
         self::assertSame(
             [],
-            $unguarded,
-            "Permission-less core route(s) not on the reviewed public allowlist.\n"
-            . "Add a route permission (rel_api_routes_permissions) or, after review, list them in "
-            . "INTENTIONALLY_PUBLIC:\n" . implode("\n", $unguarded)
-        );
-    }
-
-    /**
-     * Every entry on the public allowlist must still correspond to a real,
-     * currently-permission-less route — otherwise the allowlist rots and
-     * silently hides a future guarded->public regression.
-     */
-    public function testPublicAllowlistHasNoStaleEntries(): void
-    {
-        $rows = $this->service(ApiRouteRepository::class)->findAllRoutesWithPermissionsAsArray();
-
-        $publicNow = [];
-        foreach ($rows as $row) {
-            if (($row['id_plugins'] ?? null) !== null) {
-                continue;
-            }
-            $permissions = is_array($row['permission_names'] ?? null) ? $row['permission_names'] : [];
-            if ($permissions === []) {
-                $publicNow[] = $this->routeName($row);
-            }
-        }
-
-        $stale = array_values(array_diff(self::INTENTIONALLY_PUBLIC, $publicNow));
-        self::assertSame(
-            [],
-            $stale,
-            "Stale INTENTIONALLY_PUBLIC entries (route now guarded or removed): " . implode(', ', $stale)
+            $violations,
+            "api_routes must be public with no permissions, or not public with at least one permission:\n"
+            . implode("\n", $violations)
         );
     }
 
@@ -282,7 +145,6 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
     private function controllerResolves(string $controller): bool
     {
         if (!str_contains($controller, '::')) {
-            // Invokable controller service / class.
             return class_exists($controller);
         }
 

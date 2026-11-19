@@ -170,14 +170,7 @@ final class FormRecordEditModeTest extends QaWebTestCase
         $admin = $this->em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
         self::assertInstanceOf(User::class, $admin);
         $this->users->addToGroup($admin, $adminGroup);
-        $this->pages->grantGroupAcl(
-            $page,
-            $adminGroup,
-            select: true,
-            insert: true,
-            update: true,
-            delete: false,
-        );
+        $this->pages->grantGroupAcl($page, $adminGroup);
         $recordId = $this->submitRecord($this->loginAsQaUser(), $page, $section, 'owner value');
 
         $envelope = $this->updateRecord($this->loginAsQaAdmin(), $page, $section, $recordId, 'admin edited');
@@ -196,14 +189,7 @@ final class FormRecordEditModeTest extends QaWebTestCase
     private function setUpFormPage(string $keyword, bool $ownEntriesOnly): array
     {
         [$page, $section] = $this->pages->createFormPage($keyword, openAccess: false);
-        $this->pages->grantGroupAcl(
-            $page,
-            $this->subjectGroup(),
-            select: true,
-            insert: true,
-            update: true,
-            delete: false,
-        );
+        $this->pages->grantGroupAcl($page, $this->subjectGroup());
         if (!$ownEntriesOnly) {
             $this->setSectionField($section, 'own_entries_only', '0');
         }
