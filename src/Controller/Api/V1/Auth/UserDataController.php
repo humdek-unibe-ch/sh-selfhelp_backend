@@ -56,10 +56,7 @@ class UserDataController extends AbstractController
                 Response::HTTP_OK
             );
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                'Failed to retrieve user data: ' . $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 }
