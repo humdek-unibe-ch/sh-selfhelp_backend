@@ -447,9 +447,6 @@ The method automatically sets ACL fields based on actual permissions:
 ```php
 // For a resource with permission value 6 (READ+UPDATE)
 'acl_select' => 1,  // Has READ permission
-'acl_insert' => 0,  // No CREATE permission
-'acl_update' => 1,  // Has UPDATE permission
-'acl_delete' => 0   // No DELETE permission
 ```
 
 **Data Structure Compatibility:**

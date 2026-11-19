@@ -1685,9 +1685,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_groups`: int (PK, FK to Group)
 - `id_pages`: int (PK, FK to Page)
 - `acl_select`: bool
-- `acl_insert`: bool
-- `acl_update`: bool
-- `acl_delete`: bool
 
 ### Action
 - `id`: int (PK)
@@ -2313,7 +2310,7 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
   ```
 
 - All access checks in Symfony now use the stored procedure `get_user_acl(user_id, page_id)`.
-- The procedure returns columns: acl_select, acl_insert, acl_update, acl_delete, etc.
+- The procedure returns acl_select plus page columns.
 - The access type (`select`, `insert`, `update`, `delete`) is mapped to the corresponding column.
 - The check is: if the column value is `1`, access is granted; otherwise, denied.
 - This matches the core logic from the legacy PHP implementation and is now the canonical approach for ACL in this project.

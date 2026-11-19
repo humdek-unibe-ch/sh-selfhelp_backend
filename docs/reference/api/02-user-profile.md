@@ -232,12 +232,14 @@ Retrieve comprehensive information about the current user including roles, permi
       {
         "id": 1,
         "name": "admin",
-        "description": "Administrator role with full access"
+        "description": "Administrator role with full access",
+        "is_superuser": true
       },
       {
         "id": 2,
         "name": "editor",
-        "description": "Content editor role"
+        "description": "Content editor role",
+        "is_superuser": false
       }
     ],
     "permissions": [
@@ -267,7 +269,7 @@ Retrieve comprehensive information about the current user including roles, permi
 
 **Data Fields:**
 - `user`: Basic user information
-- `roles`: Array of roles assigned to the user
+- `roles`: Array of roles assigned to the user; `is_superuser` marks the superuser role (read the flag, never the role name)
 - `permissions`: Array of effective permissions (combined from all roles)
 - `groups`: Array of groups the user belongs to
 
