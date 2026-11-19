@@ -268,6 +268,43 @@ final class FormControllerTest extends QaWebTestCase
         $this->assertEnvelope400($envelope);
     }
 
+    /**
+     * F02: guest and signed-in submit on an open-access page share the same
+     * validation outcome for identical payloads.
+     */
+    public function testOpenAccessGuestAndUserShareValidationOutcomes(): void
+    {
+        [$page, $section] = $this->pages->createFormPage('qa_form_f02_parity', openAccess: true);
+        $pageId = (int) $page->getId();
+        $sectionId = (int) $section->getId();
+
+        $invalidBody = [
+            'page_id' => $pageId,
+            'section_id' => $sectionId,
+            'form_data' => ['id' => 'tamper', 'qa_answer' => 'x'],
+        ];
+        $guestInvalid = $this->jsonRequest('POST', self::SUBMIT, $invalidBody);
+        $userInvalid = $this->jsonRequest('POST', self::SUBMIT, $invalidBody, $this->loginAsQaUser());
+        self::assertSame(
+            $guestInvalid['status'] ?? null,
+            $userInvalid['status'] ?? null,
+            'Guest and signed-in invalid submits must share the same HTTP status.',
+        );
+        self::assertArrayHasKey('status', $guestInvalid);
+        $this->assertEnvelope400($guestInvalid);
+
+        $validBody = [
+            'page_id' => $pageId,
+            'section_id' => $sectionId,
+            'form_data' => ['qa_answer' => 'f02 valid'],
+        ];
+        $guestValid = $this->assertEnvelopeSuccess($this->jsonRequest('POST', self::SUBMIT, $validBody));
+        $userValid = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', self::SUBMIT, $validBody, $this->loginAsQaUser()),
+        );
+        self::assertIsInt($guestValid['record_id'] ?? null);
+        self::assertIsInt($userValid['record_id'] ?? null);
+    }
 
     public function testAuthenticatedInsertWithoutAclGrantIsForbidden(): void
     {
