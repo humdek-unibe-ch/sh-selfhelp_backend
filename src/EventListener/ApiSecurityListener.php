@@ -15,7 +15,9 @@ use App\Service\Core\TransactionService;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 
@@ -106,22 +108,38 @@ class ApiSecurityListener implements EventSubscriberInterface
             // Get the current route name
             $routeName = $request->attributes->get('_route');
             if (!is_string($routeName) || $routeName === '') {
-                // No route matched, skip permission check
+                // No matched route under /cms-api/: refuse like an unguarded
+                // non-public route (F09). OPTIONS already returned above.
+                $this->logger->error('API request with no route name under /cms-api/', [
+                    'path' => $path,
+                    'method' => $request->getMethod(),
+                ]);
+                $this->denyUnguardedRoute('(unnamed)', $path);
+            }
+
+            $guard = $this->permissionService->getRouteGuard($routeName);
+            $requiredPermissions = $guard['permissions'];
+            $isPublic = $guard['is_public'];
+
+            // Declared public: no permission check (C3: never both public and permissions).
+            if ($isPublic) {
                 return;
             }
 
-            // Get the required permissions using optimized cache service
-            $requiredPermissions = $this->permissionService->getRoutePermissions($routeName);
-
-            if (empty($requiredPermissions)) {
-                return;
+            // Non-public with no permissions is a misconfiguration (F09).
+            if ($requiredPermissions === []) {
+                $this->logger->error('API route is neither public nor permission-guarded', [
+                    'route' => $routeName,
+                    'path' => $path,
+                ]);
+                $this->denyUnguardedRoute($routeName, $path);
             }
 
             // Get the current user using UserContextService
             // At this point authentication has been completed
             $user = $this->userContextService->getCurrentUser();
             if (!$user) {
-                throw new AccessDeniedException('User not authenticated.');
+                throw new HttpException(Response::HTTP_UNAUTHORIZED, 'User not authenticated.');
             }
 
             // Get the user's permissions using optimized cache service
@@ -145,9 +163,12 @@ class ApiSecurityListener implements EventSubscriberInterface
                     'userId' => $user->getId(),
                 ]);
 
-                throw new AccessDeniedException('You do not have permission to access this API endpoint.');
+                throw new HttpException(
+                    Response::HTTP_FORBIDDEN,
+                    'You do not have permission to access this API endpoint.'
+                );
             }
-        } catch (AccessDeniedException $e) {
+        } catch (AccessDeniedException|HttpException $e) {
             // Let the ApiExceptionListener handle this exception
             throw $e;
         } catch (\Exception $e) {
@@ -159,6 +180,26 @@ class ApiSecurityListener implements EventSubscriberInterface
             // Let the ApiExceptionListener handle this exception
             throw new AccessDeniedException('An error occurred while checking permissions.', $e);
         }
+    }
+
+    /**
+     * Refuse a route that is neither public nor permission-guarded (F09).
+     * Guest → 401; signed-in → 403.
+     */
+    private function denyUnguardedRoute(string $routeName, string $path): never
+    {
+        $user = $this->userContextService->getCurrentUser();
+        if ($user === null) {
+            throw new HttpException(
+                Response::HTTP_UNAUTHORIZED,
+                'This API endpoint is not publicly accessible.'
+            );
+        }
+
+        throw new HttpException(
+            Response::HTTP_FORBIDDEN,
+            'This API endpoint is not publicly accessible.'
+        );
     }
 
     /**

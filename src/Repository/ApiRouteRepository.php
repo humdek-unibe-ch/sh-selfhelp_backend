@@ -147,13 +147,14 @@ class ApiRouteRepository extends ServiceEntityRepository
                 r.params,
                 r.version,
                 r.id_plugins,
+                r.is_public,
                 GROUP_CONCAT(p.name ORDER BY p.name SEPARATOR ",") as permission_names
             FROM api_routes r
             LEFT JOIN rel_api_routes_permissions arp ON r.id = arp.id_api_routes
             LEFT JOIN permissions p ON arp.id_permissions = p.id
             LEFT JOIN plugins pl ON r.id_plugins = pl.id
             WHERE r.id_plugins IS NULL OR pl.enabled = 1
-            GROUP BY r.id, r.route_name, r.path, r.controller, r.methods, r.requirements, r.params, r.version, r.id_plugins
+            GROUP BY r.id, r.route_name, r.path, r.controller, r.methods, r.requirements, r.params, r.version, r.id_plugins, r.is_public
             ORDER BY r.version ASC, r.id ASC
         ';
         
@@ -179,6 +180,8 @@ class ApiRouteRepository extends ServiceEntityRepository
             $route['permission_names'] = is_string($permissionNames) && $permissionNames !== ''
                 ? explode(',', $permissionNames)
                 : [];
+
+            $route['is_public'] = (bool) ($route['is_public'] ?? false);
         }
         unset($route);
         
