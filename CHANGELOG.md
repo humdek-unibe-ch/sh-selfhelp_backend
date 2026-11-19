@@ -1,3 +1,40 @@
+# v0.1.47
+
+## Access cleanup (F03, F01, F14, F15, F02, F09, F10, F13)
+
+- Group page ACL keeps only `acl_select` (see the page and use its forms). Columns
+  `acl_insert` / `acl_update` / `acl_delete` are removed; `get_user_acl` matches.
+- Creating a page grants full data-access on that page to the caller's roles that
+  hold `admin.page.create` (admin role never stored), including import and wizard.
+- Creating a form's data table also grants full access to roles that can edit the
+  form's page (`admin.page.update` plus the page update bit).
+- `ACLService::hasAccess` no longer caches a yes/no answer; it reads cached ACL rows.
+- Guest and signed-in form submit share the same validation path (proven by test).
+- Public API routes are declared with `api_routes.is_public`. A route with neither
+  permissions nor the flag is refused (401 guest / 403 signed in). Plugin manifests
+  may set `"public": true` on a route (never together with a permission).
+- Full-access roles use `roles.is_superuser`; built-in accounts use `users.is_system`
+  (no more matching on the names `admin` / `tpf`).
+- Unexpected errors in public controllers answer a generic message and are logged;
+  typed user-facing errors keep their text.
+- Plugin admin pages (rule 4.13, F197): the manifest validator refuses an
+  `adminPages[].permission` that is not one of the plugin's own `permissions` keys.
+  `GET /plugins/manifest` now returns `adminPages` (`slug`, `label`, `permission`,
+  optional `icon`) per plugin so the frontend can check the page permission on the
+  server.
+- `GET /auth/user-data` role items carry `is_superuser`, so clients read the
+  superuser role from the flag, never from its name.
+- `app:create-admin-user --role` has no default: without it the command assigns the
+  role with `is_superuser`; any given value, `admin` included, is a plain name lookup.
+- Tests: forced-error test per public controller family (form submit, page read,
+  navigation, login, profile update), round-trip tests for the two new migrations.
+
+## Compatibility
+
+- `release-manifest.json`: `supports.frontend` is raised to `>=0.1.74 <0.2.0`.
+- Pairs with frontend `supports.core` `>=0.1.47`.
+- `selfhelp_cms_version_default` is `0.1.47`.
+
 # v0.1.46
 
 ## CMS app scaffold: translatable text fields
