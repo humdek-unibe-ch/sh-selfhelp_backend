@@ -306,6 +306,17 @@ embedding your own editor. The host provides a Tiptap-backed adapter
 with consistent styling, paste handling, sanitization, and a stable
 serialization format.
 
+### Showing HTML
+
+Before you render any CMS or user HTML (`dangerouslySetInnerHTML`), pass it
+through `api.sanitizeHtml(html, 'inline' | 'block')`. The web host runs its
+own DOMPurify with the rules core pages use and rewrites record file links
+through the web proxy; `inline` keeps inline markup, `block` also keeps
+headings, lists and paragraphs. Do not bundle a sanitizer of your own and do
+not import host internals. Mobile has no `sanitizeHtml` (React Native does not
+render HTML): show CMS text with `parseInlineRich` / `stripHtmlToText` from
+`@selfhelp/shared`.
+
 ---
 
 ## 4. Backend Plugins (Symfony Bundle)
