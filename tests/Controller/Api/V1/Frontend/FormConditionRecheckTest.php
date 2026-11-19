@@ -243,7 +243,7 @@ final class FormConditionRecheckTest extends QaWebTestCase
     {
         $group = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $group);
-        $this->pages->grantGroupAcl($page, $group, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $group);
     }
 
     private function setCondition(Section $section, string $condition): void

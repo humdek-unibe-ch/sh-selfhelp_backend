@@ -170,7 +170,7 @@ final class QaFrontendGoldenFixture extends Fixture implements FixtureGroupInter
 
         // qa.user (subject group) must be able to view (select) and submit
         // (insert) — the authenticated form path the golden spec exercises.
-        $this->aclService->addGroupAcl($page, $subjectGroup, select: true, insert: true, update: false, delete: false, em: $this->em);
+        $this->aclService->addGroupAcl($page, $subjectGroup, $this->em);
         $this->em->flush();
 
         // Redis persists across runs while reset-db recreates the DB and reuses

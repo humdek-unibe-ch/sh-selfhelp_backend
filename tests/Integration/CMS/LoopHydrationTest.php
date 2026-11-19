@@ -88,15 +88,7 @@ final class LoopHydrationTest extends QaWebTestCase
     private function buildLoopPage(string $keyword, string $loopJson): Page
     {
         $page = $this->pages->createPage($keyword, openAccess: false);
-        $this->pages->grantGroupAcl(
-            $page,
-            $this->subjectGroup(),
-            select: true,
-            insert: false,
-            update: false,
-            delete: false,
-            affectedUserIds: [],
-        );
+        $this->pages->grantGroupAcl($page, $this->subjectGroup(), affectedUserIds: []);
 
         $loopSection = $this->pages->createSection($keyword . '_holder', 'loop');
         $this->pages->linkSectionToPage($page, $loopSection, 10);

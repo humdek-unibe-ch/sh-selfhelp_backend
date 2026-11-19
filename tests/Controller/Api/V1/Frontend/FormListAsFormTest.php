@@ -197,7 +197,7 @@ final class FormListAsFormTest extends QaWebTestCase
         $this->pages->linkSectionToPage($pageB, $listB, 10);
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $this->pages->grantGroupAcl($pageB, $subject, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($pageB, $subject);
         $this->pages->setSectionField($listB, 'data_table', (string) $tableId);
         $this->pages->setSectionField($listB, 'own_entries_only', '0');
         $this->pages->setSectionField($listB, 'allow_create', '0');
@@ -295,7 +295,7 @@ final class FormListAsFormTest extends QaWebTestCase
         $this->pages->linkSectionToPage($pageB, $listB, 10);
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $this->pages->grantGroupAcl($pageB, $subject, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($pageB, $subject);
         $this->pages->setSectionField($listB, 'data_table', (string) $tableId);
         $this->pages->setSectionField($listB, 'own_entries_only', '0');
         $this->pages->setSectionField($listB, 'allow_create', '0');
@@ -421,7 +421,7 @@ final class FormListAsFormTest extends QaWebTestCase
         $this->pages->linkSectionToPage($page, $list, 10);
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $this->pages->grantGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $subject);
 
         $title = $this->formInput($list, $prefix . '_title', 'text-input', 'title', 10);
         $secondName = $withStatus ? 'status' : 'note';

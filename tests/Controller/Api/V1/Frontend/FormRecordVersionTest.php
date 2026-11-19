@@ -267,7 +267,7 @@ final class FormRecordVersionTest extends QaWebTestCase
         $this->pages->linkSectionToPage($page, $delete, 30);
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $this->pages->grantGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $subject);
 
         // The delete trigger is bound to the form's table, which exists after the first save.
         $token = $this->loginAsQaUser();

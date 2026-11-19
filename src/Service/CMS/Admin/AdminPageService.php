@@ -233,15 +233,16 @@ class AdminPageService extends BaseService
                 // nothing is added, and that is not an error. Admins need no
                 // group: the admin role bypasses page ACLs (ACLService::hasAccess).
                 foreach ($groupRepo->findBy(['addToNewPages' => true]) as $defaultGroup) {
-                    $this->aclService->addGroupAcl($page, $defaultGroup, true, false, false, false, $this->entityManager);
+                    $this->aclService->addGroupAcl($page, $defaultGroup, $this->entityManager);
                     $grantedGroupIds[(int) $defaultGroup->getId()] = true;
                 }
             }
             // CMS application pages stay admin/editor-only: no default reader
             // groups are added; the author grants editor groups explicitly.
 
-            // Author-selected groups: full CRUD on cms-app pages (they are the
-            // app's editors), read-only on public pages (they are viewers).
+            // Author-selected groups: select only on every surface. Editing the
+            // page in the CMS comes from the creator's role grants (F14), not
+            // from group ACL bits (F03: one right, see).
             foreach ($accessGroups as $groupId) {
                 if (isset($grantedGroupIds[$groupId])) {
                     continue;
@@ -250,17 +251,10 @@ class AdminPageService extends BaseService
                 if (!$group) {
                     $this->throwNotFound("Group with ID {$groupId} not found");
                 }
-                $this->aclService->addGroupAcl(
-                    $page,
-                    $group,
-                    true,
-                    $isCmsSurface,
-                    $isCmsSurface,
-                    $isCmsSurface,
-                    $this->entityManager
-                );
+                $this->aclService->addGroupAcl($page, $group, $this->entityManager);
                 $grantedGroupIds[$groupId] = true;
             }
+
 
 
             if (is_array($navigationAssignments) && $navigationAssignments !== []) {

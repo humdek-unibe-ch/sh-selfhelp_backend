@@ -201,7 +201,7 @@ final class SectionTableBindingTest extends QaWebTestCase
 
         $group = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $group);
-        $this->pages->grantGroupAcl($page, $group, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $group);
 
         $owner = $this->em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_USER_EMAIL]);
         self::assertInstanceOf(User::class, $owner);

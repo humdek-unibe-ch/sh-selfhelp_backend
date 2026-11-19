@@ -401,7 +401,6 @@ final class FormListSecurityTest extends QaWebTestCase
         $this->assertEnvelopeSuccess($this->jsonRequest('DELETE', '/cms-api/v1/forms/delete', $common + ['section_id' => (int) $list->getId(), 'record_id' => $recordId, 'expected_version' => 4], $token));
 
         self::assertSame(1, self::coerceInt($this->db->fetchOne('SELECT acl_select FROM page_acl_groups WHERE id_pages = :p LIMIT 1', ['p' => $page->getId()])));
-        self::assertSame(0, self::coerceInt($this->db->fetchOne('SELECT acl_insert + acl_update + acl_delete FROM page_acl_groups WHERE id_pages = :p LIMIT 1', ['p' => $page->getId()])), 'The group holds the select right only.');
         self::assertSame($tableId, self::coerceInt($this->db->fetchOne('SELECT id_data_tables FROM data_rows WHERE id = :id', ['id' => $recordId])));
     }
 
@@ -439,11 +438,11 @@ final class FormListSecurityTest extends QaWebTestCase
     // -- helpers ----------------------------------------------------------------
 
     /**
-     * A page the group may see and nothing else: no insert, update or delete bit.
+     * A page the group may see (one right).
      */
     private function selectOnly(Page $page): void
     {
-        $this->db->executeStatement('UPDATE page_acl_groups SET acl_select = 1, acl_insert = 0, acl_update = 0, acl_delete = 0 WHERE id_pages = :p', ['p' => $page->getId()]);
+        $this->db->executeStatement('UPDATE page_acl_groups SET acl_select = 1 WHERE id_pages = :p', ['p' => $page->getId()]);
         $this->pages->invalidatePageScopedCaches();
     }
 

@@ -241,7 +241,7 @@ final class LegacyRecordVersionTest extends QaWebTestCase
     {
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $this->pages->grantGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $subject);
     }
 
     /**

@@ -220,7 +220,7 @@ final class QaFormListFixture extends Fixture implements FixtureGroupInterface
         ]));
 
         $this->em->flush();
-        $this->aclService->addGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true, em: $this->em);
+        $this->aclService->addGroupAcl($page, $subject, $this->em);
         $this->em->flush();
 
         // A menu entry of the mobile drawer, so the app draws it as a route screen. The events page stays
@@ -354,7 +354,7 @@ final class QaFormListFixture extends Fixture implements FixtureGroupInterface
         }
 
         $this->em->flush();
-        $this->aclService->addGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true, em: $this->em);
+        $this->aclService->addGroupAcl($page, $subject, $this->em);
         $this->em->flush();
     }
 

@@ -354,16 +354,10 @@ class AdminGroupControllerTest extends BaseControllerTest
                 [
                     'page_id' => $this->testPageIds[0],
                     'acl_select' => true,
-                    'acl_insert' => true,
-                    'acl_update' => false,
-                    'acl_delete' => false
                 ],
                 [
                     'page_id' => $this->testPageIds[1],
                     'acl_select' => true,
-                    'acl_insert' => false,
-                    'acl_update' => true,
-                    'acl_delete' => false
                 ]
             ]
         ];
@@ -387,7 +381,51 @@ class AdminGroupControllerTest extends BaseControllerTest
         $this->assertArrayHasKey('data', $data);
         $payload = $this->asArray($data['data']);
         $this->assertArrayHasKey('acls', $payload);
-        $this->assertCount(2, $this->asArray($payload['acls']));
+        $acls = $this->asArray($payload['acls']);
+        $this->assertCount(2, $acls);
+        foreach ($acls as $acl) {
+            $row = $this->asArray($acl);
+            $this->assertArrayHasKey('acl_select', $row);
+            $this->assertArrayNotHasKey('acl_insert', $row);
+            $this->assertArrayNotHasKey('acl_update', $row);
+            $this->assertArrayNotHasKey('acl_delete', $row);
+        }
+    }
+
+    /**
+     * @group group-management
+     */
+    public function testUpdateGroupAclsRejectsLegacyInsertBit(): void
+    {
+        $this->testCreateGroupSuccess();
+
+        if (empty($this->testPageIds)) {
+            $this->markTestSkipped('No pages available for ACL testing');
+        }
+
+        $aclData = [
+            'acls' => [
+                [
+                    'page_id' => $this->testPageIds[0],
+                    'acl_select' => true,
+                    'acl_insert' => true,
+                ],
+            ],
+        ];
+
+        $this->client->request(
+            'PUT',
+            '/cms-api/v1/admin/groups/' . $this->testGroupId . '/acls',
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
+                'CONTENT_TYPE' => 'application/json',
+            ],
+            (string) json_encode($aclData)
+        );
+
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
     }
 
     /**

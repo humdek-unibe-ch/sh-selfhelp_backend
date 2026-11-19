@@ -240,16 +240,8 @@ final class FormControllerTest extends QaWebTestCase
 
     public function testAuthenticatedInsertWithAclGrantCreatesRecord(): void
     {
-        [$page, $section] = $this->pages->createFormPage('qa_form_acl_insert', openAccess: false);
-        $this->pages->grantGroupAcl(
-            $page,
-            $this->subjectGroup(),
-            select: true,
-            insert: true,
-            update: false,
-            delete: false,
-            affectedUserIds: [$this->qaUserId()],
-        );
+        [$page, $section] = $this->pages->createFormPage('qa_form_acl_select_grant', openAccess: false);
+        $this->pages->grantGroupAcl($page, $this->subjectGroup(), affectedUserIds: [$this->qaUserId()]);
 
         $envelope = $this->jsonRequest('POST', self::SUBMIT, [
             'page_id' => (int) $page->getId(),
@@ -265,15 +257,7 @@ final class FormControllerTest extends QaWebTestCase
     public function testAuthenticatedSubmitWithForbiddenFieldReturns400(): void
     {
         [$page, $section] = $this->pages->createFormPage('qa_form_acl_forbidden', openAccess: false);
-        $this->pages->grantGroupAcl(
-            $page,
-            $this->subjectGroup(),
-            select: true,
-            insert: true,
-            update: false,
-            delete: false,
-            affectedUserIds: [$this->qaUserId()],
-        );
+        $this->pages->grantGroupAcl($page, $this->subjectGroup(), affectedUserIds: [$this->qaUserId()]);
 
         // 'id' is a forbidden field rejected by FormValidationService after ACL passes.
         $envelope = $this->jsonRequest('POST', self::SUBMIT, [
@@ -283,6 +267,7 @@ final class FormControllerTest extends QaWebTestCase
         ], $this->loginAsQaUser());
         $this->assertEnvelope400($envelope);
     }
+
 
     public function testAuthenticatedInsertWithoutAclGrantIsForbidden(): void
     {
@@ -321,15 +306,7 @@ final class FormControllerTest extends QaWebTestCase
     public function testDeleteFormWithNonDeleteCapableSectionReturns400(): void
     {
         [$page, $section] = $this->pages->createFormPage('qa_form_delete_wrongtype', openAccess: false);
-        $this->pages->grantGroupAcl(
-            $page,
-            $this->subjectGroup(),
-            select: true,
-            insert: false,
-            update: false,
-            delete: true,
-            affectedUserIds: [$this->qaUserId()],
-        );
+        $this->pages->grantGroupAcl($page, $this->subjectGroup(), affectedUserIds: [$this->qaUserId()]);
 
         // ACL delete passes, but a form-record section is not a delete-capable
         // style (entry-table / entry-record-delete) → 400.
@@ -349,15 +326,7 @@ final class FormControllerTest extends QaWebTestCase
         [$page, $formSection] = $this->pages->createFormPage('qa_form_entry_del', openAccess: false);
         $deleteSection = $this->pages->createSection('qa_form_entry_del_btn', 'entry-record-delete');
         $this->pages->linkSectionToPage($page, $deleteSection, 20);
-        $this->pages->grantGroupAcl(
-            $page,
-            $this->subjectGroup(),
-            select: true,
-            insert: true,
-            update: false,
-            delete: true,
-            affectedUserIds: [$this->qaUserId()],
-        );
+        $this->pages->grantGroupAcl($page, $this->subjectGroup(), affectedUserIds: [$this->qaUserId()]);
 
         $token = $this->loginAsQaUser();
         $submit = $this->jsonRequest('POST', self::SUBMIT, [

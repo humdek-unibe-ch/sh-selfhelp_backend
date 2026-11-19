@@ -85,7 +85,7 @@ final class UserManagementLifecycleTest extends QaWebTestCase
         $grantedPage = $this->pages->createPage(self::PAGE_KEYWORD . '_granted', openAccess: false);
         $this->pages->linkSectionToPage($grantedPage, $this->pages->createSection('qa_lifecycle_granted_s'), 10);
         $grantedId = (int) $grantedPage->getId();
-        $this->pages->grantGroupAcl($grantedPage, $group, select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($grantedPage, $group);
 
         $deniedPage = $this->pages->createPage(self::PAGE_KEYWORD . '_denied', openAccess: false);
         $this->pages->linkSectionToPage($deniedPage, $this->pages->createSection('qa_lifecycle_denied_s'), 10);

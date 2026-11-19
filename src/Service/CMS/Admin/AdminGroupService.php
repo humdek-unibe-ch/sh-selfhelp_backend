@@ -438,9 +438,6 @@ class AdminGroupService extends BaseService
             'page_keyword' => $acl->getPage()?->getKeyword(),
             'page_url' => $acl->getPage()?->getUrl(),
             'acl_select' => $acl->getAclSelect(),
-            'acl_insert' => $acl->getAclInsert(),
-            'acl_update' => $acl->getAclUpdate(),
-            'acl_delete' => $acl->getAclDelete()
         ];
     }
 
@@ -530,14 +527,16 @@ class AdminGroupService extends BaseService
                     throw new ServiceException('Page not found: ' . $pageId, Response::HTTP_NOT_FOUND);
                 }
 
-                // Create new ACL
+                // A row means "can see". Omitting the page from the list removes
+                // access; acl_select:false is treated the same as omitting.
+                if (!(bool) ($aclData['acl_select'] ?? true)) {
+                    continue;
+                }
+
                 $acl = new PageAclGroup();
                 $acl->setGroup($group);
                 $acl->setPage($pageMap[$pageId]);
-                $acl->setAclSelect((bool) ($aclData['acl_select'] ?? true));
-                $acl->setAclInsert((bool) ($aclData['acl_insert'] ?? false));
-                $acl->setAclUpdate((bool) ($aclData['acl_update'] ?? false));
-                $acl->setAclDelete((bool) ($aclData['acl_delete'] ?? false));
+                $acl->setAclSelect(true);
 
                 $this->entityManager->persist($acl);
             }

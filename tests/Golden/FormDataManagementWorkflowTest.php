@@ -99,9 +99,7 @@ final class FormDataManagementWorkflowTest extends QaWebTestCase
             'page' => $page,
         ]);
         self::assertInstanceOf(PageAclGroup::class, $subjectAcl, 'createPage must seed a base subject ACL row.');
-        self::assertTrue($subjectAcl->getAclSelect());
-        self::assertFalse($subjectAcl->getAclInsert(), 'The participant works through a select-only page right.');
-        self::assertFalse($subjectAcl->getAclUpdate());
+        self::assertTrue($subjectAcl->getAclSelect(), 'The participant works through a select page right.');
 
         $user = $this->loginAsQaUser();
 

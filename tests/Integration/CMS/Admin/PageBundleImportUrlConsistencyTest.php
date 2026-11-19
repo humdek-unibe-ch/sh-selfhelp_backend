@@ -116,9 +116,6 @@ final class PageBundleImportUrlConsistencyTest extends QaWebTestCase
                 'Imported public page must give select to the default group.'
             );
             self::assertTrue($publicAcl->isAclSelect());
-            self::assertFalse($publicAcl->isAclInsert());
-            self::assertFalse($publicAcl->isAclUpdate());
-            self::assertFalse($publicAcl->isAclDelete());
 
             self::assertNull(
                 $em->getRepository(PageAclGroup::class)->findOneBy([
