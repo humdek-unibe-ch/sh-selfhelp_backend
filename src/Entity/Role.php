@@ -31,6 +31,13 @@ class Role
     #[ORM\Column(name: 'description', type: Types::STRING, length: 255, nullable: true)]
     private ?string $description = null;
 
+    /**
+     * Full-access role (F10). Replaces matching on the name "admin".
+     * The flag cannot be changed through the API; the role cannot be deleted.
+     */
+    #[ORM\Column(name: 'is_superuser', type: Types::BOOLEAN, options: ['default' => false])]
+    private bool $isSuperuser = false;
+
     /** @var Collection<int, Permission> */
     #[ORM\ManyToMany(targetEntity: Permission::class, mappedBy: 'roles')]
     private Collection $permissions;
@@ -84,6 +91,17 @@ class Role
     public function setDescription(?string $description): self
     {
         $this->description = $description;
+        return $this;
+    }
+
+    public function isSuperuser(): bool
+    {
+        return $this->isSuperuser;
+    }
+
+    public function setIsSuperuser(bool $isSuperuser): self
+    {
+        $this->isSuperuser = $isSuperuser;
         return $this;
     }
 

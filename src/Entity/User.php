@@ -131,6 +131,13 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'boolean', options: ['default' => 0])]
     private bool $blocked = false;
 
+    /**
+     * Built-in system account (F10). Replaces matching on fixed display names.
+     * Cannot be deleted or have this flag changed through the API.
+     */
+    #[ORM\Column(name: 'is_system', type: 'boolean', options: ['default' => 0])]
+    private bool $is_system = false;
+
     #[ORM\Column(type: 'integer', nullable: true, options: ['default' => 1])]
     private ?int $id_status = 1;
 
@@ -277,6 +284,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setBlocked(bool $blocked): static
     {
         $this->blocked = $blocked;
+
+        return $this;
+    }
+
+    public function isSystem(): bool
+    {
+        return $this->is_system;
+    }
+
+    public function setIsSystem(bool $isSystem): static
+    {
+        $this->is_system = $isSystem;
 
         return $this;
     }
