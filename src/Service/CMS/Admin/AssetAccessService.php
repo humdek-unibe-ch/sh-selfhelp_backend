@@ -17,6 +17,7 @@ use App\Repository\UserRepository;
 use App\Service\Auth\UserContextService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
+use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -40,14 +41,11 @@ class AssetAccessService extends BaseService
     /** Route permission that lets a role upload assets (and so manage its own uploads by default). */
     private const CREATE_PERMISSION = 'admin.asset.create';
 
-    /** The admin role's id, read once per request by {@see withoutAdminRole()}. */
-    private ?int $adminRoleId = null;
-    private bool $adminRoleIdLoaded = false;
-
     public function __construct(
         private readonly UserContextService $userContextService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly AdminDataAccessService $dataAccess,
+        private readonly CreatorGrantService $creatorGrants,
         private readonly EntityManagerInterface $entityManager,
         private readonly UserRepository $userRepository,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
@@ -188,10 +186,10 @@ class AssetAccessService extends BaseService
             ->where('rda.idResourceTypes = :type')
             ->andWhere('rda.resourceId IN (:ids)')
             ->andWhere('rda.crudPermissions > 0')
-            ->andWhere('r.name != :adminRole')
+            ->andWhere('r.isSuperuser = :notSuper')
             ->setParameter('type', $this->resourceTypeId())
             ->setParameter('ids', $assetIds)
-            ->setParameter('adminRole', DataAccessSecurityService::ADMIN_ROLE_NAME)
+            ->setParameter('notSuper', false)
             ->orderBy('r.name')
             ->getQuery()
             ->getArrayResult();
@@ -229,17 +227,7 @@ class AssetAccessService extends BaseService
      */
     public function withoutAdminRole(array $roleIds): array
     {
-        if ($roleIds === []) {
-            return [];
-        }
-
-        if (!$this->adminRoleIdLoaded) {
-            $admin = $this->entityManager->getRepository(Role::class)->findOneBy(['name' => DataAccessSecurityService::ADMIN_ROLE_NAME]);
-            $this->adminRoleId = $admin instanceof Role ? $admin->getId() : null;
-            $this->adminRoleIdLoaded = true;
-        }
-
-        return array_values(array_filter($roleIds, fn (int $roleId): bool => $roleId !== $this->adminRoleId));
+        return $this->creatorGrants->withoutAdminRole($roleIds);
     }
 
     /**
@@ -341,27 +329,9 @@ class AssetAccessService extends BaseService
      */
     private function defaultManagingRoleIds(): array
     {
-        $userId = $this->userId();
-        if ($userId === null) {
-            return [];
-        }
-
-        /** @var list<array{id: int|string}> $rows */
-        $rows = $this->entityManager->createQueryBuilder()
-            ->select('DISTINCT r.id')
-            ->from(Role::class, 'r')
-            ->innerJoin('r.users', 'u')
-            ->innerJoin('r.permissions', 'p')
-            ->where('u.id = :userId')
-            ->andWhere('p.name = :permission')
-            ->andWhere('r.name != :adminRole')
-            ->setParameter('userId', $userId)
-            ->setParameter('permission', self::CREATE_PERMISSION)
-            ->setParameter('adminRole', DataAccessSecurityService::ADMIN_ROLE_NAME)
-            ->getQuery()
-            ->getArrayResult();
-
-        return array_map(static fn (array $row): int => (int) $row['id'], $rows);
+        return $this->creatorGrants->withoutAdminRole(
+            $this->creatorGrants->callerRoleIdsHolding(self::CREATE_PERMISSION),
+        );
     }
 
     private function resourceTypeId(): int

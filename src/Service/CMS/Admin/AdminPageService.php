@@ -29,6 +29,7 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\UserContextAwareService;
+use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -66,6 +67,7 @@ class AdminPageService extends BaseService
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly CmsAppService $cmsAppService,
+        private readonly CreatorGrantService $creatorGrants,
     ) {
     }
 
@@ -255,6 +257,13 @@ class AdminPageService extends BaseService
                 $grantedGroupIds[$groupId] = true;
             }
 
+            // F14: the caller's roles that hold admin.page.create get full
+            // data-access on the new page (admin role is never stored).
+            $this->creatorGrants->grantCallerRolesHolding(
+                'admin.page.create',
+                LookupService::RESOURCE_TYPES_PAGES,
+                (int) $page->getId(),
+            );
 
 
             if (is_array($navigationAssignments) && $navigationAssignments !== []) {
