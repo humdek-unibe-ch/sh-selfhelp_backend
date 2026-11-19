@@ -220,6 +220,15 @@ Pages contributed under `adminPages` are mounted at
 layout, breadcrumbs, and permission gating; your component renders the
 page body.
 
+Each admin page declares exactly one `permission` in `plugin.json`
+(rule 4.13). It must be the `key` of an entry in the same manifest's
+`permissions` block: the manifest validator refuses any other value with
+`Admin page "<slug>" uses permission "<key>", which the plugin does not
+declare.` The public manifest endpoint (`GET /cms-api/v1/plugins/manifest`)
+returns each page's `slug`, `label` and `permission`, and the host checks
+that permission on the server when the page is opened, not only in the
+menu.
+
 ### Menu items
 
 Menu items are merged into the host menu by the `PluginRuntime`. The

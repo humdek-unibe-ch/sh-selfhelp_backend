@@ -378,7 +378,10 @@
                 "properties": {
                     "slug": {"type": "string"},
                     "label": {"type": "string"},
-                    "permission": {"type": "string"},
+                    "permission": {
+                        "type": "string",
+                        "description": "The one permission that opens this admin page and shows its menu entry (rule 4.13). It must be the `key` of an entry in this manifest's own `permissions`; the manifest validator refuses any other value. The host checks it on the server when the page is opened."
+                    },
                     "icon": {"type": "string"}
                 }
             }
@@ -433,6 +436,10 @@
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Required permissions, looked up by name in `permissions`. Use this when a route needs more than one permission; otherwise prefer the `permission` shorthand."
+                    },
+                    "public": {
+                        "type": "boolean",
+                        "description": "When true, the host stores `api_routes.is_public = 1` and ApiSecurityListener lets any caller through with no permission check. A route needs at least one permission OR `public: true`, never both (and never neither)."
                     }
                 }
             }

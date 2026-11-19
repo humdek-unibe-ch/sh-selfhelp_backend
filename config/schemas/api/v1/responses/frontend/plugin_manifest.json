@@ -31,6 +31,21 @@
                             "frontendRuntimeFormat": { "type": ["string", "null"] },
                             "mobilePackage": { "type": ["string", "null"] },
                             "mobilePackageVersion": { "type": ["string", "null"] },
+                            "adminPages": {
+                                "type": "array",
+                                "description": "The plugin's admin pages. `permission` is the one permission that opens the page and shows its menu entry (rule 4.13); the manifest validator guarantees it is one of the plugin's own permissions, and the frontend checks it on the server when the page is opened.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "slug": { "type": "string" },
+                                        "label": { "type": "string" },
+                                        "permission": { "type": "string" },
+                                        "icon": { "type": "string" }
+                                    },
+                                    "required": ["slug", "label", "permission"],
+                                    "additionalProperties": false
+                                }
+                            },
                             "compatibility": {
                                 "type": "object",
                                 "description": "Echo of the plugin manifest compatibility ranges the host/manager preflight consumes. `mobile` is the mobile-renderer axis gated against the selected mobile-preview image's mobileRendererVersion.",
