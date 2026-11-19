@@ -100,9 +100,13 @@
               "description": {
                 "type": ["string", "null"],
                 "description": "Role description"
+              },
+              "is_superuser": {
+                "type": "boolean",
+                "description": "True for the superuser role (all permissions, cannot be deleted). Clients read superuser status from this flag, never from the role name."
               }
             },
-            "required": ["id", "name", "description"],
+            "required": ["id", "name", "description", "is_superuser"],
             "additionalProperties": false
           }
         },

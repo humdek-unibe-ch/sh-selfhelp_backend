@@ -259,7 +259,7 @@ class AdminRoleControllerTest extends BaseControllerTest
         // First create a role for this test
         $this->testCreateRoleSuccess();
         
-        // Role name is an immutable identifier; updateRole only mutates description.
+        // Renaming is allowed (including for the superuser role); description updates too.
         $updateData = [
             'name' => $this->testRoleName . ' Updated',
             'description' => 'Updated description'
@@ -283,9 +283,10 @@ class AdminRoleControllerTest extends BaseControllerTest
         $data = $this->decodeArray();
         $role = $this->asArray($data['data']);
         
-        // Name stays the original (immutable); description changes.
-        $this->assertSame($this->testRoleName, $role['name']);
+        $this->assertSame($updateData['name'], $role['name']);
         $this->assertSame($updateData['description'], $role['description']);
+        $this->assertArrayHasKey('is_superuser', $role);
+        $this->assertFalse($role['is_superuser']);
     }
 
     /**

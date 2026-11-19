@@ -12,10 +12,11 @@
           "id": { "type": "integer", "description": "Role ID" },
           "name": { "type": "string", "description": "Role name" },
           "description": { "type": ["string", "null"], "description": "Role description" },
+          "is_superuser": { "type": "boolean", "description": "Whether this role passes every access check (F10)" },
           "permissions_count": { "type": "integer", "description": "Number of permissions in the role" },
           "users_count": { "type": "integer", "description": "Number of users with this role" }
         },
-        "required": ["id", "name", "permissions_count", "users_count"],
+        "required": ["id", "name", "is_superuser", "permissions_count", "users_count"],
         "additionalProperties": false
       }
     },

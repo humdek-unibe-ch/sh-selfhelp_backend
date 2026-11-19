@@ -34,9 +34,6 @@ class DataAccessSecurityService
     public const PERMISSION_UPDATE = 4;  // 0100
     public const PERMISSION_DELETE = 8;  // 1000
 
-    /** The role that passes every check; found by name (F10). */
-    public const ADMIN_ROLE_NAME = 'admin';
-
     public function __construct(
         private RoleDataAccessRepository $roleDataAccessRepository,
         private UserRepository $userRepository,
@@ -243,24 +240,32 @@ class DataAccessSecurityService
     }
 
     /**
-     * Check if user has admin role
+     * Whether the user holds a superuser role (`roles.is_superuser`).
+     * Kept as {@see userHasAdminRole} for call-site stability; the check is
+     * by flag, not by the role name "admin" (F10).
      */
     public function userHasAdminRole(int $userId): bool
     {
-        // Check cache first
+        return $this->userIsSuperuser($userId);
+    }
+
+    /**
+     * Whether the user holds a role with `is_superuser` (F10).
+     */
+    public function userIsSuperuser(int $userId): bool
+    {
         return $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getItem("user_has_admin_role", function () use ($userId) {
-                // Use Doctrine QueryBuilder to check if user has admin role
+            ->getItem("user_is_superuser", function () use ($userId) {
                 $qb = $this->entityManager->createQueryBuilder();
                 $count = $qb->select('COUNT(r.id)')
                     ->from(User::class, 'u')
                     ->innerJoin('u.roles', 'r')
                     ->where('u.id = :userId')
-                    ->andWhere('r.name = :adminRole')
+                    ->andWhere('r.isSuperuser = :superuser')
                     ->setParameter('userId', $userId)
-                    ->setParameter('adminRole', self::ADMIN_ROLE_NAME)
+                    ->setParameter('superuser', true)
                     ->getQuery()
                     ->getSingleScalarResult();
 

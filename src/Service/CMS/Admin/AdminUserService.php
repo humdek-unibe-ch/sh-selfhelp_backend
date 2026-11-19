@@ -40,7 +40,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AdminUserService extends BaseService
 {
-    private const SYSTEM_USERS = ['admin', 'tpf'];
     private const MAX_PAGE_SIZE = 100;
     private const DEFAULT_PAGE_SIZE = 20;
 
@@ -934,7 +933,7 @@ class AdminUserService extends BaseService
             $user = $this->findUserOrThrow($userId);
 
             // Prevent deletion of system users
-            if (in_array($user->getName(), self::SYSTEM_USERS)) {
+            if ($user->isSystem()) {
                 throw new ServiceException('Cannot delete system users', Response::HTTP_FORBIDDEN);
             }
 
@@ -1282,7 +1281,7 @@ class AdminUserService extends BaseService
         $outcome = $this->executeInTransaction(function () use ($userId) {
             $user = $this->findUserOrThrow($userId);
 
-            if (in_array($user->getName(), self::SYSTEM_USERS, true)) {
+            if ($user->isSystem()) {
                 throw new ServiceException('Cannot clean data of system users', Response::HTTP_FORBIDDEN);
             }
 
@@ -1356,7 +1355,7 @@ class AdminUserService extends BaseService
 
         $targetUser = $this->findUserOrThrow($targetUserId);
 
-        if (in_array($targetUser->getName(), self::SYSTEM_USERS, true)) {
+        if ($targetUser->isSystem()) {
             throw new ServiceException(
                 'Cannot impersonate system users',
                 Response::HTTP_FORBIDDEN
@@ -1773,7 +1772,8 @@ class AdminUserService extends BaseService
             return [
                 'id' => $role->getId(),
                 'name' => $role->getName(),
-                'description' => $role->getDescription()
+                'description' => $role->getDescription(),
+                'is_superuser' => $role->isSuperuser(),
             ];
         }, $user->getUserRoles()->toArray()));
     }
@@ -1805,7 +1805,8 @@ class AdminUserService extends BaseService
             return [
                 'id' => $role->getId(),
                 'name' => $role->getName(),
-                'description' => $role->getDescription()
+                'description' => $role->getDescription(),
+                'is_superuser' => $role->isSuperuser(),
             ];
         }, $user->getUserRoles()->toArray()));
     }
@@ -1837,6 +1838,7 @@ class AdminUserService extends BaseService
             'last_login' => $lastLoginFormatted,
             'status' => $user->getStatus()?->getLookupValue(),
             'blocked' => $user->isBlocked(),
+            'is_system' => $user->isSystem(),
             'receives_notifications' => $user->receivesNotifications(),
             'receives_emails' => $user->receivesEmails(),
             'code' => $validationCode,
@@ -1871,7 +1873,7 @@ class AdminUserService extends BaseService
      */
     private function getValidationCode(User $user): string
     {
-        if (in_array($user->getName(), self::SYSTEM_USERS)) {
+        if ($user->isSystem()) {
             return $this->asString($user->getName());
         }
 
