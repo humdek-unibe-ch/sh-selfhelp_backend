@@ -924,6 +924,8 @@ Retrieve all available roles.
 
 **Permissions:** `admin.role.read`
 
+Each role item (list and `GET /admin/roles/{roleId}`) also carries three per-caller booleans, added after the cache read (rule 4.11): `can_update`, `can_delete` and `fully_held`. `fully_held` is `true` when the caller holds every permission and every data-access grant bit of the role (rule 4.6f); a superuser caller gets `true` for every role, a caller who is not superuser gets `false` for the superuser role. Clients use it to disable roles the caller may not hand out (the managing roles of an asset), instead of showing the refusal after submit (F219). Example item: `{"id": 7, "name": "qa_read_role", "is_superuser": false, "permissions_count": 2, "users_count": 1, "can_update": true, "can_delete": false, "fully_held": true}`.
+
 ### Create Role
 
 Create a new role with assigned permissions.
@@ -1062,7 +1064,7 @@ Retrieve the complete list of available permissions.
 }
 ```
 
-**Permissions:** `admin.permission.read`
+**Permissions:** `admin.permission.read` or `admin.role.update` (a role editor needs the names to edit a role; F224). Each permission also carries the caller's `can_assign` and `implied_read`.
 
 ## Data Access Management
 

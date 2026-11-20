@@ -432,6 +432,20 @@ AND ar.route_name IN ('admin_pages_delete');
 3. **Controller Execution**: If authorized, controller method executes
 4. **ACL Check** (if applicable): Additional page-level ACL check for specific pages
 
+### Role editors and the permission catalogue (F224)
+
+`GET /admin/permissions` (route `admin_permissions_get_all`) passes for `admin.permission.read` **or** `admin.role.update` (migration `Version20261120083532`). A role editor who does not hold the catalogue right still needs the permission names and, per permission, `can_assign` (the caller holds it, so may hand it out) and `implied_read`. A caller who may only create roles or change a role's permission list (`admin.role.create`, `admin.role.permissions`) does not get the catalogue through this route.
+
+### Per-caller role flags (rules 4.6f, 4.11; F219)
+
+`GET /admin/roles` (each item) and `GET /admin/roles/{roleId}` carry per-caller flags, added after the shared cache read by `AdminRoleService::withCallerRoleFlags`:
+
+| Flag | Meaning |
+| --- | --- |
+| `can_update` | `fully_held` and the caller holds `admin.role.update` |
+| `can_delete` | `fully_held`, not the superuser role, no users, and the caller holds `admin.role.delete` |
+| `fully_held` | The caller holds every permission and every data-access grant bit of the role (`CallerHoldingsService::fullyHoldsRole`). A superuser caller: `true` for every role. A caller who is not superuser: `false` for the superuser role. No route permission is implied: pickers that hand a role out (the managing roles of an asset) use it to disable what the server would refuse |
+
 ## Frontend User ACL Database Schema
 
 ### ACL Tables Structure
