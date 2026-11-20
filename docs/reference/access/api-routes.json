@@ -1428,7 +1428,8 @@
       "path": "/admin/permissions",
       "is_public": false,
       "permissions": [
-        "admin.permission.read"
+        "admin.permission.read",
+        "admin.role.update"
       ]
     },
     {

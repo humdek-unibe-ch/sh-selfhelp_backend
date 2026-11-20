@@ -798,6 +798,7 @@ Can edit existing roles
 Routes:
 
 - `POST /admin/data-access/roles/{roleId}/permissions`
+- `GET /admin/permissions`
 - `PUT /admin/roles/{roleId}`
 
 Screens:
