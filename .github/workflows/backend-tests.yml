@@ -177,7 +177,7 @@ jobs:
         # permission catalogue must match the migrated database (F239).
         env:
           SELFHELP_FRONTEND_DIR: ${{ github.workspace }}/.frontend-checkout
-        run: php bin/phpunit --testsuite=Integration --group=security --testdox --log-junit build/phpunit/security.junit.xml
+        run: php -d memory_limit=2G bin/phpunit --testsuite=Integration --group=security --testdox --log-junit build/phpunit/security.junit.xml
 
       - name: PHPUnit golden suite (form -> action -> scheduled job + page versioning)
         # Mirrors `composer test:golden`; the reference business workflows.
