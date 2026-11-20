@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace App\Command\Test;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\EventListener\MigrationsCacheInvalidationListener;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -51,6 +52,7 @@ final class AppTestResetDbCommand extends Command
 
     public function __construct(
         private readonly Connection $connection,
+        private readonly MigrationsCacheInvalidationListener $migrationsCacheInvalidation,
         #[Autowire('%kernel.environment%')]
         private readonly string $appEnv,
         #[Autowire('%kernel.project_dir%')]
@@ -159,6 +161,15 @@ final class AppTestResetDbCommand extends Command
                 $io->error(sprintf('Step "%s" failed with exit code %d.', $step[0], $exitCode));
                 return Command::FAILURE;
             }
+        }
+
+        // The migrate step already cleared them (MigrationsCacheInvalidationListener,
+        // F216), but the fixtures ran after it and seed roles and permissions, so
+        // clear once more here and say so, instead of leaving Redis with old rights.
+        if ($this->migrationsCacheInvalidation->clear()) {
+            $io->writeln('Route and permission caches cleared (api_routes lists, permissions).');
+        } else {
+            $io->warning('Could not clear the route and permission caches; run "php bin/console cache:clear-api-routes --env=test".');
         }
 
         $io->success(sprintf(

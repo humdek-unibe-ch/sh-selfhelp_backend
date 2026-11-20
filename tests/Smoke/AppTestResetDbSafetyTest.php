@@ -10,10 +10,15 @@ declare(strict_types=1);
 namespace App\Tests\Smoke;
 
 use App\Command\Test\AppTestResetDbCommand;
+use App\EventListener\MigrationsCacheInvalidationListener;
+use App\Service\Cache\Core\CacheService;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\TagAwareAdapter;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -113,7 +118,17 @@ final class AppTestResetDbSafetyTest extends TestCase
 
     private function tester(string $appEnv, string $dbName, string $dbHost): CommandTester
     {
-        $command = new AppTestResetDbCommand($this->lazyConnection($dbName, $dbHost), $appEnv, sys_get_temp_dir());
+        // Never reached: every case here refuses before the cache clear at the end.
+        $cacheClearing = new MigrationsCacheInvalidationListener(
+            new CacheService(new TagAwareAdapter(new ArrayAdapter())),
+            new NullLogger(),
+        );
+        $command = new AppTestResetDbCommand(
+            $this->lazyConnection($dbName, $dbHost),
+            $cacheClearing,
+            $appEnv,
+            sys_get_temp_dir(),
+        );
 
         return new CommandTester($command);
     }
