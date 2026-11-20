@@ -21,6 +21,7 @@ use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
+use App\Service\Core\UserContextAwareService;
 use App\Service\Core\LookupService;
 use App\Service\Auth\UserContextService;
 use App\Util\JsonNormalizer;
@@ -59,6 +60,7 @@ class PageVersionService extends BaseService
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CacheService $cache,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly UserContextAwareService $userContextAwareService,
     ) {
     }
 
@@ -150,6 +152,9 @@ class PageVersionService extends BaseService
      */
     public function publishVersion(int $pageId, int $versionId): PageVersion
     {
+        // Publishing needs the update grant on this page, besides the route permission.
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
         try {
             $this->entityManager->beginTransaction();
 
@@ -218,6 +223,9 @@ class PageVersionService extends BaseService
         ?array $metadata = null,
         ?int $languageId = null
     ): PageVersion {
+        // Publishing needs the update grant on this page, besides the route permission.
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
         // Create the version
         $version = $this->createVersion($pageId, $versionName, $metadata, $languageId);
 
@@ -234,6 +242,9 @@ class PageVersionService extends BaseService
      */
     public function unpublishPage(int $pageId): void
     {
+        // Unpublishing needs the update grant on this page, besides the route permission.
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
         try {
             $this->entityManager->beginTransaction();
 
@@ -658,6 +669,15 @@ class PageVersionService extends BaseService
      */
     public function deleteVersion(int $versionId): void
     {
+        // Deleting a version changes the page's history: it needs the update grant
+        // on the version's own page (not the page named in the URL), checked before
+        // the transaction so a refusal stays a 403.
+        $versionPageId = $this->getVersionById($versionId)->getPage()?->getId();
+        if ($versionPageId === null) {
+            $this->throwNotFound("Page not found for version {$versionId}");
+        }
+        $this->userContextAwareService->checkAdminAccessById($versionPageId, 'update');
+
         try {
             $this->entityManager->beginTransaction();
 

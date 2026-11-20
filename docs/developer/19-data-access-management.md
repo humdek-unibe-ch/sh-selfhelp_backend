@@ -235,6 +235,23 @@ class DataAccessAudit
 // ENTITY RULE
 ```
 
+## Grants on new items (rule 6b)
+
+Whoever creates an item can manage it. On create, `CreatorGrantService`
+gives full CRUD on the new item to the caller's roles that hold the item's
+create permission; the superuser role is never stored (it passes anyway).
+
+| Item | Create permission | Where |
+| --- | --- | --- |
+| Page (API, bundle import, CMS-app wizard) | `admin.page.create` | `AdminPageService` (F14) |
+| Asset | `admin.asset.create` | `AssetAccessService` |
+| Group | `admin.group.create` | `AdminGroupService::createGroup` (since 0.1.48, F240) |
+| Data table made by a form | roles that can edit the page | `DataTableAdminAccessListener` (F15) |
+
+A new item type with per-item grants (including a plugin's) must grant its
+creator the same way before it ships; otherwise a scoped admin cannot see what
+they just created.
+
 ## Service Architecture
 
 ### Service-Specific Custom Filtering Approach

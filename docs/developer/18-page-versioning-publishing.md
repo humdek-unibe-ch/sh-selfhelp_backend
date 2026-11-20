@@ -304,6 +304,13 @@ ALTER TABLE `pages`
 
 ### Admin Endpoints
 
+Publishing, publishing a specific version and unpublishing need the route
+permission `admin.page_version.publish` **and** the update grant on that page
+(`UserContextAwareService::checkAdminAccessById($pageId, 'update')` in
+`PageVersionService`), like every other page write (since 0.1.48, F234).
+Deleting a version needs `admin.page_version.delete` and the update grant on the
+version's own page, whatever page the URL names (F235).
+
 #### Publish New Version
 ```http
 POST /cms-api/v1/admin/pages/{page_id}/versions/publish

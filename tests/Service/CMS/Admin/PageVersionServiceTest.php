@@ -9,7 +9,9 @@
 namespace App\Tests\Service\CMS\Admin;
 
 use App\Entity\Page;
+use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\PageVersion;
+use App\Entity\User;
 use App\Repository\PageRepository;
 use App\Repository\PageVersionRepository;
 use App\Service\CMS\Admin\PageVersionService;
@@ -19,6 +21,8 @@ use App\Service\Auth\UserContextService;
 use App\Tests\Support\NarrowsJson;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 /**
  * PageVersionService Test
@@ -54,6 +58,13 @@ class PageVersionServiceTest extends KernelTestCase
         $this->pageRepository = $pageRepository;
         $this->pageVersionRepository = $pageVersionRepository;
         $this->entityManager = $entityManager;
+
+        // Publishing checks the caller's grant on the page like every page write: act as the QA admin.
+        $admin = $entityManager->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
+        self::assertInstanceOf(User::class, $admin);
+        $tokenStorage = $container->get(TokenStorageInterface::class);
+        self::assertInstanceOf(TokenStorageInterface::class, $tokenStorage);
+        $tokenStorage->setToken(new UsernamePasswordToken($admin, 'main', $admin->getRoles()));
     }
 
     /**

@@ -89,6 +89,8 @@ class AdminPageController extends AbstractController
     {
         try {
             $pageWithFields = $this->adminPageService->getPageWithFields($page_id);
+            // Per caller, after the cached page is read: what this person may do with it.
+            $pageWithFields['rights'] = $this->adminPageService->pageRightsForCurrentUser($page_id);
             return $this->responseFormatter->formatSuccess($pageWithFields);
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);

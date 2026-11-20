@@ -29,6 +29,7 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\UserContextAwareService;
+use App\Service\Security\CallerHoldingsService;
 use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -68,7 +69,49 @@ class AdminPageService extends BaseService
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly CmsAppService $cmsAppService,
         private readonly CreatorGrantService $creatorGrants,
+        private readonly CallerHoldingsService $callerHoldings,
     ) {
+    }
+
+    /** Route permission each page right needs, besides the grant bit on the page. */
+    private const RIGHT_PERMISSIONS = [
+        'can_update' => 'admin.page.update',
+        'can_delete' => 'admin.page.delete',
+        'can_publish' => 'admin.page_version.publish',
+    ];
+
+    /** Grant bit on the page each right needs: publishing changes what visitors see, so it needs update. */
+    private const RIGHT_GRANT_BITS = [
+        'can_update' => DataAccessSecurityService::PERMISSION_UPDATE,
+        'can_delete' => DataAccessSecurityService::PERMISSION_DELETE,
+        'can_publish' => DataAccessSecurityService::PERMISSION_UPDATE,
+    ];
+
+    /**
+     * What the signed-in person may do with this page in the CMS, by the two
+     * checks an editor needs (concepts "The three checks"): the route
+     * permission and the grant bit on this page. The superuser may do all.
+     * Per caller, so it is added after the cached page is read and never
+     * cached with it. Only drawing: every write still checks on its own.
+     *
+     * @return array{can_update: bool, can_delete: bool, can_publish: bool}
+     */
+    public function pageRightsForCurrentUser(int $pageId): array
+    {
+        $user = $this->userContextAwareService->getCurrentUser();
+        $userId = $user !== null ? (int) $user->getId() : 0;
+        $pagesTypeId = (int) $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_PAGES);
+
+        $rights = ['can_update' => false, 'can_delete' => false, 'can_publish' => false];
+        if ($userId <= 0 || $pagesTypeId <= 0) {
+            return $rights;
+        }
+        foreach (self::RIGHT_PERMISSIONS as $right => $permission) {
+            $rights[$right] = $this->callerHoldings->holdsPermission($userId, $permission)
+                && $this->callerHoldings->holdsGrantBits($userId, $pagesTypeId, $pageId, self::RIGHT_GRANT_BITS[$right]);
+        }
+
+        return $rights;
     }
 
     /**
