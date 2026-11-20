@@ -1,3 +1,129 @@
+# v0.1.48
+
+## Roles and group access limited by what the caller holds; one read right per admin area
+
+Handing out access is limited by what the caller holds everywhere, not only when
+roles are given to users. A scoped admin manages roles and groups inside their
+own rights; only the superuser role goes beyond. Every core admin screen opens
+with one read permission of its area; a role that gets any right of an area also
+gets the area's read right.
+
+### Permission names and route rights (C1)
+
+- `admin.settings` removed; split into `admin.language.read` and
+  `admin.language.update` (holders of the old name get both).
+- `admin.audit.view` → `admin.audit.read`; `admin.mobile_preview.view` →
+  `admin.mobile_preview.read` (same holders and route links).
+- New `admin.section.read` for every role that holds `admin.section.delete`.
+- Route permissions: language GETs need `.read`, language writes need `.update`;
+  audit GETs need `admin.audit.read`; unused-sections GET needs
+  `admin.section.read` (deletes stay on `admin.section.delete`); data-access
+  GETs need only `admin.role.read`, the grant write needs only
+  `admin.role.update`.
+
+### Read implied (C2)
+
+For a core permission `admin.<area>.<action>` (three segments, action not
+`read`), if `admin.<area>.read` exists it is the implied read. On every role
+permission write the server adds it; removing an area's `.read` removes the
+area's other rights. A replace list that holds an area right but not its read
+ends with both. Migration repairs existing roles.
+
+### Role and permission items (C3)
+
+After the shared cache read, role items carry `can_update` / `can_delete` and
+permission items carry `can_assign` / `implied_read` for the caller (rule 4.11,
+rule 3 reading 8).
+
+Group items in `GET /admin/groups` carry `can_update` / `can_delete` for the
+caller the same way (rule 4.11): the route right (`admin.group.update` /
+`admin.group.delete`) and the update / delete bit on that group; the superuser
+both. Added after the cached list is read, never cached with it. A view-only
+grant on a group therefore draws no Edit or Delete control (F239 walk).
+
+### Refusals (C4)
+
+All answer `403` with a named reason: rights the caller does not hold; changing
+or deleting a role above them; `permission_ids` without `admin.role.permissions`;
+group page visibility without update on the group or on a changed page; reading
+a group without read on it.
+
+### Rules
+
+- **4.6f:** a non-superuser may create, change or delete a role only when
+  everything in it (permissions and grant bits), before and after, is held by
+  the caller; putting `permission_ids` needs `admin.role.permissions`.
+- **4.6g:** changing which pages a group sees needs update on the group and on
+  every page whose visibility is added or removed; reading a group needs read
+  on it.
+- **4.13:** one read permission opens each core admin area; other rights of the
+  area assume it (by name for core `admin.*`).
+- Asset managing roles follow 4.6f with the asset counted as held: the caller
+  holds the asset they upload or manage, but a managing role they do not fully
+  hold is refused with `403` (so a non-admin editor can still upload).
+
+### Page rights and publishing (F234)
+
+- `GET /admin/pages/{page_id}` returns `rights` (`can_update`, `can_delete`,
+  `can_publish`) for the caller: the route permission and the grant on that
+  page; the superuser all. Added after the cached page is read, never cached
+  with it. Schema `responses/admin/pages/get_page_fields` requires it.
+- Publishing and unpublishing a page (`POST .../versions/publish`,
+  `.../versions/{version_id}/publish`, `.../versions/unpublish`) now need the
+  update grant on that page, like every other page write. Before, the route
+  permission alone was enough for any page.
+- Deleting a page version (`DELETE .../versions/{version_id}`, route permission
+  `admin.page_version.delete`) now needs the update grant on the version's own
+  page, checked before the transaction so a refusal is a `403` (F235).
+- The permission `admin.page.insert` is removed (migration
+  `Version20261119150228`): no route or check ever used it. `admin.page.update`
+  covers editing a page and adding, moving and removing its sections.
+- Importing sections into a page or a section and restoring sections from a
+  version need `admin.page.update` instead of `admin.page.export` (migration
+  `Version20261119150622`, F237). Exporting keeps `admin.page.export`. Clear the
+  API route cache after migrating (`php bin/console cache:clear-api-routes`).
+- Whoever creates a group can manage it: the creator's roles that hold
+  `admin.group.create` get full access on the new group (like pages and
+  assets, rule 6b). Before, a non-admin could not see the group they created
+  (F240).
+- Permission catalogue cleanup (migration `Version20261119151821`): reading an
+  action's translations needs `admin.action.read` (roles that held
+  `admin.action_translation.read` get it); `admin.action_translation.read`,
+  `admin.page_version.create`, `admin.page_version.unpublish`,
+  `admin.user.unblock` and `admin.cms_preferences.update` are removed. None of
+  the four last ones guarded a route: unpublishing needs
+  `admin.page_version.publish`, unblocking `admin.user.block`, preferences are
+  edited on their configuration page.
+
+### Access check tooling (F239)
+
+- `php bin/console app:access:export` writes two generated, committed files:
+  `docs/reference/access/api-routes.json` (every core route with its methods,
+  public flag and permissions, plus every core permission with its description)
+  and `docs/reference/permissions.md` (the permission catalogue: each permission
+  with its routes and the admin screens that open with it, read from the
+  frontend's `docs/reference/admin-screens.json`). `--check` writes nothing and
+  exits 1 when a file is stale, the screens file is missing, or a core
+  permission guards no route and opens no screen (rule 4.14). `--frontend-dir`
+  or `SELFHELP_FRONTEND_DIR` points at the frontend checkout.
+- `AccessCatalogueFreshnessTest` (group `security`) runs the same three checks
+  in `backend-tests`; the workflow checks out the same-named frontend branch,
+  else `main`. The frontend compares its route declarations with
+  `api-routes.json` in its own CI.
+- Restricted QA personas for the access walk: one read-only user per core
+  `admin.<area>.read` (`qa.read.<area>@selfhelp.test`, role `qa_read_<area>`,
+  holding only `admin.access` and that read right) and `qa.readupdate@selfhelp.test`
+  (role `qa_read_update`: every core read and update right, and only the view
+  bit on the QA page, data table and group `qa_access_group`). Created through
+  the role services as `qa.admin`; `QA_FIXTURE_VERSION` is `2026_11_19_001`.
+
+### Compatibility
+
+- `release-manifest.json`: `supports.frontend` is raised to `>=0.1.75 <0.2.0`.
+- Pairs with frontend `supports.core` `>=0.1.48` and `@selfhelp/shared` 1.27.0.
+- `selfhelp_cms_version_default` is `0.1.48`.
+- Migration `Version20261119085933`.
+
 # v0.1.47
 
 ## Access cleanup (F03, F01, F14, F15, F02, F09, F10, F13)

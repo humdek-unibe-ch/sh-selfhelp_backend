@@ -95,10 +95,11 @@ the same change wave:
 - raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
   adopts it.
 
-> **Current floor (2026-11-18):** **frontend `>=0.1.74` ⇄ core `>=0.1.47`** (access cleanup:
-> `is_public` routes, `is_superuser` / `is_system` flags, one-right page ACL; 0.1.74 is the first frontend of
+> **Current floor (2026-11-19):** **frontend `>=0.1.75` ⇄ core `>=0.1.48`** (role-scope:
+> permission renames/split, implied area reads, caller-held role/group edits; 0.1.75 is the first frontend of
 > that wave).
-> The floor before it was frontend `>=0.1.72` ⇄ core `>=0.1.45` (list-is-the-form).
+> The floor before it was frontend `>=0.1.74` ⇄ core `>=0.1.47` (access cleanup).
+> Earlier: frontend `>=0.1.72` ⇄ core `>=0.1.45` (list-is-the-form).
 > Earlier: frontend `>=0.1.70` ⇄ core `>=0.1.43` (the 0.1.43 wave).
 > Historical note, kept for context: the earlier floor
 > was the **core 0.1.17** style-schema contract
@@ -202,25 +203,25 @@ the same change wave:
 > `instanceMobilePreviewUpdate`), so a CMS-requested preview install/update is
 > executed and rolled-back (on a failed health check) exactly like the CLI path.
 
-> **Core 0.1.21 (CMS Live Preview entitlement):** core `0.1.21` seeds the
-> `admin.mobile_preview.view` permission (migration `Version20260623193630`,
-> granted to the `admin` role). It is the dedicated entitlement for the
-> frontend's full-screen **Live Preview** surface — a new-tab, free-navigation
-> mobile/web preview to test the real flow — kept SEPARATE from
-> `admin.mobile_preview.create` (the one-time-code mint). The change is
-> **additive**: no new `api_route` and no schema change (the live preview reuses
-> the existing admin mint + public exchange routes); the permission only surfaces
-> in the admin user-data `permissions[]`. The free-navigation behaviour needs no
-> backend change either — the mint request schema has no required fields and
-> `MobilePreviewAccessGuard` only pins to one keyword when a `keyword`/`page_id`
-> scope is bound, so a keyword-less mint already renders any page (GET-only,
-> read-only allowlist). **Frontend 0.1.33** adopts the live preview and gates it
-> on the new permission, so the frontend `supports.core` floor rises
-> `0.1.20` → `0.1.21`. The backend `supports.frontend` floor is **unchanged**
-> (`>=0.1.30`): the permission is additive and the UI is optional, so the core
-> does not require the newer frontend. No `@selfhelp/shared` change (the
-> permission string is a frontend constant; the mobile off-menu modal flag is a
-> local embed-contract param).
+> **Core 0.1.21 (CMS Live Preview entitlement):** core `0.1.21` seeds the live
+> preview entitlement (migration `Version20260623193630`, granted to the admin
+> role; renamed to `admin.mobile_preview.read` in core 0.1.48). It is the
+> dedicated entitlement for the frontend's full-screen **Live Preview** surface —
+> a new-tab, free-navigation mobile/web preview to test the real flow — kept
+> SEPARATE from `admin.mobile_preview.create` (the one-time-code mint). The
+> change is **additive**: no new `api_route` and no schema change (the live
+> preview reuses the existing admin mint + public exchange routes); the
+> permission only surfaces in the admin user-data `permissions[]`. The
+> free-navigation behaviour needs no backend change either — the mint request
+> schema has no required fields and `MobilePreviewAccessGuard` only pins to one
+> keyword when a `keyword`/`page_id` scope is bound, so a keyword-less mint
+> already renders any page (GET-only, read-only allowlist). **Frontend 0.1.33**
+> adopts the live preview and gates it on the new permission, so the frontend
+> `supports.core` floor rises `0.1.20` → `0.1.21`. The backend
+> `supports.frontend` floor is **unchanged** (`>=0.1.30`): the permission is
+> additive and the UI is optional, so the core does not require the newer
+> frontend. No `@selfhelp/shared` change (the permission string is a frontend
+> constant; the mobile off-menu modal flag is a local embed-contract param).
 
 > **Live Preview preference bridge (`@selfhelp/shared 1.15.3`, frontend
 > `0.1.40` ⇄ mobile `0.1.19`):** the shared contract still carries colour
@@ -661,13 +662,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.47` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.48` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.24.0` | npm (1.21.x wave + rate-limit helpers / `alert_rate_limited` in 1.22.0 + `files_public` in 1.22.1; entry-list types, URL grammar and form-error helpers in 1.24.0). Not published yet: the consumers already pin `1.24.0`, so a registry-backed `npm ci` fails with a 404 until it is published. Do not use staged git tags `v2*` / `v3*` from this branch. |
 | `sh-selfhelp_frontend` | `0.1.73` | scaffold wizard sends `form_fields[].translatable`; remembered splitter, inspector search, sidebar header (P2/P3 of admin-editor-polish) |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.24.0` (not on npm yet) | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` + rate-limit helpers + `files_public`; 1.24.0 adds the entry-list types, URL grammar and form-error helpers |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.47 <0.2.0` | core 0.1.47 wave (access cleanup) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.74 <0.2.0` | frontend 0.1.74 adopts the core 0.1.47 wave |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.48 <0.2.0` | core 0.1.48 wave (role-scope) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.75 <0.2.0` | frontend 0.1.75 adopts the core 0.1.48 wave |
 | `sh-selfhelp_backend` → manager (`release-manifest.json` `supports.manager`) | `>=1.7.0` | manager that backs up form_files/assets/plugin volumes (registry `requiresManager` raised at publish) |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.35` | entry lists on the phone; floor-neutral for manager |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.45 <0.2.0` | list is the form; pair via `supports.core` |
