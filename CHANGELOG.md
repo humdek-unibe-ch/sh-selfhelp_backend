@@ -1,3 +1,35 @@
+# Unreleased
+
+## Access housekeeping
+
+- A migration run now clears the API route lists and the permission cache by
+  itself (`MigrationsCacheInvalidationListener` on `onMigrationsMigrated`), so
+  renamed permissions and re-linked routes are effective at once after a
+  manager update, a fresh install or `app:test:reset-db`; `app:test:reset-db`
+  prints that it cleared them (F216).
+- `CallerHoldingsService` implements `ResetInterface`, so a long-running
+  process (Messenger worker) no longer answers from holdings read before a
+  role change (F211).
+- CI: the `security` group step runs with `memory_limit=2G`, so
+  `AssetBundleTest` no longer depends on the runner's default (F217).
+
+## Grant pickers
+
+- `GET /admin/permissions` now also passes for `admin.role.update` (migration
+  `Version20261120083532`), so a role editor without `admin.permission.read`
+  sees permission names and `can_assign` in the role form (F224). The generated
+  `api-routes.json` and `permissions.md` are re-exported.
+- Role items (`GET /admin/roles` and `GET /admin/roles/{roleId}`) carry a new
+  per-caller boolean `fully_held`: the caller holds every permission and every
+  grant bit of the role (rule 4.6f), added after the cache read. The asset role
+  pickers use it to disable roles the caller may not hand out (F219).
+- QA persona `qa.roleupdate@selfhelp.test` (role `qa_role_update`: `admin.access`,
+  `admin.role.read`, `admin.role.update`); `QA_FIXTURE_VERSION` is
+  `2026_11_20_001`.
+- Test `RoleGrantSaveKeepsUnseenGrantsTest` pins that a role grant save by a
+  manager who sees only some of the role's items is refused (403) and drops
+  nothing, while the admin role saves the whole set (F229).
+
 # v0.1.48
 
 ## Roles and group access limited by what the caller holds; one read right per admin area
