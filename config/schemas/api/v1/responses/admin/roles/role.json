@@ -10,6 +10,8 @@
     "is_superuser": { "type": "boolean", "description": "Whether this role passes every access check (F10)" },
     "permissions_count": { "type": "integer", "description": "Number of permissions in the role" },
     "users_count": { "type": "integer", "description": "Number of users with this role" },
+    "can_update": { "type": "boolean", "description": "Whether the caller may update this role (rule 4.6f + admin.role.update)" },
+    "can_delete": { "type": "boolean", "description": "Whether the caller may delete this role (rule 4.6f + admin.role.delete, no users, not superuser)" },
     "permissions": {
       "type": "array",
       "items": {
@@ -37,8 +39,6 @@
       }
     }
   },
-  "required": ["id", "name", "is_superuser", "permissions_count", "users_count", "permissions", "users"],
+  "required": ["id", "name", "is_superuser", "permissions_count", "users_count", "can_update", "can_delete", "permissions", "users"],
   "additionalProperties": false
 }
-
-

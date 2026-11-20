@@ -9,6 +9,7 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminRoleService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
@@ -20,7 +21,7 @@ use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * Admin Role Controller
- * 
+ *
  * Handles all role management operations for admin interface
  */
 class AdminRoleController extends AbstractController
@@ -30,7 +31,8 @@ class AdminRoleController extends AbstractController
     public function __construct(
         private readonly AdminRoleService $adminRoleService,
         private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
+        private readonly JsonSchemaValidationService $jsonSchemaValidationService,
+        private readonly UserContextService $userContextService,
     ) {
     }
 
@@ -48,15 +50,23 @@ class AdminRoleController extends AbstractController
     public function getRoles(Request $request): JsonResponse
     {
         try {
-            $page = (int)$request->query->get('page', 1);
-            $pageSize = (int)$request->query->get('pageSize', 20);
-            $search = $request->query->get('search');
-            $sort = $request->query->get('sort');
-            $sortDirection = $request->query->get('sortDirection', 'asc');
+            $callerId = $this->requireCallerId();
+            $page = (int) $request->query->get('page', 1);
+            $pageSize = (int) $request->query->get('pageSize', 20);
+            $searchRaw = $request->query->get('search');
+            $sortRaw = $request->query->get('sort');
+            $directionRaw = $request->query->get('sortDirection');
 
-            $result = $this->adminRoleService->getRoles($page, $pageSize, $search, $sort, $sortDirection);
+            $result = $this->adminRoleService->getRoles(
+                $callerId,
+                $page,
+                $pageSize,
+                is_string($searchRaw) ? $searchRaw : null,
+                is_string($sortRaw) ? $sortRaw : null,
+                ($directionRaw === 'desc') ? 'desc' : 'asc'
+            );
 
-            return $this->responseFormatter->formatSuccess($result);
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/roles/roles');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -69,8 +79,8 @@ class AdminRoleController extends AbstractController
     public function getRoleById(int $roleId): JsonResponse
     {
         try {
-            $role = $this->adminRoleService->getRoleById($roleId);
-            return $this->responseFormatter->formatSuccess($role);
+            $role = $this->adminRoleService->getRoleById($this->requireCallerId(), $roleId);
+            return $this->responseFormatter->formatSuccess($role, 'responses/admin/roles/role');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -84,12 +94,12 @@ class AdminRoleController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/create_role', $this->jsonSchemaValidationService);
-            
-            $role = $this->adminRoleService->createRole($this->toAssocArray($data));
-            
+
+            $role = $this->adminRoleService->createRole($this->requireCallerId(), $this->toAssocArray($data));
+
             return $this->responseFormatter->formatSuccess(
                 $role,
-                null,
+                'responses/admin/roles/role',
                 Response::HTTP_CREATED
             );
         } catch (\Exception $e) {
@@ -105,10 +115,10 @@ class AdminRoleController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/update_role', $this->jsonSchemaValidationService);
-            
-            $role = $this->adminRoleService->updateRole($roleId, $this->toAssocArray($data));
-            
-            return $this->responseFormatter->formatSuccess($role);
+
+            $role = $this->adminRoleService->updateRole($this->requireCallerId(), $roleId, $this->toAssocArray($data));
+
+            return $this->responseFormatter->formatSuccess($role, 'responses/admin/roles/role');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -121,8 +131,8 @@ class AdminRoleController extends AbstractController
     public function deleteRole(int $roleId): JsonResponse
     {
         try {
-            $this->adminRoleService->deleteRole($roleId);
-            
+            $this->adminRoleService->deleteRole($this->requireCallerId(), $roleId);
+
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
@@ -152,15 +162,19 @@ class AdminRoleController extends AbstractController
         try {
             $data = json_decode($request->getContent(), true);
             $permissionIds = is_array($data) ? ($data['permission_ids'] ?? []) : [];
-            
+
             if (!is_array($permissionIds) || empty($permissionIds)) {
                 return $this->responseFormatter->formatError(
                     'permission_ids array is required',
                     Response::HTTP_BAD_REQUEST
                 );
             }
-            
-            $permissions = $this->adminRoleService->addPermissionsToRole($roleId, $this->toIntList($permissionIds));
+
+            $permissions = $this->adminRoleService->addPermissionsToRole(
+                $this->requireCallerId(),
+                $roleId,
+                $this->toIntList($permissionIds)
+            );
             return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
@@ -176,15 +190,19 @@ class AdminRoleController extends AbstractController
         try {
             $data = json_decode($request->getContent(), true);
             $permissionIds = is_array($data) ? ($data['permission_ids'] ?? []) : [];
-            
+
             if (!is_array($permissionIds) || empty($permissionIds)) {
                 return $this->responseFormatter->formatError(
                     'permission_ids array is required',
                     Response::HTTP_BAD_REQUEST
                 );
             }
-            
-            $permissions = $this->adminRoleService->removePermissionsFromRole($roleId, $this->toIntList($permissionIds));
+
+            $permissions = $this->adminRoleService->removePermissionsFromRole(
+                $this->requireCallerId(),
+                $roleId,
+                $this->toIntList($permissionIds)
+            );
             return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
@@ -199,8 +217,12 @@ class AdminRoleController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/update_role_permissions', $this->jsonSchemaValidationService);
-            
-            $permissions = $this->adminRoleService->updateRolePermissions($roleId, $this->toIntList($data['permission_ids'] ?? null));
+
+            $permissions = $this->adminRoleService->updateRolePermissions(
+                $this->requireCallerId(),
+                $roleId,
+                $this->toIntList($data['permission_ids'] ?? null)
+            );
             return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
@@ -209,7 +231,7 @@ class AdminRoleController extends AbstractController
 
     /**
      * Get all available permissions
-     * 
+     *
      * @route /admin/permissions
      * @method GET
      */
@@ -217,8 +239,11 @@ class AdminRoleController extends AbstractController
     public function getAllPermissions(): JsonResponse
     {
         try {
-            $permissions = $this->adminRoleService->getAllPermissions();
-            return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
+            $permissions = $this->adminRoleService->getAllPermissions($this->requireCallerId());
+            return $this->responseFormatter->formatSuccess(
+                ['permissions' => $permissions],
+                'responses/admin/permissions/permissions'
+            );
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
@@ -243,4 +268,14 @@ class AdminRoleController extends AbstractController
             return $this->responseFormatter->formatThrowable($e);
         }
     }
-} 
+
+    private function requireCallerId(): int
+    {
+        $userId = $this->userContextService->getCurrentUser()?->getId();
+        if ($userId === null) {
+            throw new \App\Exception\ServiceException('User not authenticated', Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $userId;
+    }
+}

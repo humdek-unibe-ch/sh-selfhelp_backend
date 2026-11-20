@@ -241,9 +241,18 @@ class AssetAccessService extends BaseService
      * that writes `role_data_access`, so each change is logged and the touched
      * roles' permission caches are dropped exactly as on the role screens.
      *
+     * Rule 4.6f applies to the target roles: a role the caller does not fully
+     * hold cannot be added or removed (403). The asset itself counts as held
+     * by the caller (decided 2026-11-19): they upload it, or they manage it
+     * through a grant that the caller's edit right already proved. So the bit
+     * on this asset is never "missing", while every other permission and grant
+     * of the target role still has to be held.
+     *
      * @param list<int>|null $roleIds
+     * @param list<int> $alsoHeldAssetIds further assets of the same request the caller
+     *        counts as holding (folder access changes several assets in one go)
      */
-    public function setManagingRoles(Asset $asset, ?array $roleIds): void
+    public function setManagingRoles(Asset $asset, ?array $roleIds, array $alsoHeldAssetIds = []): void
     {
         $roleIds = $this->withoutAdminRole(array_values(array_unique($roleIds ?? $this->defaultManagingRoleIds())));
         foreach ($roleIds as $roleId) {
@@ -260,9 +269,24 @@ class AssetAccessService extends BaseService
             $current[(int) $row->getRole()->getId()] = $row;
         }
 
+        $callerIdOrNull = $this->userId();
+        if ($callerIdOrNull === null) {
+            $this->throwBadRequest('User not authenticated');
+        }
+        $callerId = $callerIdOrNull;
+
+        $held = [['resource_type_id' => $typeId, 'resource_id' => $assetId]];
+        foreach ($alsoHeldAssetIds as $heldAssetId) {
+            $held[] = ['resource_type_id' => $typeId, 'resource_id' => $heldAssetId];
+        }
+
         foreach ($current as $roleId => $row) {
             if (!in_array($roleId, $roleIds, true)) {
-                $this->dataAccess->deleteRolePermission($roleId, (int) $row->getId());
+                // A grant an older version stored for the admin role is noise
+                // (the admin role manages every asset anyway, see
+                // withoutAdminRole()): dropping it changes no one's rights, so
+                // the caller needs no hold on the admin role to clean it up.
+                $this->dataAccess->deleteRolePermission($callerId, $roleId, (int) $row->getId(), !$row->getRole()->isSuperuser(), $held);
             }
         }
 
@@ -270,11 +294,31 @@ class AssetAccessService extends BaseService
             if (isset($current[$roleId]) && $current[$roleId]->getCrudPermissions() === self::FULL_ACCESS) {
                 continue;
             }
-            $this->dataAccess->addRolePermission($roleId, (object) [
+            $this->dataAccess->addRolePermission($callerId, $roleId, (object) [
                 'resource_type_id' => $typeId,
                 'resource_id' => $assetId,
                 'crud_permissions' => self::FULL_ACCESS,
-            ]);
+            ], true, $held);
+        }
+    }
+
+    /**
+     * Drop every grant on an asset that is being deleted. This is clean-up,
+     * not a change of any role's rights: nothing a role could do remains
+     * afterwards, so rule 4.6f is not asked (the caller's delete right on the
+     * asset was checked before). Each removal is still logged and the roles'
+     * permission caches dropped.
+     */
+    public function releaseManagingRoles(Asset $asset): void
+    {
+        $callerId = $this->userId();
+        if ($callerId === null) {
+            $this->throwBadRequest('User not authenticated');
+        }
+
+        $rows = $this->roleDataAccessRepository->findBy(['idResourceTypes' => $this->resourceTypeId(), 'resourceId' => (int) $asset->getId()]);
+        foreach ($rows as $row) {
+            $this->dataAccess->deleteRolePermission($callerId, (int) $row->getRole()->getId(), (int) $row->getId(), false);
         }
     }
 

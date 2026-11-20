@@ -11,9 +11,14 @@
         "properties": {
           "id": { "type": "integer", "description": "Permission ID" },
           "name": { "type": "string", "description": "Permission name (e.g., 'admin.user.read')" },
-          "description": { "type": "string", "nullable": true, "description": "Permission description" }
+          "description": { "type": ["string", "null"], "description": "Permission description" },
+          "can_assign": { "type": "boolean", "description": "Whether the caller holds this permission (or is superuser)" },
+          "implied_read": {
+            "type": ["string", "null"],
+            "description": "Implied area read permission name (C2), or null"
+          }
         },
-        "required": ["id", "name", "description"],
+        "required": ["id", "name", "description", "can_assign", "implied_read"],
         "additionalProperties": false
       }
     }
@@ -21,5 +26,3 @@
   "required": ["permissions"],
   "additionalProperties": false
 }
-
-

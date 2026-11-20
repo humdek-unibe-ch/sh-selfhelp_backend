@@ -15,18 +15,26 @@ use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\Security\CallerHoldingsService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 class AdminRoleService extends BaseService
 {
+    private const MSG_GIVE_RIGHTS = 'You can only give a role rights you hold yourself: ';
+    private const MSG_CHANGE_OR_DELETE = 'You can only change or delete a role whose rights you all hold.';
+    private const MSG_NEEDS_PERMISSIONS = 'Changing a role\'s permissions needs admin.role.permissions.';
+    private const PERM_ROLE_PERMISSIONS = 'admin.role.permissions';
+    private const PERM_ROLE_UPDATE = 'admin.role.update';
+    private const PERM_ROLE_DELETE = 'admin.role.delete';
 
     public function __construct(
         private readonly UserRepository $userRepository,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
-        private readonly EntityManagerInterface $entityManager
+        private readonly EntityManagerInterface $entityManager,
+        private readonly CallerHoldingsService $callerHoldings,
     ) {
     }
 
@@ -36,19 +44,29 @@ class AdminRoleService extends BaseService
      * @return array<string, mixed>
      */
     public function getRoles(
+        int $callerId,
         int $page = 1,
         int $pageSize = 20,
         ?string $search = null,
         ?string $sort = null,
         ?string $sortDirection = 'asc'
     ): array {
-        if ($page < 1)
+        if ($page < 1) {
             $page = 1;
-        if ($pageSize < 1 || $pageSize > 100)
+        }
+        if ($pageSize < 1 || $pageSize > 100) {
             $pageSize = 20;
+        }
         $sortDirection = in_array($sortDirection, ['asc', 'desc'], true) ? $sortDirection : 'asc';
 
-        return $this->fetchRolesFromDatabase($page, $pageSize, $search, $sort, $sortDirection);
+        $result = $this->fetchRolesFromDatabase($page, $pageSize, $search, $sort, $sortDirection);
+        $roles = [];
+        foreach ($this->asArray($result['roles'] ?? null) as $role) {
+            $roles[] = $this->withCallerRoleFlags($this->asAssocArray($role), $callerId);
+        }
+        $result['roles'] = $roles;
+
+        return $result;
     }
 
     /**
@@ -56,7 +74,6 @@ class AdminRoleService extends BaseService
      */
     private function fetchRolesFromDatabase(int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
     {
-        // Create cache key based on parameters
         $cacheKey = "roles_list_{$page}_{$pageSize}_" . md5(($search ?? '') . ($sort ?? '') . $sortDirection);
 
         return $this->cache
@@ -66,20 +83,17 @@ class AdminRoleService extends BaseService
                 function () use ($page, $pageSize, $search, $sort, $sortDirection) {
                     $qb = $this->entityManager->getRepository(Role::class)->createQueryBuilder('r');
 
-                    // Join for counts & sorting
                     $qb->leftJoin('r.permissions', 'p')
                     ->leftJoin('r.users', 'u')
                     ->addSelect('COUNT(DISTINCT p.id) AS HIDDEN permissions_count')
                     ->addSelect('COUNT(DISTINCT u.id) AS HIDDEN users_count')
                     ->groupBy('r.id');
 
-                    // Apply search filter
                     if ($search) {
                         $qb->andWhere('(r.name LIKE :search OR r.description LIKE :search)')
                             ->setParameter('search', '%' . $search . '%');
                     }
 
-                    // Apply sorting
                     $allowedEntityFields = ['id', 'name', 'description'];
                     $allowedAliasFields = ['permissions_count', 'users_count'];
 
@@ -91,7 +105,6 @@ class AdminRoleService extends BaseService
                         $qb->orderBy('r.name', 'asc');
                     }
 
-                    // Get total count for pagination
                     $countQb = $this->entityManager->getRepository(Role::class)->createQueryBuilder('r');
                     if ($search) {
                         $countQb->andWhere('(r.name LIKE :search OR r.description LIKE :search)')
@@ -99,7 +112,6 @@ class AdminRoleService extends BaseService
                     }
                     $totalCount = (int) $countQb->select('COUNT(r.id)')->getQuery()->getSingleScalarResult();
 
-                    // Apply pagination
                     $qb->setFirstResult(($page - 1) * $pageSize)
                         ->setMaxResults($pageSize);
 
@@ -122,11 +134,19 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Get single role by ID with full details including permissions and entity scope caching
-     *
      * @return array<string, mixed>
      */
-    public function getRoleById(int $roleId): array
+    public function getRoleById(int $callerId, int $roleId): array
+    {
+        $cached = $this->fetchRoleDetailCached($roleId);
+
+        return $this->withCallerRoleFlags($cached, $callerId);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fetchRoleDetailCached(int $roleId): array
     {
         $cacheKey = "role_{$roleId}";
         return $this->cache
@@ -143,12 +163,10 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Create new role
-     *
      * @param array<string, mixed> $roleData
      * @return array<string, mixed>
      */
-    public function createRole(array $roleData): array
+    public function createRole(int $callerId, array $roleData): array
     {
         $this->entityManager->beginTransaction();
 
@@ -162,6 +180,17 @@ class AdminRoleService extends BaseService
 
             $this->validateRoleData($roleData);
 
+            $permissionIds = null;
+            if (isset($roleData['permission_ids']) && is_array($roleData['permission_ids'])) {
+                $this->assertMayChangePermissionList($callerId);
+                $permissionIds = $this->normalizePermissionIdsForWrite(
+                    $this->toIntIdList($roleData['permission_ids']),
+                    [],
+                    false
+                );
+                $this->assertMayGivePermissions($callerId, $this->namesOfPermissionIds($permissionIds));
+            }
+
             $role = new Role();
             $role->setName($this->asString($roleData['name']));
             $role->setDescription($this->asStringOrNull($roleData['description'] ?? null));
@@ -169,12 +198,10 @@ class AdminRoleService extends BaseService
             $this->entityManager->persist($role);
             $this->entityManager->flush();
 
-            // Add initial permissions if provided
-            if (isset($roleData['permission_ids']) && is_array($roleData['permission_ids'])) {
-                $this->addPermissionsToRoleInternal($role, $roleData['permission_ids']);
+            if ($permissionIds !== null) {
+                $this->replaceRolePermissionsInternal($role, $permissionIds);
             }
 
-            // Log transaction
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_INSERT,
                 LookupService::TRANSACTION_BY_BY_USER,
@@ -186,12 +213,11 @@ class AdminRoleService extends BaseService
 
             $this->entityManager->commit();
 
-            // Invalidate cache after create
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
 
-            return $this->formatRoleForDetail($role);
+            return $this->withCallerRoleFlags($this->formatRoleForDetail($role), $callerId);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw $e;
@@ -199,12 +225,10 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Update existing role
-     *
      * @param array<string, mixed> $roleData
      * @return array<string, mixed>
      */
-    public function updateRole(int $roleId, array $roleData): array
+    public function updateRole(int $callerId, int $roleId, array $roleData): array
     {
         $this->entityManager->beginTransaction();
 
@@ -214,7 +238,6 @@ class AdminRoleService extends BaseService
                 throw new ServiceException('Role not found', Response::HTTP_NOT_FOUND);
             }
 
-            // is_superuser is flag-only (F10): refuse if the client tries to set it.
             if (array_key_exists('is_superuser', $roleData)) {
                 throw new ServiceException(
                     'The is_superuser flag cannot be changed through the API.',
@@ -222,7 +245,13 @@ class AdminRoleService extends BaseService
                 );
             }
 
-            // Renaming is allowed, including for the superuser role (C2 / F10).
+            $this->assertMayMutateRole($callerId, $role);
+
+            $changingPermissions = isset($roleData['permission_ids']) && is_array($roleData['permission_ids']);
+            if ($changingPermissions) {
+                $this->assertMayChangePermissionList($callerId);
+            }
+
             if (isset($roleData['name'])) {
                 $newName = $this->asString($roleData['name']);
                 if ($newName !== $role->getName()) {
@@ -240,12 +269,17 @@ class AdminRoleService extends BaseService
 
             $this->entityManager->flush();
 
-            // Update permissions if provided
-            if (isset($roleData['permission_ids']) && is_array($roleData['permission_ids'])) {
-                $this->updateRolePermissionsInternal($role, $roleData['permission_ids']);
+            if ($changingPermissions) {
+                $normalized = $this->normalizePermissionIdsForWrite(
+                    $this->toIntIdList($roleData['permission_ids']),
+                    $this->currentPermissionIds($role),
+                    true
+                );
+                $this->assertMayGivePermissions($callerId, $this->namesOfPermissionIds($normalized));
+                $this->assertMayGiveGrants($callerId, $this->callerHoldings->roleGrantSnapshots($roleId));
+                $this->replaceRolePermissionsInternal($role, $normalized);
             }
 
-            // Log transaction
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_USER,
@@ -257,18 +291,16 @@ class AdminRoleService extends BaseService
 
             $this->entityManager->commit();
 
-            // Invalidate entity-scoped cache for this specific role
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
 
-            // If permissions were updated, also invalidate ALL users who have this role
-            if (isset($roleData['permission_ids']) && is_array($roleData['permission_ids'])) {
+            if ($changingPermissions) {
                 $this->invalidateUsersWithRole($roleId);
             }
 
-            return $this->formatRoleForDetail($role);
+            return $this->withCallerRoleFlags($this->formatRoleForDetail($role), $callerId);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw $e;
@@ -276,14 +308,7 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Invalidate cache for all users who have a specific role.
-     *
-     * When role permissions change, every user with that role needs their
-     * cached permissions and data-access rules refreshed. We also bump each
-     * user's acl_version so the frontend BFF can detect the change via
-     * /auth/user-data and surgically invalidate its navigation cache.
-     *
-     * @param int $roleId The role ID whose users need cache invalidation
+     * @param int $roleId
      */
     private function invalidateUsersWithRole(int $roleId): void
     {
@@ -298,15 +323,10 @@ class AdminRoleService extends BaseService
             $user->bumpAclVersion();
         }
 
-        // Persist the new acl_version values before invalidating caches so
-        // readers observe the rotated version on their next request.
         $this->entityManager->flush();
 
-        // Bumping the user entity scope invalidates every cache entry scoped
-        // to that user across all categories (ACL, profile, lists-by-user).
         $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_USER, $userIds);
 
-        // Lists in the users/permissions categories may also be stale.
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->invalidateAllListsInCategory();
@@ -315,10 +335,7 @@ class AdminRoleService extends BaseService
             ->invalidateAllListsInCategory();
     }
 
-    /**
-     * Delete role
-     */
-    public function deleteRole(int $roleId): void
+    public function deleteRole(int $callerId, int $roleId): void
     {
         $this->entityManager->beginTransaction();
 
@@ -335,12 +352,12 @@ class AdminRoleService extends BaseService
                 );
             }
 
-            // Check if role has users
             if (!$role->getUsers()->isEmpty()) {
                 throw new ServiceException('Cannot delete role with assigned users', Response::HTTP_CONFLICT);
             }
 
-            // Log transaction before deletion
+            $this->assertMayMutateRole($callerId, $role);
+
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 LookupService::TRANSACTION_BY_BY_USER,
@@ -355,9 +372,6 @@ class AdminRoleService extends BaseService
 
             $this->entityManager->commit();
 
-            // Invalidate entity-scoped cache for this specific role.
-            // Deletion is only allowed when no users are assigned (guard
-            // above), so per-user invalidation is unnecessary here.
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
@@ -369,8 +383,6 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Get role permissions with entity scope caching
-     *
      * @return array<int, array<string, mixed>>
      */
     public function getRolePermissions(int $roleId): array
@@ -390,12 +402,10 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Add permissions to role (bulk)
-     *
      * @param list<int> $permissionIds
      * @return array<int, array<string, mixed>>
      */
-    public function addPermissionsToRole(int $roleId, array $permissionIds): array
+    public function addPermissionsToRole(int $callerId, int $roleId, array $permissionIds): array
     {
         $this->entityManager->beginTransaction();
 
@@ -405,9 +415,18 @@ class AdminRoleService extends BaseService
                 throw new ServiceException('Role not found', Response::HTTP_NOT_FOUND);
             }
 
-            $this->addPermissionsToRoleInternal($role, $permissionIds);
+            $this->assertMayMutateRole($callerId, $role);
 
-            // Log transaction
+            $merged = array_values(array_unique(array_merge(
+                $this->currentPermissionIds($role),
+                $permissionIds
+            )));
+            $normalized = $this->normalizePermissionIdsForWrite($merged, $this->currentPermissionIds($role), false);
+            $this->assertMayGivePermissions($callerId, $this->namesOfPermissionIds($normalized));
+            $this->assertMayGiveGrants($callerId, $this->callerHoldings->roleGrantSnapshots($roleId));
+
+            $this->replaceRolePermissionsInternal($role, $normalized);
+
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_USER,
@@ -419,14 +438,10 @@ class AdminRoleService extends BaseService
 
             $this->entityManager->commit();
 
-            // Invalidate entity-scoped cache for this specific role
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
-
-            // Permissions on the role changed; every user carrying the role
-            // needs a fresh permission/ACL cache and a rotated acl_version.
             $this->invalidateUsersWithRole($roleId);
 
             return $this->getRolePermissions($roleId);
@@ -437,12 +452,10 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Remove permissions from role (bulk)
-     *
      * @param list<int> $permissionIds
      * @return array<int, array<string, mixed>>
      */
-    public function removePermissionsFromRole(int $roleId, array $permissionIds): array
+    public function removePermissionsFromRole(int $callerId, int $roleId, array $permissionIds): array
     {
         $this->entityManager->beginTransaction();
 
@@ -452,20 +465,16 @@ class AdminRoleService extends BaseService
                 throw new ServiceException('Role not found', Response::HTTP_NOT_FOUND);
             }
 
-            foreach ($permissionIds as $permissionId) {
-                $permission = $this->entityManager->getRepository(Permission::class)->find($permissionId);
-                if (!$permission) {
-                    throw new ServiceException('Permission not found: ' . $permissionId, Response::HTTP_NOT_FOUND);
-                }
+            $this->assertMayMutateRole($callerId, $role);
 
-                if ($role->getPermissions()->contains($permission)) {
-                    $role->removePermission($permission);
-                }
-            }
+            $removeIds = $this->expandReadRemovals($role, $permissionIds);
+            $remaining = array_values(array_diff($this->currentPermissionIds($role), $removeIds));
+            $normalized = $this->normalizePermissionIdsForWrite($remaining, $this->currentPermissionIds($role), false);
+            $this->assertMayGivePermissions($callerId, $this->namesOfPermissionIds($normalized));
+            $this->assertMayGiveGrants($callerId, $this->callerHoldings->roleGrantSnapshots($roleId));
 
-            $this->entityManager->flush();
+            $this->replaceRolePermissionsInternal($role, $normalized);
 
-            // Log transaction
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 LookupService::TRANSACTION_BY_BY_USER,
@@ -477,14 +486,10 @@ class AdminRoleService extends BaseService
 
             $this->entityManager->commit();
 
-            // Invalidate entity-scoped cache for this specific role
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
-
-            // Permissions on the role changed; every user carrying the role
-            // needs a fresh permission/ACL cache and a rotated acl_version.
             $this->invalidateUsersWithRole($roleId);
 
             return $this->getRolePermissions($roleId);
@@ -495,12 +500,10 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Update role permissions (bulk replace)
-     *
      * @param list<int> $permissionIds
      * @return array<int, array<string, mixed>>
      */
-    public function updateRolePermissions(int $roleId, array $permissionIds): array
+    public function updateRolePermissions(int $callerId, int $roleId, array $permissionIds): array
     {
         $this->entityManager->beginTransaction();
 
@@ -510,9 +513,18 @@ class AdminRoleService extends BaseService
                 throw new ServiceException('Role not found', Response::HTTP_NOT_FOUND);
             }
 
-            $this->updateRolePermissionsInternal($role, $permissionIds);
+            $this->assertMayMutateRole($callerId, $role);
 
-            // Log transaction
+            $normalized = $this->normalizePermissionIdsForWrite(
+                $permissionIds,
+                $this->currentPermissionIds($role),
+                true
+            );
+            $this->assertMayGivePermissions($callerId, $this->namesOfPermissionIds($normalized));
+            $this->assertMayGiveGrants($callerId, $this->callerHoldings->roleGrantSnapshots($roleId));
+
+            $this->replaceRolePermissionsInternal($role, $normalized);
+
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_USER,
@@ -524,14 +536,10 @@ class AdminRoleService extends BaseService
 
             $this->entityManager->commit();
 
-            // Invalidate entity-scoped cache for this specific role
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
-
-            // CRITICAL: Also invalidate ALL users who have this role
-            // When role permissions change, all users with this role need their cached permissions refreshed
             $this->invalidateUsersWithRole($roleId);
 
             return $this->getRolePermissions($roleId);
@@ -542,16 +550,13 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Get all available permissions
-     *
      * @return list<array<string, mixed>>
      */
-    public function getAllPermissions(): array
+    public function getAllPermissions(int $callerId): array
     {
-        $cacheKey = "all_permissions";
-        return $this->cache
+        $cached = $this->cache
             ->withCategory(CacheService::CATEGORY_ROLES)
-            ->getList($cacheKey, function () {
+            ->getList('all_permissions', function () {
                 /** @var list<Permission> $permissions */
                 $permissions = $this->entityManager->getRepository(Permission::class)
                     ->createQueryBuilder('p')
@@ -561,11 +566,20 @@ class AdminRoleService extends BaseService
 
                 return array_map([$this, 'formatPermissionForResponse'], $permissions);
             });
+
+        $result = [];
+        foreach ($cached as $permission) {
+            $name = $this->asString($permission['name'] ?? '');
+            $result[] = array_merge($permission, [
+                'can_assign' => $this->callerHoldings->holdsPermission($callerId, $name),
+                'implied_read' => $this->callerHoldings->impliedReadOf($name),
+            ]);
+        }
+
+        return $result;
     }
 
     /**
-     * Format role for list view
-     *
      * @return array<string, mixed>
      */
     private function formatRoleForList(Role $role): array
@@ -581,8 +595,6 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Format role for detail view
-     *
      * @return array<string, mixed>
      */
     private function formatRoleForDetail(Role $role): array
@@ -606,8 +618,6 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Format permission for response
-     *
      * @return array<string, mixed>
      */
     private function formatPermissionForResponse(Permission $permission): array
@@ -620,8 +630,35 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Validate role data
+     * C3 flags after the shared cache read (rule 3 reading 8).
      *
+     * @param array<string, mixed> $role
+     * @return array<string, mixed>
+     */
+    private function withCallerRoleFlags(array $role, int $callerId): array
+    {
+        $roleId = $this->asInt($role['id'] ?? 0);
+        $entity = $this->entityManager->getRepository(Role::class)->find($roleId);
+        $usersCount = $this->asInt($role['users_count'] ?? 0);
+        $isSuperuserRole = (bool) ($role['is_superuser'] ?? false);
+
+        $fullyHeld = $entity instanceof Role
+            ? $this->callerHoldings->fullyHoldsRole($callerId, $entity)
+            : false;
+
+        $canUpdate = $fullyHeld && $this->callerHoldings->holdsPermission($callerId, self::PERM_ROLE_UPDATE);
+        $canDelete = $fullyHeld
+            && !$isSuperuserRole
+            && $usersCount === 0
+            && $this->callerHoldings->holdsPermission($callerId, self::PERM_ROLE_DELETE);
+
+        $role['can_update'] = $canUpdate;
+        $role['can_delete'] = $canDelete;
+
+        return $role;
+    }
+
+    /**
      * @param array<string, mixed> $data
      */
     private function validateRoleData(array $data): void
@@ -630,7 +667,6 @@ class AdminRoleService extends BaseService
             throw new ServiceException('Role name is required', Response::HTTP_BAD_REQUEST);
         }
 
-        // Check for duplicate name
         $existingRole = $this->entityManager->getRepository(Role::class)
             ->findOneBy(['name' => $data['name']]);
         if ($existingRole) {
@@ -638,46 +674,171 @@ class AdminRoleService extends BaseService
         }
     }
 
-    /**
-     * Internal method to add permissions to role (without transaction handling)
-     *
-     * @param array<array-key, mixed> $permissionIds
-     */
-    private function addPermissionsToRoleInternal(Role $role, array $permissionIds): void
+    private function assertMayChangePermissionList(int $callerId): void
     {
-        foreach ($permissionIds as $permissionId) {
-            $permission = $this->entityManager->getRepository(Permission::class)->find($permissionId);
-            if (!$permission) {
-                throw new ServiceException('Permission not found: ' . $this->asString($permissionId), Response::HTTP_NOT_FOUND);
-            }
+        if (!$this->callerHoldings->holdsPermission($callerId, self::PERM_ROLE_PERMISSIONS)) {
+            throw new ServiceException(self::MSG_NEEDS_PERMISSIONS, Response::HTTP_FORBIDDEN);
+        }
+    }
 
-            if (!$role->getPermissions()->contains($permission)) {
-                $role->addPermission($permission);
-            }
+    private function assertMayMutateRole(int $callerId, Role $role): void
+    {
+        if ($this->callerHoldings->isSuperuser($callerId)) {
+            return;
         }
 
-        $this->entityManager->flush();
+        if ($role->isSuperuser() || !$this->callerHoldings->fullyHoldsRole($callerId, $role)) {
+            throw new ServiceException(self::MSG_CHANGE_OR_DELETE, Response::HTTP_FORBIDDEN);
+        }
     }
 
     /**
-     * Internal method to update role permissions (without transaction handling)
-     *
-     * @param array<array-key, mixed> $permissionIds
+     * @param list<string> $permissionNames
      */
-    private function updateRolePermissionsInternal(Role $role, array $permissionIds): void
+    private function assertMayGivePermissions(int $callerId, array $permissionNames): void
     {
-        // Remove all existing permissions
+        $missing = $this->callerHoldings->missingPermissions($callerId, $permissionNames);
+        if ($missing === []) {
+            return;
+        }
+
+        throw new ServiceException(
+            self::MSG_GIVE_RIGHTS . implode(', ', $missing),
+            Response::HTTP_FORBIDDEN
+        );
+    }
+
+    /**
+     * @param list<array{resource_type_id: int, resource_type_name: string, resource_id: int, crud_permissions: int}> $grants
+     */
+    private function assertMayGiveGrants(int $callerId, array $grants): void
+    {
+        $missing = $this->callerHoldings->missingGrantLabels($callerId, $grants);
+        if ($missing === []) {
+            return;
+        }
+
+        throw new ServiceException(
+            self::MSG_GIVE_RIGHTS . implode(', ', $missing),
+            Response::HTTP_FORBIDDEN
+        );
+    }
+
+    /**
+     * C2 normaliser: add implied reads; for a replace list that keeps area
+     * rights, implied read wins over an omitted `.read`.
+     *
+     * @param list<int> $permissionIds
+     * @param list<int> $previousIds unused for add/create; kept for clarity at call sites
+     * @return list<int>
+     */
+    private function normalizePermissionIdsForWrite(array $permissionIds, array $previousIds, bool $isReplace): array
+    {
+        unset($previousIds, $isReplace);
+
+        $ids = [];
+        foreach ($permissionIds as $id) {
+            $permission = $this->callerHoldings->findPermissionById($id);
+            if (!$permission instanceof Permission) {
+                throw new ServiceException('Permission not found: ' . $id, Response::HTTP_NOT_FOUND);
+            }
+            $ids[$id] = true;
+            $implied = $this->callerHoldings->impliedReadOf($permission->getName());
+            if ($implied !== null) {
+                $impliedPermission = $this->callerHoldings->findPermissionByName($implied);
+                if ($impliedPermission instanceof Permission && $impliedPermission->getId() !== null) {
+                    $ids[(int) $impliedPermission->getId()] = true;
+                }
+            }
+        }
+
+        return array_map('intval', array_keys($ids));
+    }
+
+    /**
+     * When removing an area's `.read`, also remove every other `admin.<area>.*`
+     * right currently on the role.
+     *
+     * @param list<int> $permissionIds
+     * @return list<int>
+     */
+    private function expandReadRemovals(Role $role, array $permissionIds): array
+    {
+        $remove = [];
+        foreach ($permissionIds as $id) {
+            $remove[$id] = true;
+        }
+
+        $areasToClear = [];
+        foreach ($permissionIds as $id) {
+            $permission = $this->callerHoldings->findPermissionById($id);
+            if (!$permission instanceof Permission) {
+                throw new ServiceException('Permission not found: ' . $id, Response::HTTP_NOT_FOUND);
+            }
+            $parts = explode('.', $permission->getName());
+            if (count($parts) === 3 && $parts[0] === 'admin' && $parts[2] === 'read') {
+                $areasToClear[$parts[1]] = true;
+            }
+        }
+
+        if ($areasToClear !== []) {
+            foreach ($role->getPermissions() as $held) {
+                $parts = explode('.', $held->getName());
+                if (count($parts) === 3 && $parts[0] === 'admin' && isset($areasToClear[$parts[1]]) && $held->getId() !== null) {
+                    $remove[(int) $held->getId()] = true;
+                }
+            }
+        }
+
+        return array_map('intval', array_keys($remove));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function currentPermissionIds(Role $role): array
+    {
+        $ids = [];
+        foreach ($role->getPermissions() as $permission) {
+            if ($permission->getId() !== null) {
+                $ids[] = (int) $permission->getId();
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @param list<int> $permissionIds
+     * @return list<string>
+     */
+    private function namesOfPermissionIds(array $permissionIds): array
+    {
+        $names = [];
+        foreach ($permissionIds as $id) {
+            $permission = $this->callerHoldings->findPermissionById($id);
+            if ($permission instanceof Permission) {
+                $names[] = $permission->getName();
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * @param list<int> $permissionIds
+     */
+    private function replaceRolePermissionsInternal(Role $role, array $permissionIds): void
+    {
         foreach ($role->getPermissions() as $permission) {
             $role->removePermission($permission);
         }
 
-        // Add new permissions
         foreach ($permissionIds as $permissionId) {
-            $permission = $this->entityManager->getRepository(Permission::class)->find($permissionId);
-            if (!$permission) {
-                throw new ServiceException('Permission not found: ' . $this->asString($permissionId), Response::HTTP_NOT_FOUND);
+            $permission = $this->callerHoldings->findPermissionById($permissionId);
+            if (!$permission instanceof Permission) {
+                throw new ServiceException('Permission not found: ' . $permissionId, Response::HTTP_NOT_FOUND);
             }
-
             $role->addPermission($permission);
         }
 
@@ -685,9 +846,20 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Get all API routes with their required permissions for the current user
-     * This allows the frontend to check permissions before making API calls
-     *
+     * @param array<array-key, mixed> $ids
+     * @return list<int>
+     */
+    private function toIntIdList(array $ids): array
+    {
+        $result = [];
+        foreach ($ids as $id) {
+            $result[] = $this->asInt($id);
+        }
+
+        return $result;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function getApiRoutesWithPermissions(): array
@@ -701,8 +873,6 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Fetch API routes with permissions from database
-     *
      * @return list<array<string, mixed>>
      */
     private function fetchApiRoutesWithPermissionsFromDatabase(): array
@@ -722,7 +892,7 @@ class AdminRoleService extends BaseService
             FROM api_routes ar
             LEFT JOIN rel_api_routes_permissions arp ON ar.id = arp.id_api_routes
             LEFT JOIN permissions p ON arp.id_permissions = p.id
-            WHERE ar.route_name NOT LIKE 'auth_%'  -- Exclude auth routes as they're handled separately
+            WHERE ar.route_name NOT LIKE 'auth_%'
             GROUP BY ar.id, ar.route_name, ar.version, ar.path, ar.controller, ar.methods, ar.requirements, ar.params
             ORDER BY ar.route_name ASC
         ";

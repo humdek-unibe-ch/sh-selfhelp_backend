@@ -22,8 +22,9 @@ use Symfony\Component\HttpFoundation\Response;
  * Grants full data-access (create/read/update/delete) to the caller's roles that
  * hold a named route permission, excluding the admin role (it bypasses grants).
  *
- * Used for new pages (F14: `admin.page.create`) and new assets
- * (`admin.asset.create`). Writing goes through {@see AdminDataAccessService}
+ * Used for new pages (F14: `admin.page.create`), new assets
+ * (`admin.asset.create`) and new groups (`admin.group.create`): whoever
+ * creates an item can manage it (rule 6b). Writing goes through {@see AdminDataAccessService}
  * so each change is logged and role permission caches are dropped.
  */
 final class CreatorGrantService
@@ -146,11 +147,18 @@ final class CreatorGrantService
                 continue;
             }
 
-            $this->dataAccess->addRolePermission($roleId, (object) [
-                'resource_type_id' => $resourceTypeId,
-                'resource_id' => $resourceId,
-                'crud_permissions' => self::FULL_ACCESS,
-            ]);
+            // F14: grant on a brand-new resource the caller cannot yet hold.
+            // Holdings (rule 4.6f) are enforced on admin grant replace paths.
+            $this->dataAccess->addRolePermission(
+                (int) $this->userContextService->getCurrentUser()?->getId(),
+                $roleId,
+                (object) [
+                    'resource_type_id' => $resourceTypeId,
+                    'resource_id' => $resourceId,
+                    'crud_permissions' => self::FULL_ACCESS,
+                ],
+                false
+            );
         }
     }
 }
