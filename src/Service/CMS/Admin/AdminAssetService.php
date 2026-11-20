@@ -458,7 +458,7 @@ class AdminAssetService extends BaseService
                 );
 
                 // role_data_access has no FK to the asset: drop its grants first.
-                $this->accessService->setManagingRoles($asset, []);
+                $this->accessService->releaseManagingRoles($asset);
                 $this->entityManager->remove($asset);
             }
             $this->entityManager->flush();
@@ -777,6 +777,8 @@ class AdminAssetService extends BaseService
         }
 
         $groups = $groupIds !== null ? $this->accessService->resolveGroups($groupIds) : null;
+        // The caller counts as holding every asset of the subtree (they may update each one).
+        $subtreeAssetIds = array_map(static fn (Asset $asset): int => (int) $asset->getId(), $assets);
 
         $this->entityManager->beginTransaction();
         try {
@@ -785,7 +787,7 @@ class AdminAssetService extends BaseService
                     $this->replaceGroups($asset, $groups);
                 }
                 if ($roleIds !== null) {
-                    $this->accessService->setManagingRoles($asset, $roleIds);
+                    $this->accessService->setManagingRoles($asset, $roleIds, $subtreeAssetIds);
                 }
                 $asset->touch();
             }
