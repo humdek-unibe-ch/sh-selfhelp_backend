@@ -654,6 +654,8 @@ class AdminRoleService extends BaseService
 
         $role['can_update'] = $canUpdate;
         $role['can_delete'] = $canDelete;
+        // F219: lets pickers (asset managing roles) show which roles the caller may hand out.
+        $role['fully_held'] = $fullyHeld;
 
         return $role;
     }

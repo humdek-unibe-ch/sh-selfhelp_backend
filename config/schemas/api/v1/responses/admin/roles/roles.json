@@ -16,9 +16,10 @@
           "permissions_count": { "type": "integer", "description": "Number of permissions in the role" },
           "users_count": { "type": "integer", "description": "Number of users with this role" },
           "can_update": { "type": "boolean", "description": "Whether the caller may update this role (rule 4.6f + admin.role.update)" },
-          "can_delete": { "type": "boolean", "description": "Whether the caller may delete this role (rule 4.6f + admin.role.delete, no users, not superuser)" }
+          "can_delete": { "type": "boolean", "description": "Whether the caller may delete this role (rule 4.6f + admin.role.delete, no users, not superuser)" },
+          "fully_held": { "type": "boolean", "description": "Whether the caller holds every permission and every grant bit of this role, so may hand it out (rule 4.6f); a superuser caller: true for every role; a caller who is not superuser: false for the superuser role" }
         },
-        "required": ["id", "name", "is_superuser", "permissions_count", "users_count", "can_update", "can_delete"],
+        "required": ["id", "name", "is_superuser", "permissions_count", "users_count", "can_update", "can_delete", "fully_held"],
         "additionalProperties": false
       }
     },

@@ -9,11 +9,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller\Api\V1\Admin;
 
+use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\Permission;
 use App\Entity\Role;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
+use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Tests\Support\Factories\GroupFactory;
 use App\Tests\Support\Factories\PageSectionFactory;
@@ -459,7 +461,86 @@ final class AdminRoleHoldScopeTest extends QaWebTestCase
         self::assertNull($byName['admin.group.read']['implied_read']);
     }
 
+    // -- F219: fully_held ----------------------------------------------------
+
+    public function testFullyHeldFlagFollowsTheCallerOnListAndDetail(): void
+    {
+        $roleEditorToken = $this->loginAs(QaBaselineFixture::QA_ROLE_UPDATE_EMAIL);
+        $adminToken = $this->loginAsQaAdmin();
+        $listUri = self::ROLES_URI . '?pageSize=100';
+
+        // Warm the shared cache as admin first: the flag is per caller, added after it.
+        $adminList = $this->assertEnvelopeSuccess($this->jsonRequest('GET', $listUri, null, $adminToken));
+        $this->assertLastDataMatchesSchema('responses/admin/roles/roles');
+        $editorList = $this->assertEnvelopeSuccess($this->jsonRequest('GET', $listUri, null, $roleEditorToken));
+        $this->assertLastDataMatchesSchema('responses/admin/roles/roles');
+
+        $readRoleId = $this->roleIdByName(QaBaselineFixture::readPersonaRole('admin.role.read'));
+        $readUpdateRoleId = $this->roleIdByName(QaBaselineFixture::QA_READ_UPDATE_ROLE);
+        $adminRole = $this->entityManager()->getRepository(Role::class)->findOneBy(['isSuperuser' => true]);
+        self::assertInstanceOf(Role::class, $adminRole);
+        $adminRoleId = (int) $adminRole->getId();
+
+        // qa.roleupdate holds admin.access + admin.role.read (+ role.update): it fully holds qa_read_role.
+        self::assertTrue($this->findRoleInList($editorList, $readRoleId)['fully_held']);
+        // qa_read_update holds far more than qa.roleupdate does.
+        self::assertFalse($this->findRoleInList($editorList, $readUpdateRoleId)['fully_held']);
+        // The superuser role is never fully held by someone who is not superuser.
+        self::assertFalse($this->findRoleInList($editorList, $adminRoleId)['fully_held']);
+
+        // A superuser caller holds every role (rows of earlier tests that a rolled-back
+        // transaction removed may still sit in the shared Redis list cache: skip them).
+        $checked = 0;
+        foreach ($this->asList($adminList['roles'] ?? null) as $item) {
+            $role = $this->asArray($item);
+            if ($this->entityManager()->getRepository(Role::class)->find(self::coerceInt($role['id'] ?? null)) === null) {
+                continue;
+            }
+            self::assertTrue($role['fully_held'], 'qa.admin: fully_held for role ' . self::coerceString($role['name'] ?? null));
+            ++$checked;
+        }
+        self::assertGreaterThan(10, $checked);
+
+        // The detail carries the same value as the list.
+        $readDetail = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::ROLES_URI . '/' . $readRoleId, null, $roleEditorToken)
+        );
+        $this->assertLastDataMatchesSchema('responses/admin/roles/role');
+        self::assertTrue($readDetail['fully_held']);
+        $readUpdateDetail = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::ROLES_URI . '/' . $readUpdateRoleId, null, $roleEditorToken)
+        );
+        self::assertFalse($readUpdateDetail['fully_held']);
+        $adminDetail = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::ROLES_URI . '/' . $readRoleId, null, $adminToken)
+        );
+        self::assertTrue($adminDetail['fully_held']);
+    }
+
     // -- helpers -------------------------------------------------------------
+
+    /**
+     * The response formatter checks a whole envelope against a data schema, so its
+     * VALIDATE_RESPONSE_SCHEMA switch cannot prove a role schema: validate the `data`
+     * of the last response against the schema file directly.
+     */
+    private function assertLastDataMatchesSchema(string $schemaName): void
+    {
+        $raw = json_decode((string) $this->client->getResponse()->getContent());
+        self::assertIsObject($raw);
+        self::assertIsObject($raw->data ?? null);
+
+        $errors = $this->service(JsonSchemaValidationService::class)->validate($raw->data, $schemaName);
+        self::assertSame([], $errors, $schemaName . " rejects the response:\n" . implode("\n", $errors));
+    }
+
+    private function roleIdByName(string $name): int
+    {
+        $role = $this->entityManager()->getRepository(Role::class)->findOneBy(['name' => $name]);
+        self::assertInstanceOf(Role::class, $role, 'Missing role ' . $name . '. Run: composer test:reset-db');
+
+        return (int) $role->getId();
+    }
 
     private function entityManager(): EntityManagerInterface
     {
