@@ -17,13 +17,15 @@ use App\Repository\RoleDataAccessRepository;
 use App\Repository\UserRepository;
 use App\Service\CMS\UserPermissionService;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Contracts\Service\ResetInterface;
 
 /**
  * What a caller holds for rule 4.6f: their permission names and, per resource,
- * the OR of grant bits across their roles. Loaded once per user id per request.
+ * the OR of grant bits across their roles. Loaded once per user id per request
+ * (and emptied by {@see reset()} between requests of a long-running process).
  * The superuser holds everything.
  */
-final class CallerHoldingsService
+final class CallerHoldingsService implements ResetInterface
 {
     /**
      * @var array<int, array{
@@ -47,6 +49,19 @@ final class CallerHoldingsService
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
         private readonly EntityManagerInterface $entityManager,
     ) {
+    }
+
+    /**
+     * Forget everything loaded so far. Symfony calls this between requests in a
+     * long-running process (`kernel.reset`, autoconfigured from ResetInterface),
+     * so a Messenger worker never answers from holdings read before a role
+     * change (F211).
+     */
+    public function reset(): void
+    {
+        $this->byUser = [];
+        $this->allPermissionNames = null;
+        $this->permissionsById = null;
     }
 
     public function isSuperuser(int $userId): bool
