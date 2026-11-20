@@ -146,6 +146,19 @@ Retrieve detailed information about a specific page including its fields and tra
 
 **Permissions:** `admin.page.read`
 
+**Caller rights (since 0.1.48):** `data.rights` says what the signed-in person
+may do with this page, so the editor can hide what would be refused:
+
+```json
+"rights": { "can_update": true, "can_delete": false, "can_publish": true }
+```
+
+Each flag needs the route permission **and** the grant bit on this page
+(`can_update`: `admin.page.update` + update; `can_delete`: `admin.page.delete` +
+delete; `can_publish`: `admin.page_version.publish` + update); the superuser
+role gets all. It is computed per request after the cached page is read and is
+never cached with it. The server still checks every write on its own.
+
 ### Create Page
 
 Create a new page with specified properties.
@@ -783,7 +796,7 @@ Retrieve sections that are not attached to any page.
 
 **Response:** Array of unused sections
 
-**Permissions:** `admin.page.update`
+**Permissions:** `admin.section.read`
 
 ### Get Reference Containers
 

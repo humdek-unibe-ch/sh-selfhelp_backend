@@ -370,15 +370,17 @@ INSERT INTO `permissions` (`name`, `description`) VALUES
 ('admin.page.create', 'Can create new pages'),
 ('admin.page.update', 'Can edit existing pages'),
 ('admin.page.delete', 'Can delete pages'),
-('admin.page.insert', 'Can insert content into pages'),
 ('admin.page.export', 'Can export sections from pages'),
-('admin.settings', 'Full access to CMS settings'),
+('admin.language.read', 'Can read CMS languages'),
+('admin.language.update', 'Can create, update and delete CMS languages'),
+('admin.section.read', 'Can read unused sections'),
+('admin.audit.read', 'Read audit logs and security monitoring data'),
+('admin.mobile_preview.read', 'Can open the full-screen CMS mobile/web live preview'),
 ('admin.user.read', 'Can read existing users'),
 ('admin.user.create', 'Can create new users'),
 ('admin.user.update', 'Can edit existing users'),
 ('admin.user.delete', 'Can delete users'),
 ('admin.user.block', 'Can block users'),
-('admin.user.unblock', 'Can unblock users'),
 ('admin.user.impersonate', 'Can impersonate users');
 ```
 
