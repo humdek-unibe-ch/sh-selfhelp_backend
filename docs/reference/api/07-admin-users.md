@@ -273,7 +273,7 @@ Toggle a user's blocked status.
 
 **Response:** Updated user data with new blocked status
 
-**Permissions:** `admin.user.block` or `admin.user.unblock`
+**Permissions:** `admin.user.block` (blocking and unblocking; `admin.user.unblock` was removed on 2026-11-19)
 
 ### Stats, bulk actions and CSV
 
@@ -777,7 +777,9 @@ Retrieve a list of all user groups.
         "acls": [...],
         "created_at": "2024-01-15T10:30:00Z",
         "updated_at": "2024-01-20T14:45:00Z",
-        "user_count": 5
+        "user_count": 5,
+        "can_update": true,
+        "can_delete": false
       }
     ],
     "total": 10,
@@ -787,6 +789,8 @@ Retrieve a list of all user groups.
   }
 }
 ```
+
+`can_update` / `can_delete` are the **caller's** rights on that group (rule 4.11): the route right (`admin.group.update` / `admin.group.delete`) **and** the update / delete bit of a grant on the group; the superuser always `true`. They are added after the cached list is read. When `false`, the matching write answers `403`.
 
 **Permissions:** `admin.group.read`
 

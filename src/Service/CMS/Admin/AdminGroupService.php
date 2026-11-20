@@ -17,6 +17,8 @@ use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\Security\CallerHoldingsService;
+use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -25,6 +27,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AdminGroupService extends BaseService
 {
+    private const PERM_GROUP_UPDATE = 'admin.group.update';
+    private const PERM_GROUP_DELETE = 'admin.group.delete';
 
     public function __construct(
         private readonly TransactionService $transactionService,
@@ -32,7 +36,9 @@ class AdminGroupService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
-        private readonly LookupService $lookupService
+        private readonly LookupService $lookupService,
+        private readonly CreatorGrantService $creatorGrants,
+        private readonly CallerHoldingsService $callerHoldings,
     ) {
     }
 
@@ -53,13 +59,59 @@ class AdminGroupService extends BaseService
         // Create cache key based on user and parameters
         $cacheKey = "filtered_groups_{$userId}_{$page}_{$pageSize}_" . md5(($search ?? '') . ($sort ?? '') . $sortDirection);
 
-        return $this->cache
+        $result = $this->cache
             ->withCategory(CacheService::CATEGORY_GROUPS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList(
                 $cacheKey,
                 fn() => $this->fetchFilteredGroupsFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection)
             );
+
+        return $this->withCallerGroupFlags($this->asAssocArray($result), $userId);
+    }
+
+    /**
+     * Rule 4.11: tell the client per group what the caller may do, so a view-only
+     * grant draws no Edit or Delete control. `can_update` / `can_delete` need the
+     * route right (admin.group.update / admin.group.delete) and the matching grant
+     * bit on this group; the superuser holds both. Read from the caller's holdings
+     * (loaded once per request), after the cached list, so a grant change shows at once.
+     *
+     * @param array<string, mixed> $result
+     * @return array<string, mixed>
+     */
+    private function withCallerGroupFlags(array $result, int $callerId): array
+    {
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(
+            LookupService::RESOURCE_TYPES,
+            LookupService::RESOURCE_TYPES_GROUP
+        );
+        $mayUpdateByRoute = $this->callerHoldings->holdsPermission($callerId, self::PERM_GROUP_UPDATE);
+        $mayDeleteByRoute = $this->callerHoldings->holdsPermission($callerId, self::PERM_GROUP_DELETE);
+
+        $groups = [];
+        foreach ($this->asArray($result['groups'] ?? null) as $row) {
+            $group = $this->asAssocArray($row);
+            $groupId = $this->asInt($group['id'] ?? 0);
+            $group['can_update'] = $resourceTypeId !== null && $mayUpdateByRoute
+                && $this->callerHoldings->holdsGrantBits(
+                    $callerId,
+                    $resourceTypeId,
+                    $groupId,
+                    DataAccessSecurityService::PERMISSION_UPDATE
+                );
+            $group['can_delete'] = $resourceTypeId !== null && $mayDeleteByRoute
+                && $this->callerHoldings->holdsGrantBits(
+                    $callerId,
+                    $resourceTypeId,
+                    $groupId,
+                    DataAccessSecurityService::PERMISSION_DELETE
+                );
+            $groups[] = $group;
+        }
+        $result['groups'] = $groups;
+
+        return $result;
     }
 
     /**
@@ -157,6 +209,15 @@ class AdminGroupService extends BaseService
             if (isset($groupData['acls']) && is_array($groupData['acls'])) {
                 $this->updateGroupAclsInternal($group, $groupData['acls']);
             }
+
+            // Whoever creates an item can manage it (rule 6b): the caller's roles that
+            // hold admin.group.create get full data-access on the new group (the
+            // admin role is never stored), in the same transaction.
+            $this->creatorGrants->grantCallerRolesHolding(
+                'admin.group.create',
+                LookupService::RESOURCE_TYPES_GROUP,
+                (int) $group->getId(),
+            );
 
             // Log transaction
             $this->transactionService->logTransaction(
@@ -346,21 +407,27 @@ class AdminGroupService extends BaseService
     }
 
     /**
-     * Update group ACLs (bulk update)
+     * Update group ACLs (bulk update).
+     *
+     * Rule 4.6g: a non-superuser needs update on the group and on every page
+     * whose visibility is added or removed; unchanged rows need nothing.
+     * Checks run before the write transaction.
      *
      * @param list<array<string, mixed>> $aclsData
      * @return list<array<string, mixed>>
      */
-    public function updateGroupAcls(int $groupId, array $aclsData): array
+    public function updateGroupAcls(int $callerUserId, int $groupId, array $aclsData): array
     {
+        $group = $this->entityManager->getRepository(Group::class)->find($groupId);
+        if (!$group) {
+            throw new ServiceException('Group not found', Response::HTTP_NOT_FOUND);
+        }
+
+        $this->assertMayChangeGroupPageVisibility($callerUserId, $group, $aclsData);
+
         $this->entityManager->beginTransaction();
 
         try {
-            $group = $this->entityManager->getRepository(Group::class)->find($groupId);
-            if (!$group) {
-                throw new ServiceException('Group not found', Response::HTTP_NOT_FOUND);
-            }
-
             $this->updateGroupAclsInternal($group, $aclsData);
 
             // Log transaction
@@ -468,6 +535,107 @@ class AdminGroupService extends BaseService
         if (!is_array($data) || !isset($data['page_id']) || !is_numeric($data['page_id'])) {
             throw new ServiceException('Valid page_id is required for ACL', Response::HTTP_BAD_REQUEST);
         }
+    }
+
+    /**
+     * Rule 4.6g: changing which pages a group sees needs update on the group
+     * and update on every page whose visibility is added or removed.
+     *
+     * @param list<array<string, mixed>> $aclsData
+     */
+    private function assertMayChangeGroupPageVisibility(int $callerUserId, Group $group, array $aclsData): void
+    {
+        if ($this->dataAccessSecurityService->userHasAdminRole($callerUserId)) {
+            return;
+        }
+
+        $groupId = (int) $group->getId();
+        if (!$this->dataAccessSecurityService->hasPermission(
+            $callerUserId,
+            LookupService::RESOURCE_TYPES_GROUP,
+            $groupId,
+            DataAccessSecurityService::PERMISSION_UPDATE
+        )) {
+            throw new ServiceException(
+                'Access denied: you need update on group ' . $groupId . '.',
+                Response::HTTP_FORBIDDEN
+            );
+        }
+
+        foreach ($aclsData as $aclData) {
+            $this->validateAclData($aclData);
+        }
+
+        $currentSelectIds = $this->currentSelectPageIds($group);
+        $desiredSelectIds = $this->desiredSelectPageIds($aclsData);
+        $changedPageIds = array_values(array_unique(array_merge(
+            array_diff($desiredSelectIds, $currentSelectIds),
+            array_diff($currentSelectIds, $desiredSelectIds)
+        )));
+        sort($changedPageIds);
+
+        $missingPageIds = [];
+        foreach ($changedPageIds as $pageId) {
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $callerUserId,
+                LookupService::RESOURCE_TYPES_PAGES,
+                $pageId,
+                DataAccessSecurityService::PERMISSION_UPDATE
+            )) {
+                $missingPageIds[] = $pageId;
+            }
+        }
+
+        if ($missingPageIds !== []) {
+            throw new ServiceException(
+                'Access denied: you need update on page ' . implode(', ', $missingPageIds) . ' to change who sees it.',
+                Response::HTTP_FORBIDDEN
+            );
+        }
+    }
+
+    /**
+     * Page ids this group can currently see (acl_select true).
+     *
+     * @return list<int>
+     */
+    private function currentSelectPageIds(Group $group): array
+    {
+        /** @var list<PageAclGroup> $acls */
+        $acls = $this->entityManager->getRepository(PageAclGroup::class)->findBy(['group' => $group]);
+        $ids = [];
+        foreach ($acls as $acl) {
+            if (!$acl->getAclSelect()) {
+                continue;
+            }
+            $page = $acl->getPage();
+            if ($page === null || $page->getId() === null) {
+                continue;
+            }
+            $ids[] = (int) $page->getId();
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Page ids the request would leave visible (acl_select true; false omitted).
+     *
+     * @param list<array<string, mixed>> $aclsData
+     * @return list<int>
+     */
+    private function desiredSelectPageIds(array $aclsData): array
+    {
+        $ids = [];
+        foreach ($aclsData as $aclData) {
+            // Same rule as updateGroupAclsInternal: false means omit.
+            if (!(bool) ($aclData['acl_select'] ?? true)) {
+                continue;
+            }
+            $ids[] = $this->asInt($aclData['page_id']);
+        }
+
+        return $ids;
     }
 
     /**
