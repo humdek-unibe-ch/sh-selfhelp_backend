@@ -48,6 +48,7 @@ final class QaAccessPersonaSmokeTest extends QaWebTestCase
 
         $emails = array_map(QaBaselineFixture::readPersonaEmail(...), $readPermissions);
         $emails[] = QaBaselineFixture::QA_READ_UPDATE_EMAIL;
+        $emails[] = QaBaselineFixture::QA_ROLE_UPDATE_EMAIL;
 
         foreach ($readPermissions as $readPermission) {
             $user = $em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::readPersonaEmail($readPermission)]);
@@ -62,6 +63,27 @@ final class QaAccessPersonaSmokeTest extends QaWebTestCase
         foreach ($emails as $email) {
             self::assertNotSame('', $this->loginAs($email), $email . ' must receive an access token.');
         }
+    }
+
+    public function testRoleUpdatePersonaHoldsExactlyAccessRoleReadAndRoleUpdate(): void
+    {
+        $user = $this->service(EntityManagerInterface::class)
+            ->getRepository(User::class)
+            ->findOneBy(['email' => QaBaselineFixture::QA_ROLE_UPDATE_EMAIL]);
+        self::assertInstanceOf(User::class, $user, 'qa.roleupdate missing. Run: composer test:reset-db');
+
+        $roleNames = [];
+        $permissionNames = [];
+        foreach ($user->getUserRoles() as $role) {
+            $roleNames[] = $role->getName();
+            foreach ($role->getPermissions() as $permission) {
+                $permissionNames[] = $permission->getName();
+            }
+        }
+        sort($permissionNames);
+
+        self::assertSame([QaBaselineFixture::QA_ROLE_UPDATE_ROLE], $roleNames);
+        self::assertSame(['admin.access', 'admin.role.read', 'admin.role.update'], $permissionNames);
     }
 
     public function testLanguageReadPersonaMayListButNotCreateLanguages(): void

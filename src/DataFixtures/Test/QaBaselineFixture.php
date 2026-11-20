@@ -60,7 +60,9 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * Role `qa_read_update` holds `admin.access`, every core `admin.*.read` and
  * every core `admin.*.update`; its user is `qa.readupdate@selfhelp.test`. Its
  * view-only grants on the QA items are added by {@see QaAccessPersonaFixture}
- * once those items exist. Roles and their permissions go through
+ * once those items exist. Role `qa_role_update` holds exactly `admin.access`,
+ * `admin.role.read` and `admin.role.update` (no grants); its user is
+ * `qa.roleupdate@selfhelp.test`. Roles and their permissions go through
  * {@see AdminRoleService} as qa.admin (Testing Rule 8), never raw SQL. No
  * restricted persona has a group or two-factor login.
  *
@@ -77,7 +79,7 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
      * fast with a clear message instead of producing confusing downstream
      * failures (plan §32 / AGENTS.md Testing Rule 32).
      */
-    public const QA_FIXTURE_VERSION = '2026_11_19_001';
+    public const QA_FIXTURE_VERSION = '2026_11_20_001';
 
     /** Shared password for every QA persona. Test-only, never a real secret. */
     public const QA_PASSWORD = 'QaPassw0rd!2026';
@@ -90,6 +92,10 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
     /** Persona holding every core read and update right (view grants only on the QA items). */
     public const QA_READ_UPDATE_EMAIL = 'qa.readupdate@selfhelp.test';
     public const QA_READ_UPDATE_ROLE = 'qa_read_update';
+
+    /** Role editor without the permission catalogue right: exactly admin.access, admin.role.read, admin.role.update (F224). */
+    public const QA_ROLE_UPDATE_EMAIL = 'qa.roleupdate@selfhelp.test';
+    public const QA_ROLE_UPDATE_ROLE = 'qa_role_update';
 
     /** Matches a core area read right and captures the area (`admin.page_version.read` → `page_version`). */
     private const READ_PERMISSION_PATTERN = '/^admin\.([a-z0-9_]+)\.read$/';
@@ -264,6 +270,16 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
 
         $role = $this->createRoleWithPermissions($manager, $qaAdminId, self::QA_READ_UPDATE_ROLE, 'QA persona with every core read and update right', $readUpdateIds);
         $this->createPersona($manager, self::QA_READ_UPDATE_EMAIL, 'QA Read Update', $activeStatus, $userType, [], $role);
+
+        $roleUpdateIds = [];
+        foreach (['admin.access', 'admin.role.read', 'admin.role.update'] as $name) {
+            if (!isset($idsByName[$name])) {
+                throw new \RuntimeException(sprintf('QA baseline cannot seed %s: the core permission %s is missing.', self::QA_ROLE_UPDATE_EMAIL, $name));
+            }
+            $roleUpdateIds[] = $idsByName[$name];
+        }
+        $role = $this->createRoleWithPermissions($manager, $qaAdminId, self::QA_ROLE_UPDATE_ROLE, 'QA persona that edits roles without the permission catalogue right', $roleUpdateIds);
+        $this->createPersona($manager, self::QA_ROLE_UPDATE_EMAIL, 'QA Role Update', $activeStatus, $userType, [], $role);
     }
 
     /**

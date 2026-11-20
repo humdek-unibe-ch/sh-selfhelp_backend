@@ -130,7 +130,9 @@ The role holds exactly `admin.access` and that read right. The area keeps its un
 
 **Read/update persona.** `qa.readupdate@selfhelp.test` holds role `qa_read_update`: `admin.access`, every core `admin.*.read` and every core `admin.*.update`. On the QA items it has the **view bit only** (`QaAccessPersonaFixture`, group `qa`): the `qa-feedback` page, the `qa_events_table` data table and the `qa_access_group` group. No QA fixture creates an asset, so no asset grant is seeded. So it proves that item controls follow the server's per-item flags (`rights.can_update`, `can_update`, `can_delete`) and not the route rights (rule 4.11, F234).
 
-`QA_FIXTURE_VERSION` is `2026_11_19_001` with these personas. `tests/Smoke/QaAccessPersonaSmokeTest.php` proves they exist and sign in.
+**Role-update persona.** `qa.roleupdate@selfhelp.test` holds role `qa_role_update`: exactly `admin.access`, `admin.role.read` and `admin.role.update`, and no grants. It is a role editor without the permission catalogue right (`admin.permission.read`), so it proves that the role form reads names through `GET /admin/permissions` on `admin.role.update` (F224) and that role items carry `fully_held` (F219).
+
+`QA_FIXTURE_VERSION` is `2026_11_20_001` with these personas. `tests/Smoke/QaAccessPersonaSmokeTest.php` proves they exist and sign in.
 
 ### QA frontend golden fixture (`qa-feedback`)
 
