@@ -98,16 +98,19 @@ class ACLService
         // The admin role may open every page by its address (hasAccess), so the
         // menus, the search and the page lists show every page too: one answer
         // to "may this caller see the page?" (F89). For everyone else the
-        // groups decide, through the stored procedure.
+        // groups decide, through the stored procedure. User-scoped so a group
+        // page-ACL write can clear only the members (F260), not every user.
         if ($userId > 0 && $this->dataAccessSecurityService->userHasAdminRole($userId)) {
             return $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+                ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
                 ->getList("user_acl_admin_{$userId}", fn() => $this->aclRepository->getFullAccessToAllPages($userId));
         }
 
         // Use the repository to get all ACLs (cached)
         return $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList("user_acl_{$userId}", fn() => $this->aclRepository->getUserAcl($userId));
     }
 
@@ -122,17 +125,28 @@ class ACLService
             ->setAclSelect($select);
         $em->persist($aclGroup);
 
-        // Invalidate entity scopes for affected entities
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_GROUP, (int) $group->getId());
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
+        $groupId = (int) $group->getId();
+        $pageId = (int) $page->getId();
 
-        // Clear the permission LISTS only (user ACL snapshots are lists and not
-        // user-scoped keys that the group/page scopes above reach), never the
-        // whole category generation: that wiped every permission item of every
-        // user on each page create or import (F27).
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->invalidateAllListsInCategory();
+        // Members of the group: their user-scoped permission entries (ACL rows,
+        // user ACL lists) must rebuild. Outsiders keep their hits (F260 / F27).
+        $memberUserIds = array_values(array_filter(
+            array_map(
+                static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0,
+                $em->getConnection()->fetchFirstColumn(
+                    'SELECT id_users FROM rel_groups_users WHERE id_groups = :group',
+                    ['group' => $groupId],
+                    ['group' => \Doctrine\DBAL\ParameterType::INTEGER],
+                ),
+            ),
+            static fn (int $id): bool => $id > 0,
+        ));
+        if ($memberUserIds !== []) {
+            $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_USER, $memberUserIds);
+        }
+
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_GROUP, $groupId);
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
     }
 
 }

@@ -122,9 +122,8 @@ final class ACLServiceTest extends QaKernelTestCase
     public function testAddingAGroupAclDoesNotBumpThePermissionsCategoryGeneration(): void
     {
         // F27: one new ACL row used to bump the generation of the whole permissions category,
-        // which is part of every key of it. It now clears the group scope, the page scope and
-        // the category's lists. The generation is read through the key it builds: same key,
-        // same generation.
+        // which is part of every key of it. It now clears member user scopes, the group scope
+        // and the page scope — never the category generation or every permissions list (F260).
         $cache = $this->service(CacheService::class)->withCategory(CacheService::CATEGORY_PERMISSIONS);
         $keyOf = new \ReflectionMethod($cache, 'getCacheKey');
         // The factory's page creation clears caches itself; take the baseline after it.
@@ -135,6 +134,79 @@ final class ACLServiceTest extends QaKernelTestCase
         $this->em->flush();
 
         self::assertSame($before, $keyOf->invoke($cache, 'item', 'qa_f27_probe'), 'The category generation did not move.');
+    }
+
+    public function testAddingAGroupAclRebuildsOnlyMemberAndPageScopedPermissionCaches(): void
+    {
+        // F260: permissions items of outsiders stay hits; members and page-scoped
+        // ACL reads recompute after addGroupAcl.
+        $memberId = $this->userId(QaBaselineFixture::QA_USER_EMAIL);
+        $outsiderId = $this->userId(QaBaselineFixture::QA_GUEST_EMAIL);
+        $page = $this->pages->createPage('qa_acl_f260_page', openAccess: false);
+        $pageId = (int) $page->getId();
+        $group = $this->subjectGroup();
+
+        $cache = $this->service(CacheService::class);
+        $memberComputes = 0;
+        $outsiderComputes = 0;
+        $pageComputes = 0;
+
+        $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $memberId)
+            ->getItem('qa_f260_member_probe', static function () use (&$memberComputes): string {
+                ++$memberComputes;
+
+                return 'member-v1';
+            });
+        $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $outsiderId)
+            ->getItem('qa_f260_outsider_probe', static function () use (&$outsiderComputes): string {
+                ++$outsiderComputes;
+
+                return 'outsider-v1';
+            });
+        $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId)
+            ->getItem('qa_f260_page_probe', static function () use (&$pageComputes): string {
+                ++$pageComputes;
+
+                return 'page-v1';
+            });
+        self::assertSame(1, $memberComputes);
+        self::assertSame(1, $outsiderComputes);
+        self::assertSame(1, $pageComputes);
+
+        $this->acl->addGroupAcl($page, $group, $this->em, true);
+        $this->em->flush();
+
+        $memberValue = $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $memberId)
+            ->getItem('qa_f260_member_probe', static function () use (&$memberComputes): string {
+                ++$memberComputes;
+
+                return 'member-v2';
+            });
+        $outsiderValue = $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $outsiderId)
+            ->getItem('qa_f260_outsider_probe', static function () use (&$outsiderComputes): string {
+                ++$outsiderComputes;
+
+                return 'outsider-v2';
+            });
+        $pageValue = $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId)
+            ->getItem('qa_f260_page_probe', static function () use (&$pageComputes): string {
+                ++$pageComputes;
+
+                return 'page-v2';
+            });
+
+        self::assertSame('member-v2', $memberValue, 'A group member\'s permissions item must rebuild.');
+        self::assertSame(2, $memberComputes);
+        self::assertSame('outsider-v1', $outsiderValue, 'An outsider\'s permissions item must stay a hit.');
+        self::assertSame(1, $outsiderComputes);
+        self::assertSame('page-v2', $pageValue, 'The page\'s ACL-scoped cache must rebuild.');
+        self::assertSame(2, $pageComputes);
     }
 
     public function testRemovingGroupAclIsSeenOnNextHasAccessWithoutManualCacheClear(): void
