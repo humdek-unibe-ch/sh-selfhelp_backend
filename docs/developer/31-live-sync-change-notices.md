@@ -7,7 +7,7 @@ SPDX-License-Identifier: MPL-2.0
 
 Audience: Developers and technical operators.
 Status: active.
-Applies to: core 0.1.49 and later.
+Applies to: core 0.1.50 and later.
 Last verified: 2026-11-20.
 Source of truth: `src/Service/Sync/`, `src/EventListener/ChangeNoticeFlushListener.php`, `src/EventListener/AclStampResponseListener.php`, `src/Controller/Api/V1/Auth/AuthEventsController.php`, `src/Service/CMS/Frontend/PageService.php`.
 
@@ -119,16 +119,16 @@ Two editors can have the same page open. Two rules keep them from overwriting ea
 
 The listener claims the version with one conditional `UPDATE ... WHERE draft_version = :sent` before the controller runs, so of two writes on the same version exactly one runs. When the controller then answers a non-2xx status, the claim is given back, so a failed write changes nothing. A 2xx write also sends `page_draft:<id>` to the page's editors. Writes made by code that calls a service directly (the CMS app wizard, the home seed, the page import) only touch pages that were just created, so they need no version.
 
-**Edit lock.** One holder per page. The lease is not a table: it is one entry per page in the `cache.page_edit_lock` pool (Redis in production) holding the holder's id and name and three times. It ends **120 seconds after the last renewal** or **15 minutes after the holder's last draft write** (after the acquisition when they wrote nothing), whichever comes first. The ends are judged from the stored times with `time()`, never from the cache entry's lifetime, so they are exact and testable with ClockMock. A short `LockFactory` mutex per page guards each read-modify-write, so two callers never both take a free lock.
+**Edit lock.** One holder per page. The lease is not a table: it is one entry per page in the `cache.page_edit_lock` pool (Redis in production) holding the holder's id and name and three times. It ends **120 seconds after the last renewal** or **15 minutes after the holder's last draft write** (after the acquisition when they wrote nothing), whichever comes first. The ends are judged from the stored times with `time()`, never from the cache entry's lifetime, so they are exact and testable with ClockMock. When the idle end removes the lease, an idle mark for that holder stays in the same pool for up to 24 hours: their next renew answers `409 lock_idle_ended` until they (or anyone) take the lock again. A short `LockFactory` mutex per page guards each read-modify-write, so two callers never both take a free lock.
 
 | Route | Effect |
 |---|---|
 | `GET /admin/pages/{page_id}/lock` | the status; changes nothing (an ended lease is removed and announced) |
-| `POST /admin/pages/{page_id}/lock` | take a free lock, or renew the caller's own; `409 page_locked` when someone else holds it |
-| `POST /admin/pages/{page_id}/lock/take-over` | become the holder, whoever held it |
+| `POST /admin/pages/{page_id}/lock` | take a free lock, or renew the caller's own; `409 page_locked` when someone else holds it; `409 lock_idle_ended` after the caller's own idle end |
+| `POST /admin/pages/{page_id}/lock/take-over` | become the holder, whoever held it (explicit resume after idle) |
 | `DELETE /admin/pages/{page_id}/lock` | give the lock up when it is the caller's; nothing happens otherwise |
 
-All four need `admin.page.update` and the update grant on the page (the same check as a page write): a caller without them gets 403 (404 for a page that does not exist) and never learns whether the page is locked. The data of a lock answer is `{page_id, held, mine, holder: {id, name}|null, expires_at, idle_expires_at}` (`mine` is per caller). A draft write by someone other than the holder is refused with `409 page_locked` and the same data, so the editor can show who is editing; the lock is checked before the version. A draft write while nobody holds the lock succeeds and leaves the caller holding it. A holder who is taken over gets `409 page_locked` on the next write.
+Acquire, release and take-over need `admin.page.update` and the update grant on the page. `GET` also opens for callers with `admin.page.delete`, `admin.page_version.publish` or `admin.page_version.delete` who hold the update or delete grant on the page. A caller without those rights gets 403 (404 for a page that does not exist) and never learns whether the page is locked. The data of a lock answer is `{page_id, held, mine, holder: {id, name}|null, expires_at, idle_expires_at}` (`mine` is per caller). A draft write by someone other than the holder is refused with `409 page_locked` and the same data, so the editor can show who is editing; the lock is checked before the version. A draft write while nobody holds the lock succeeds and leaves the caller holding it (and clears an idle mark). A holder who is taken over gets `409 page_locked` on the next write. Delete, publish, unpublish, publish-specific-version and version-delete by a caller who may do that action (without needing to hold the lock or send `X-Page-Version`) also answer `409 page_locked` while someone else holds it; a successful page delete removes the lease.
 
 Every change of who holds the lock (acquire of a free lock, take-over, release, an ended lease noticed on access, deleting the page) sends `page_lock:<id>` to the roles with a grant on the page and the superuser role. A renewal by the holder sends nothing. Roles edit, so lock and draft notices go to roles, never to groups.
 

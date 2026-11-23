@@ -54,6 +54,9 @@ final class PageEditLockTest extends QaWebTestCase
         'admin.page_version.delete',
     ];
 
+    /** @var bool */
+    private static $apiRoutesReloadedForToken = false;
+
     private EntityManagerInterface $em;
     private string $tokenA;
     private string $tokenB;
@@ -66,6 +69,18 @@ final class PageEditLockTest extends QaWebTestCase
 
     protected function setUp(): void
     {
+        // Shared Redis is not per TEST_TOKEN (F92). Drop a RouteCollection that
+        // another parallel DB may have cached, then boot so the loader reads ours.
+        if (!self::$apiRoutesReloadedForToken) {
+            self::bootKernel();
+            $cache = static::getContainer()->get(\App\Service\Cache\Core\CacheService::class);
+            self::assertInstanceOf(\App\Service\Cache\Core\CacheService::class, $cache);
+            $cache->withCategory(\App\Service\Cache\Core\CacheService::CATEGORY_PERMISSIONS)->invalidateCategory();
+            $cache->withCategory(\App\Service\Cache\Core\CacheService::CATEGORY_API_ROUTES)->invalidateAllListsInCategory();
+            self::ensureKernelShutdown();
+            self::$apiRoutesReloadedForToken = true;
+        }
+
         parent::setUp();
 
         $this->em = $this->service(EntityManagerInterface::class);
@@ -97,6 +112,9 @@ final class PageEditLockTest extends QaWebTestCase
         $this->pageId = $this->createPage('qa_lock_page', $this->tokenA);
         $this->grantOnPage($this->roleB, $this->pageId, DataAccessSecurityService::PERMISSION_READ | DataAccessSecurityService::PERMISSION_UPDATE);
 
+        // Register explicitly: namespace mock from phpunit.dist.xml (F267) plus
+        // the class attribute can miss the service when the kernel boots late.
+        ClockMock::register(PageEditLockService::class);
         $this->now = time();
         ClockMock::withClockMock($this->now);
     }
@@ -315,6 +333,68 @@ final class PageEditLockTest extends QaWebTestCase
         self::assertTrue($this->assertEnvelopeSuccess($this->lock('POST', $this->tokenB))['mine']);
     }
 
+    public function testAfterTheIdleEndTheHolderIsRefusedUntilTakeOver(): void
+    {
+        $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA));
+        for ($at = 100; $at <= 800; $at += 100) {
+            $this->setClock($at);
+            $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA));
+        }
+
+        // Past both the idle end (900) and the lease end from the last renewal (920).
+        $this->setClock(PageEditLockService::IDLE_SECONDS + PageEditLockService::LEASE_SECONDS);
+        self::assertFalse(
+            $this->assertEnvelopeSuccess($this->lock('GET', $this->tokenB))['held'],
+            'GET must notice the idle end and clear the lease.',
+        );
+
+        $idle = $this->lock('POST', $this->tokenA);
+        self::assertSame(Response::HTTP_CONFLICT, $idle['status'] ?? null, (string) json_encode($idle));
+        self::assertSame(PageEditLockService::ERROR_IDLE_ENDED, $idle['error'] ?? null);
+        $data = $idle['data'] ?? null;
+        self::assertIsArray($data);
+        self::assertFalse($data['held'] ?? true);
+        self::assertFalse($data['mine'] ?? true);
+        self::assertTrue(($data['holder'] ?? null) === null, 'Idle-ended data has no holder: ' . json_encode($data));
+
+        $taken = $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA, '/take-over'));
+        self::assertTrue($taken['mine']);
+        self::assertSame('QA Lock A', $this->holderName($taken));
+    }
+
+    public function testAfterTheIdleEndASecondUserMayAcquireWithoutTakeOver(): void
+    {
+        $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA));
+        for ($at = 100; $at <= 800; $at += 100) {
+            $this->setClock($at);
+            $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA));
+        }
+
+        $this->setClock(PageEditLockService::IDLE_SECONDS + PageEditLockService::LEASE_SECONDS);
+        $taken = $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenB));
+        self::assertTrue($taken['mine']);
+        self::assertSame('QA Lock B', $this->holderName($taken));
+    }
+
+    public function testAfterTheIdleEndADraftWriteByTheOldHolderTakesTheLock(): void
+    {
+        $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA));
+        for ($at = 100; $at <= 800; $at += 100) {
+            $this->setClock($at);
+            $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA));
+        }
+
+        $this->setClock(PageEditLockService::IDLE_SECONDS + PageEditLockService::LEASE_SECONDS);
+        self::assertFalse($this->assertEnvelopeSuccess($this->lock('GET', $this->tokenB))['held']);
+
+        $this->assertEnvelopeSuccess(
+            $this->jsonRequest('PUT', self::BASE . $this->pageId, ['pageData' => ['headless' => false], 'fields' => []], $this->tokenA),
+        );
+
+        $status = $this->assertEnvelopeSuccess($this->lock('GET', $this->tokenA));
+        self::assertTrue($status['mine']);
+    }
+
     public function testAnEndedLeaseDoesNotBlockADraftWrite(): void
     {
         $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA));
@@ -326,6 +406,41 @@ final class PageEditLockTest extends QaWebTestCase
 
         $status = $this->assertEnvelopeSuccess($this->lock('GET', $this->tokenB));
         self::assertTrue($status['mine']);
+    }
+
+    public function testDeleteAndPublishPersonasMayReadTheLockButNotChangeIt(): void
+    {
+        $deleteRole = $this->em->getRepository(Role::class)->findOneBy(['name' => QaBaselineFixture::QA_PAGE_DELETE_ROLE]);
+        $publishRole = $this->em->getRepository(Role::class)->findOneBy(['name' => QaBaselineFixture::QA_PAGE_PUBLISH_ROLE]);
+        self::assertInstanceOf(Role::class, $deleteRole);
+        self::assertInstanceOf(Role::class, $publishRole);
+        $this->grantOnPage((int) $deleteRole->getId(), $this->pageId, DataAccessSecurityService::PERMISSION_READ | DataAccessSecurityService::PERMISSION_DELETE);
+        $this->grantOnPage((int) $publishRole->getId(), $this->pageId, DataAccessSecurityService::PERMISSION_READ | DataAccessSecurityService::PERMISSION_UPDATE);
+
+        $this->assertEnvelopeSuccess($this->lock('POST', $this->tokenA));
+
+        $deleteToken = $this->loginAs(QaBaselineFixture::QA_PAGE_DELETE_EMAIL);
+        $publishToken = $this->loginAs(QaBaselineFixture::QA_PAGE_PUBLISH_EMAIL);
+
+        $asDelete = $this->assertEnvelopeSuccess($this->lock('GET', $deleteToken));
+        self::assertTrue($asDelete['held']);
+        self::assertSame('QA Lock A', $this->holderName($asDelete));
+
+        $asPublish = $this->assertEnvelopeSuccess($this->lock('GET', $publishToken));
+        self::assertTrue($asPublish['held']);
+        self::assertSame('QA Lock A', $this->holderName($asPublish));
+
+        foreach ([['POST', ''], ['POST', '/take-over'], ['DELETE', '']] as [$method, $suffix]) {
+            foreach ([$deleteToken, $publishToken] as $token) {
+                $refused = $this->lock($method, $token, $suffix);
+                self::assertSame(Response::HTTP_FORBIDDEN, $refused['status'] ?? null);
+            }
+        }
+
+        $reader = $this->loginAs(QaBaselineFixture::readPersonaEmail('admin.page.read'));
+        $asReader = $this->lock('GET', $reader);
+        self::assertContains($asReader['status'] ?? null, [Response::HTTP_FORBIDDEN, Response::HTTP_NOT_FOUND]);
+        self::assertNotSame(PageEditLockService::ERROR_LOCKED, $asReader['error'] ?? null);
     }
 
     // -- C9: change notices --------------------------------------------------------------------------------------------

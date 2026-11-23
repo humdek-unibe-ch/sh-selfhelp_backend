@@ -1164,7 +1164,10 @@
       "path": "/admin/pages/{page_id}/lock",
       "is_public": false,
       "permissions": [
-        "admin.page.update"
+        "admin.page.delete",
+        "admin.page.update",
+        "admin.page_version.delete",
+        "admin.page_version.publish"
       ]
     },
     {

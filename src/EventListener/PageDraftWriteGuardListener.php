@@ -41,13 +41,23 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
  * took), so a failed write changes neither the version nor the lock.
  *
  * The lock check runs before the version check, as the contract says. A caller who
- * may NOT edit the page (no route right, no update grant, no such page) is not
- * guarded here: the controller's own checks answer 403 or 404, so neither the lock
- * nor the version of a page leaks to someone who may not touch it.
+ * may NOT edit the page is not version-guarded: the controller's own checks answer
+ * 403 or 404. Delete and publish callers who hold that action's right still meet
+ * the lock: when someone else holds it they get `409 page_locked`, without needing
+ * the version or the lock themselves. A successful page delete removes the lease.
  */
 final class PageDraftWriteGuardListener implements EventSubscriberInterface
 {
     private const ATTRIBUTE = '_page_draft_guard';
+
+    /** Routes that may run without `admin.page.update` but still respect another's lock. */
+    private const LOCK_WATCH_ROUTES = [
+        PageDraftWriteRoutes::DELETE_PAGE,
+        'admin_page_publish',
+        'admin_page_unpublish',
+        'admin_page_publish_specific_version',
+        'admin_page_version_delete',
+    ];
 
     public function __construct(
         private readonly TokenStorageInterface $tokenStorage,
@@ -90,8 +100,14 @@ final class PageDraftWriteGuardListener implements EventSubscriberInterface
         $userId = (int) $user->getId();
 
         $current = $this->versions->current($pageId);
-        if ($current === null || !$this->locks->callerMayEdit($userId, $pageId)) {
-            return; // the controller answers 404 / 403 as it always did
+        if ($current === null) {
+            return; // the controller answers 404
+        }
+
+        if (!$this->locks->callerMayEdit($userId, $pageId)) {
+            $this->guardLockWatchOnly($event, $route, $pageId, $userId);
+
+            return;
         }
 
         try {
@@ -136,6 +152,7 @@ final class PageDraftWriteGuardListener implements EventSubscriberInterface
             'user_id' => $userId,
             'expected' => $expected,
             'took_lock' => $tookLock,
+            'lock_watch_only' => false,
         ]);
     }
 
@@ -150,12 +167,25 @@ final class PageDraftWriteGuardListener implements EventSubscriberInterface
 
         $pageId = $guard['page_id'];
         $userId = $guard['user_id'];
-        $expected = $guard['expected'];
-        if (!is_int($pageId) || !is_int($userId) || !is_int($expected)) {
+        if (!is_int($pageId) || !is_int($userId)) {
             return;
         }
 
         $response = $event->getResponse();
+
+        if (($guard['lock_watch_only'] ?? false) === true) {
+            if ($response->isSuccessful() && $guard['route'] === PageDraftWriteRoutes::DELETE_PAGE) {
+                $this->locks->forget($pageId);
+            }
+
+            return;
+        }
+
+        $expected = $guard['expected'];
+        if (!is_int($expected)) {
+            return;
+        }
+
         if ($response->isSuccessful()) {
             $response->headers->set(PageDraftVersionService::HEADER, (string) ($expected + 1));
             if ($guard['route'] === PageDraftWriteRoutes::DELETE_PAGE) {
@@ -172,6 +202,45 @@ final class PageDraftWriteGuardListener implements EventSubscriberInterface
         if ($guard['took_lock'] === true) {
             $this->locks->release($pageId, $userId);
         }
+    }
+
+    /**
+     * Delete / publish callers who hold that action's right meet another's lock;
+     * everyone else is left to the controller's 403 / 404.
+     */
+    private function guardLockWatchOnly(ControllerEvent $event, string $route, int $pageId, int $userId): void
+    {
+        if (!in_array($route, self::LOCK_WATCH_ROUTES, true) || !$this->callerMayWatchRoute($route, $userId, $pageId)) {
+            return;
+        }
+
+        try {
+            $this->locks->assertNotHeldByOther($pageId, $userId);
+        } catch (ServiceException $e) {
+            $this->refuse($event, $this->formatter->formatException($e));
+
+            return;
+        }
+
+        $event->getRequest()->attributes->set(self::ATTRIBUTE, [
+            'route' => $route,
+            'page_id' => $pageId,
+            'user_id' => $userId,
+            'expected' => null,
+            'took_lock' => false,
+            'lock_watch_only' => true,
+        ]);
+    }
+
+    private function callerMayWatchRoute(string $route, int $userId, int $pageId): bool
+    {
+        return match ($route) {
+            PageDraftWriteRoutes::DELETE_PAGE => $this->locks->callerMayDeletePage($userId, $pageId),
+            'admin_page_publish', 'admin_page_unpublish', 'admin_page_publish_specific_version'
+                => $this->locks->callerMayPublishPage($userId, $pageId),
+            'admin_page_version_delete' => $this->locks->callerMayDeleteVersion($userId, $pageId),
+            default => false,
+        };
     }
 
     private function refuse(ControllerEvent $event, Response $response): void

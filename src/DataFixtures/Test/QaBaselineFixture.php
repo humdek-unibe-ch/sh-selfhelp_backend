@@ -62,9 +62,13 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * view-only grants on the QA items are added by {@see QaAccessPersonaFixture}
  * once those items exist. Role `qa_role_update` holds exactly `admin.access`,
  * `admin.role.read` and `admin.role.update` (no grants); its user is
- * `qa.roleupdate@selfhelp.test`. Roles and their permissions go through
- * {@see AdminRoleService} as qa.admin (Testing Rule 8), never raw SQL. No
- * restricted persona has a group or two-factor login.
+ * `qa.roleupdate@selfhelp.test`. Page lock walk personas (F259):
+ * `qa.pagedelete@selfhelp.test` (role `qa_page_delete`: access, page read,
+ * page delete) and `qa.pagepublish@selfhelp.test` (role `qa_page_publish`:
+ * access, page read, page_version.publish); their grants on the content page
+ * `qa-events` are added by {@see QaAccessPersonaFixture}. Roles and their
+ * permissions go through {@see AdminRoleService} as qa.admin (Testing Rule 8),
+ * never raw SQL. No restricted persona has a group or two-factor login.
  *
  * The fixture is tagged with the `qa` group so `doctrine:fixtures:load
  * --group=qa --append` loads ONLY these rows on top of the migration
@@ -79,7 +83,7 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
      * fast with a clear message instead of producing confusing downstream
      * failures (plan §32 / AGENTS.md Testing Rule 32).
      */
-    public const QA_FIXTURE_VERSION = '2026_11_20_001';
+    public const QA_FIXTURE_VERSION = '2026_11_23_002';
 
     /** Shared password for every QA persona. Test-only, never a real secret. */
     public const QA_PASSWORD = 'QaPassw0rd!2026';
@@ -96,6 +100,20 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
     /** Role editor without the permission catalogue right: exactly admin.access, admin.role.read, admin.role.update (F224). */
     public const QA_ROLE_UPDATE_EMAIL = 'qa.roleupdate@selfhelp.test';
     public const QA_ROLE_UPDATE_ROLE = 'qa_role_update';
+
+    /**
+     * Page delete without update: `admin.access`, `admin.page.read`, `admin.page.delete`.
+     * Read + delete grant on `qa-events` is added by {@see QaAccessPersonaFixture}.
+     */
+    public const QA_PAGE_DELETE_EMAIL = 'qa.pagedelete@selfhelp.test';
+    public const QA_PAGE_DELETE_ROLE = 'qa_page_delete';
+
+    /**
+     * Page publish without update: `admin.access`, `admin.page.read`, `admin.page_version.publish`.
+     * Read + update grant on `qa-events` is added by {@see QaAccessPersonaFixture}.
+     */
+    public const QA_PAGE_PUBLISH_EMAIL = 'qa.pagepublish@selfhelp.test';
+    public const QA_PAGE_PUBLISH_ROLE = 'qa_page_publish';
 
     /** Matches a core area read right and captures the area (`admin.page_version.read` → `page_version`). */
     private const READ_PERMISSION_PATTERN = '/^admin\.([a-z0-9_]+)\.read$/';
@@ -280,6 +298,26 @@ final class QaBaselineFixture extends Fixture implements FixtureGroupInterface
         }
         $role = $this->createRoleWithPermissions($manager, $qaAdminId, self::QA_ROLE_UPDATE_ROLE, 'QA persona that edits roles without the permission catalogue right', $roleUpdateIds);
         $this->createPersona($manager, self::QA_ROLE_UPDATE_EMAIL, 'QA Role Update', $activeStatus, $userType, [], $role);
+
+        $pageDeleteIds = [];
+        foreach (['admin.access', 'admin.page.read', 'admin.page.delete'] as $name) {
+            if (!isset($idsByName[$name])) {
+                throw new \RuntimeException(sprintf('QA baseline cannot seed %s: the core permission %s is missing.', self::QA_PAGE_DELETE_EMAIL, $name));
+            }
+            $pageDeleteIds[] = $idsByName[$name];
+        }
+        $role = $this->createRoleWithPermissions($manager, $qaAdminId, self::QA_PAGE_DELETE_ROLE, 'QA persona that may delete a page but not edit it', $pageDeleteIds);
+        $this->createPersona($manager, self::QA_PAGE_DELETE_EMAIL, 'QA Page Delete', $activeStatus, $userType, [], $role);
+
+        $pagePublishIds = [];
+        foreach (['admin.access', 'admin.page.read', 'admin.page_version.publish'] as $name) {
+            if (!isset($idsByName[$name])) {
+                throw new \RuntimeException(sprintf('QA baseline cannot seed %s: the core permission %s is missing.', self::QA_PAGE_PUBLISH_EMAIL, $name));
+            }
+            $pagePublishIds[] = $idsByName[$name];
+        }
+        $role = $this->createRoleWithPermissions($manager, $qaAdminId, self::QA_PAGE_PUBLISH_ROLE, 'QA persona that may publish a page but not edit it', $pagePublishIds);
+        $this->createPersona($manager, self::QA_PAGE_PUBLISH_EMAIL, 'QA Page Publish', $activeStatus, $userType, [], $role);
     }
 
     /**

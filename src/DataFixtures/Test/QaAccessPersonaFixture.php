@@ -37,6 +37,11 @@ use Doctrine\Persistence\ObjectManager;
  *   group       qa_access_group  (created here; no QA fixture seeds a group)
  *   asset       not seeded: no QA fixture creates an asset.
  *
+ * Lock-walk personas (F259 / fix-1): grants on the content page `qa-events`
+ * ({@see QaFormListFixture}, page type experiment) so the editor shows the
+ * Actions block (F276 hides it on configuration pages such as `qa-feedback`):
+ * `qa_page_delete` gets read + delete; `qa_page_publish` gets read + update.
+ *
  * Group and grants go through {@see AdminGroupService} and
  * {@see AdminDataAccessService} as qa.admin (Testing Rule 8), never raw SQL.
  */
@@ -72,11 +77,19 @@ final class QaAccessPersonaFixture extends Fixture implements FixtureGroupInterf
         $qaAdmin = $manager->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
         $role = $manager->getRepository(Role::class)->findOneBy(['name' => QaBaselineFixture::QA_READ_UPDATE_ROLE]);
         $page = $manager->getRepository(Page::class)->findOneBy(['keyword' => QaFrontendGoldenFixture::QA_FORM_PAGE_KEYWORD]);
+        $lockWalkPage = $manager->getRepository(Page::class)->findOneBy(['keyword' => QaFormListFixture::EVENTS_PAGE_KEYWORD]);
         $table = $manager->getRepository(DataTable::class)->findOneBy(['name' => QaFormListFixture::EVENTS_TABLE_NAME]);
-        if (!$qaAdmin instanceof User || !$role instanceof Role || !$page instanceof Page || !$table instanceof DataTable) {
+        if (
+            !$qaAdmin instanceof User
+            || !$role instanceof Role
+            || !$page instanceof Page
+            || !$lockWalkPage instanceof Page
+            || !$table instanceof DataTable
+        ) {
             throw new \RuntimeException(
-                'QA access persona fixture cannot seed: qa.admin, role qa_read_update, page qa-feedback or table '
-                . 'qa_events_table is missing. The other qa fixtures must load first.'
+                'QA access persona fixture cannot seed: qa.admin, role qa_read_update, page qa-feedback, page '
+                . QaFormListFixture::EVENTS_PAGE_KEYWORD . ' or table qa_events_table is missing. '
+                . 'The other qa fixtures must load first.'
             );
         }
         $qaAdminId = (int) $qaAdmin->getId();
@@ -110,5 +123,35 @@ final class QaAccessPersonaFixture extends Fixture implements FixtureGroupInterf
         }
 
         $this->adminDataAccessService->setRolePermissions($qaAdminId, (int) $role->getId(), $grants);
+
+        $pageTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_PAGES);
+        if ($pageTypeId === null) {
+            throw new \RuntimeException('QA access persona fixture: pages resource type lookup missing.');
+        }
+        $lockWalkPageId = (int) $lockWalkPage->getId();
+
+        $deleteRole = $manager->getRepository(Role::class)->findOneBy(['name' => QaBaselineFixture::QA_PAGE_DELETE_ROLE]);
+        if (!$deleteRole instanceof Role) {
+            throw new \RuntimeException('QA access persona fixture cannot seed: role ' . QaBaselineFixture::QA_PAGE_DELETE_ROLE . ' is missing.');
+        }
+        $this->adminDataAccessService->setRolePermissions($qaAdminId, (int) $deleteRole->getId(), [
+            (object) [
+                'resource_type_id' => $pageTypeId,
+                'resource_id' => $lockWalkPageId,
+                'crud_permissions' => DataAccessSecurityService::PERMISSION_READ | DataAccessSecurityService::PERMISSION_DELETE,
+            ],
+        ]);
+
+        $publishRole = $manager->getRepository(Role::class)->findOneBy(['name' => QaBaselineFixture::QA_PAGE_PUBLISH_ROLE]);
+        if (!$publishRole instanceof Role) {
+            throw new \RuntimeException('QA access persona fixture cannot seed: role ' . QaBaselineFixture::QA_PAGE_PUBLISH_ROLE . ' is missing.');
+        }
+        $this->adminDataAccessService->setRolePermissions($qaAdminId, (int) $publishRole->getId(), [
+            (object) [
+                'resource_type_id' => $pageTypeId,
+                'resource_id' => $lockWalkPageId,
+                'crud_permissions' => DataAccessSecurityService::PERMISSION_READ | DataAccessSecurityService::PERMISSION_UPDATE,
+            ],
+        ]);
     }
 }

@@ -318,16 +318,16 @@ A refused or failed write leaves the version unchanged. Of two writes that send 
 
 ### Page Edit Lock
 
-One editor at a time holds the lock of a page. The lease ends **120 seconds after the last renewal** and **15 minutes after the holder's last draft write** (after the acquisition when they wrote nothing). A client renews while the page is open by repeating `POST .../lock`.
+One editor at a time holds the lock of a page. The lease ends **120 seconds after the last renewal** and **15 minutes after the holder's last draft write** (after the acquisition when they wrote nothing). A client renews while the page is open by repeating `POST .../lock`. After the idle end, the previous holder's next renew answers `409 lock_idle_ended` (resume through take-over); others may take the free lock as before.
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /cms-api/v1/admin/pages/{page_id}/lock` | status of the lock; changes nothing |
-| `POST /cms-api/v1/admin/pages/{page_id}/lock` | acquire a free lock, or renew your own; `409 page_locked` when someone else holds it |
-| `POST /cms-api/v1/admin/pages/{page_id}/lock/take-over` | become the holder, whoever held it |
+| `POST /cms-api/v1/admin/pages/{page_id}/lock` | acquire a free lock, or renew your own; `409 page_locked` when someone else holds it; `409 lock_idle_ended` after your own idle end |
+| `POST /cms-api/v1/admin/pages/{page_id}/lock/take-over` | become the holder, whoever held it (also the explicit resume after idle) |
 | `DELETE /cms-api/v1/admin/pages/{page_id}/lock` | release your own lock; no effect when it is not yours |
 
-**Permissions:** `admin.page.update` and the update grant on the page (the same as a page write); otherwise 403, or 404 for a page that does not exist.
+**Permissions.** Acquire, release and take-over need `admin.page.update` and the update grant on the page. `GET` also accepts `admin.page.delete`, `admin.page_version.publish` or `admin.page_version.delete`, with the update or delete grant on the page. Otherwise 403, or 404 for a page that does not exist.
 
 **Response data** ([schema](../../../config/schemas/api/v1/responses/admin/pages/page_lock.json)):
 ```json
@@ -340,9 +340,9 @@ One editor at a time holds the lock of a page. The lease ends **120 seconds afte
   "idle_expires_at": "2026-11-20T12:15:00Z"
 }
 ```
-`held` is false and `holder`, `expires_at`, `idle_expires_at` are `null` when nobody holds the lock. `mine` is true when the caller holds it.
+`held` is false and `holder`, `expires_at`, `idle_expires_at` are `null` when nobody holds the lock. `mine` is true when the caller holds it. A `409 lock_idle_ended` answer uses the same shape with `held: false`.
 
-**Lock and drafts.** A draft write by someone other than the holder answers `409` with error `page_locked` and the same data as above (the lock is checked before the version). A draft write while nobody holds the lock succeeds and leaves the caller holding it. After a take-over, the previous holder's next write gets `409 page_locked`. A change of who holds the lock sends the live-sync notice `page_lock:<page_id>` to the roles that may edit the page.
+**Lock and drafts.** A draft write by someone other than the holder answers `409` with error `page_locked` and the same data as above (the lock is checked before the version). A draft write while nobody holds the lock succeeds and leaves the caller holding it. After a take-over, the previous holder's next write gets `409 page_locked`. Delete, publish, unpublish, publish-specific-version and version-delete by a caller who may do that action (and does not hold `admin.page.update`) also answer `409 page_locked` while someone else holds the lock; they need neither the lock nor `X-Page-Version`. A successful page delete removes the lease. A change of who holds the lock sends the live-sync notice `page_lock:<page_id>` to the roles that may edit the page.
 
 ## Section Management
 

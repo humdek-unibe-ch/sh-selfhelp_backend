@@ -21,10 +21,12 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * The edit lock of a page (live-sync contract C9): who is editing it now.
  *
- * Routes (permission `admin.page.update` plus the update grant on the page; the
- * superuser passes): status, acquire or renew, release, take over. All answer the
- * status object of {@see PageEditLockService}; a caller who may not edit the page
- * gets the normal 403 or 404. The draft writes themselves are guarded by
+ * Routes: status, acquire or renew, release, take over. Acquire, release and
+ * take-over need `admin.page.update` plus the update grant on the page. Status
+ * (`GET`) also opens for callers with `admin.page.delete`,
+ * `admin.page_version.publish` or `admin.page_version.delete` who hold the
+ * update or delete grant on the page (read-only). A caller who may not see the
+ * lock gets the normal 403 or 404. The draft writes themselves are guarded by
  * {@see \App\EventListener\PageDraftWriteGuardListener}.
  */
 class AdminPageLockController extends AbstractController
@@ -42,11 +44,12 @@ class AdminPageLockController extends AbstractController
      */
     public function getLock(int $page_id): JsonResponse
     {
-        return $this->respond($page_id, fn (User $user): array => $this->locks->status($page_id, (int) $user->getId()));
+        return $this->respond($page_id, fn (User $user): array => $this->locks->status($page_id, (int) $user->getId()), true);
     }
 
     /**
-     * Acquire the lock, or renew it when it is the caller's; 409 `page_locked` when someone else holds it.
+     * Acquire the lock, or renew it when it is the caller's; 409 `page_locked` when someone else holds it;
+     * 409 `lock_idle_ended` when the caller's own lease ended by idle.
      *
      * @route /admin/pages/{page_id}/lock
      * @method POST
@@ -81,11 +84,15 @@ class AdminPageLockController extends AbstractController
     /**
      * @param callable(User): array<string, mixed> $action
      */
-    private function respond(int $pageId, callable $action): JsonResponse
+    private function respond(int $pageId, callable $action, bool $readOnly = false): JsonResponse
     {
         try {
-            // 404 for a page that does not exist, 403 without the update grant: the same answer as every draft write.
-            $this->userContext->checkAdminAccessById($pageId, 'update');
+            // 404 for a page that does not exist. Update grant for writes; update or delete for GET.
+            if ($readOnly) {
+                $this->assertMayReadLock($pageId);
+            } else {
+                $this->userContext->checkAdminAccessById($pageId, 'update');
+            }
             $user = $this->userContext->getCurrentUser();
             if (!$user instanceof User) {
                 return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
@@ -94,6 +101,23 @@ class AdminPageLockController extends AbstractController
             return $this->responseFormatter->formatSuccess($action($user), 'responses/admin/pages/page_lock');
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
+        }
+    }
+
+    /**
+     * Accept the update grant, or else the delete grant (for delete-only callers of GET).
+     *
+     * @throws ServiceException 404 when the page is missing, 403 when neither grant is held
+     */
+    private function assertMayReadLock(int $pageId): void
+    {
+        try {
+            $this->userContext->checkAdminAccessById($pageId, 'update');
+        } catch (ServiceException $e) {
+            if ($e->getCode() !== Response::HTTP_FORBIDDEN) {
+                throw $e;
+            }
+            $this->userContext->checkAdminAccessById($pageId, 'delete');
         }
     }
 }
