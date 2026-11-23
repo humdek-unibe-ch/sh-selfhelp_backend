@@ -37,6 +37,12 @@ use Symfony\Component\Lock\LockFactory;
  * A draft write by anyone else is refused with 409 `page_locked`; the status of
  * the lock is the data of that answer, so the editor can say who is editing.
  *
+ * When the lease ends by the idle end, an idle mark for that holder stays in the
+ * same pool for up to 24 hours. Their next {@see acquire()} answers 409
+ * `lock_idle_ended` until they (or anyone) {@see take()} the lock again —
+ * take-over and a draft write clear the mark. Others may take the free lock as
+ * before; the mark does not block them.
+ *
  * Read-modify-write steps run under a short mutex per page so two callers never
  * both believe they took a free lock. Every change of who holds the lock sends
  * `page_lock:<id>` to the page's editors ({@see ChangeNoticeService::pageLockChanged()});
@@ -51,11 +57,23 @@ final class PageEditLockService
     /** The lease ends this many seconds after the holder's last draft write (or the acquisition). */
     public const IDLE_SECONDS = 900;
 
-    /** The error code (and message) of the 409 answer. */
+    /** An idle mark lives at most this many seconds after the idle end. */
+    public const IDLE_MARK_SECONDS = 86400;
+
+    /** The error code (and message) of the 409 answer when someone else holds the lock. */
     public const ERROR_LOCKED = 'page_locked';
+
+    /**
+     * The error code of the 409 answer when the caller's own lease ended by idle
+     * and they try to renew: resume through take-over. Data is {@see statusOf()}.
+     */
+    public const ERROR_IDLE_ENDED = 'lock_idle_ended';
 
     private const KEY_PREFIX = 'page_edit_lock_';
     private const MUTEX_SECONDS = 10.0;
+
+    /** Stored in the lease key when the idle end cleared a holder's lease. */
+    private const IDLE_MARK = 'idle_ended';
 
     public function __construct(
         #[Autowire(service: 'cache.page_edit_lock')]
@@ -73,13 +91,36 @@ final class PageEditLockService
      */
     public function callerMayEdit(int $userId, int $pageId): bool
     {
-        $typeId = $this->lookups->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_PAGES);
-        if ($typeId === null || $userId <= 0) {
-            return false;
-        }
+        return $this->holdsPageGrant($userId, $pageId, DataAccessSecurityService::PERMISSION_UPDATE)
+            && $this->holdings->holdsPermission($userId, 'admin.page.update');
+    }
 
-        return $this->holdings->holdsPermission($userId, 'admin.page.update')
-            && $this->holdings->holdsGrantBits($userId, (int) $typeId, $pageId, DataAccessSecurityService::PERMISSION_UPDATE);
+    /**
+     * May this user delete the page: `admin.page.delete` and the delete grant (the superuser passes).
+     */
+    public function callerMayDeletePage(int $userId, int $pageId): bool
+    {
+        return $this->holdsPageGrant($userId, $pageId, DataAccessSecurityService::PERMISSION_DELETE)
+            && $this->holdings->holdsPermission($userId, 'admin.page.delete');
+    }
+
+    /**
+     * May this user publish or unpublish the page: `admin.page_version.publish` and the update grant.
+     */
+    public function callerMayPublishPage(int $userId, int $pageId): bool
+    {
+        return $this->holdsPageGrant($userId, $pageId, DataAccessSecurityService::PERMISSION_UPDATE)
+            && $this->holdings->holdsPermission($userId, 'admin.page_version.publish');
+    }
+
+    /**
+     * May this user delete a page version: `admin.page_version.delete` and the update grant
+     * (the same grant {@see PageVersionService::deleteVersion()} checks).
+     */
+    public function callerMayDeleteVersion(int $userId, int $pageId): bool
+    {
+        return $this->holdsPageGrant($userId, $pageId, DataAccessSecurityService::PERMISSION_UPDATE)
+            && $this->holdings->holdsPermission($userId, 'admin.page_version.delete');
     }
 
     /**
@@ -96,7 +137,8 @@ final class PageEditLockService
      * Take the lock when it is free, renew it when it is the caller's.
      *
      * @return array<string, mixed> the status
-     * @throws ServiceException 409 `page_locked` (status as data) when someone else holds it
+     * @throws ServiceException 409 `page_locked` (status as data) when someone else holds it;
+     *                          409 `lock_idle_ended` when the caller's own lease ended by idle
      */
     public function acquire(int $pageId, User $user): array
     {
@@ -105,6 +147,9 @@ final class PageEditLockService
         return $this->locked($pageId, function () use ($pageId, $user, $userId): array {
             $lease = $this->liveLease($pageId);
             if ($lease === null) {
+                if ($this->idleMarkUserId($pageId) === $userId) {
+                    throw $this->idleEnded($pageId, $userId);
+                }
                 $lease = $this->take($pageId, $user);
             } elseif ($lease['user_id'] === $userId) {
                 $lease['renewed_at'] = time();
@@ -213,7 +258,7 @@ final class PageEditLockService
     }
 
     /**
-     * The page is gone: so is its lock.
+     * The page is gone: so is its lock (and any idle mark).
      */
     public function forget(int $pageId): void
     {
@@ -248,6 +293,16 @@ final class PageEditLockService
         return self::KEY_PREFIX . $pageId;
     }
 
+    private function holdsPageGrant(int $userId, int $pageId, int $bits): bool
+    {
+        $typeId = $this->lookups->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_PAGES);
+        if ($typeId === null || $userId <= 0) {
+            return false;
+        }
+
+        return $this->holdings->holdsGrantBits($userId, (int) $typeId, $pageId, $bits);
+    }
+
     /**
      * @return array{user_id: int, name: string, acquired_at: int, renewed_at: int, last_edit_at: int|null}|null
      */
@@ -258,7 +313,7 @@ final class PageEditLockService
             return null;
         }
         $raw = $item->get();
-        if (!is_array($raw)) {
+        if (!is_array($raw) || ($raw['mark'] ?? null) === self::IDLE_MARK) {
             return null;
         }
         $userId = $raw['user_id'] ?? null;
@@ -282,6 +337,7 @@ final class PageEditLockService
     /**
      * The lease as it is now, or null when there is none or it has ended. An ended lease is removed and announced,
      * so the editors learn that the page is free again (contract C3, "expired on access").
+     * An end by the idle clock leaves an idle mark for that holder in the same key.
      *
      * @return array{user_id: int, name: string, acquired_at: int, renewed_at: int, last_edit_at: int|null}|null
      */
@@ -291,11 +347,19 @@ final class PageEditLockService
         if ($lease === null) {
             return null;
         }
-        if (time() < min($this->leaseEnd($lease), $this->idleEnd($lease))) {
+        $leaseEnd = $this->leaseEnd($lease);
+        $idleEnd = $this->idleEnd($lease);
+        if (time() < min($leaseEnd, $idleEnd)) {
             return $lease;
         }
 
-        $this->leases->deleteItem($this->key($pageId));
+        // Idle ends at or before the lease end: keep a mark so that holder's renew is refused.
+        // Lease-only timeout: free for everyone, including the previous holder.
+        if ($idleEnd <= $leaseEnd) {
+            $this->saveIdleMark($pageId, $lease['user_id']);
+        } else {
+            $this->leases->deleteItem($this->key($pageId));
+        }
         $this->notices->pageLockChanged($pageId);
 
         return null;
@@ -330,6 +394,29 @@ final class PageEditLockService
         // Clean-up only: the logical ends are checked from the stored times. Longer than the longest possible lease.
         $item->expiresAfter(self::IDLE_SECONDS + 60);
         $this->leases->save($item);
+    }
+
+    private function saveIdleMark(int $pageId, int $userId): void
+    {
+        $item = $this->leases->getItem($this->key($pageId));
+        $item->set(['mark' => self::IDLE_MARK, 'user_id' => $userId]);
+        $item->expiresAfter(self::IDLE_MARK_SECONDS);
+        $this->leases->save($item);
+    }
+
+    private function idleMarkUserId(int $pageId): ?int
+    {
+        $item = $this->leases->getItem($this->key($pageId));
+        if (!$item->isHit()) {
+            return null;
+        }
+        $raw = $item->get();
+        if (!is_array($raw) || ($raw['mark'] ?? null) !== self::IDLE_MARK) {
+            return null;
+        }
+        $userId = $raw['user_id'] ?? null;
+
+        return is_int($userId) ? $userId : null;
     }
 
     /**
@@ -381,6 +468,15 @@ final class PageEditLockService
     private function conflict(int $pageId, array $lease, int $callerId): ServiceException
     {
         return new ServiceException(self::ERROR_LOCKED, Response::HTTP_CONFLICT, $this->statusOf($pageId, $lease, $callerId));
+    }
+
+    private function idleEnded(int $pageId, int $callerId): ServiceException
+    {
+        return new ServiceException(
+            self::ERROR_IDLE_ENDED,
+            Response::HTTP_CONFLICT,
+            $this->statusOf($pageId, null, $callerId),
+        );
     }
 
     private function displayName(User $user): string
