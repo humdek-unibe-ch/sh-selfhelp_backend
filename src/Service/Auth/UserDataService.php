@@ -16,6 +16,7 @@ use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\UserPermissionService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
+use App\Service\Sync\AclStampService;
 use Doctrine\ORM\EntityManagerInterface;
 use Throwable;
 
@@ -31,7 +32,8 @@ class UserDataService
         private readonly CacheService $cache,
         private readonly TransactionService $transactionService,
         private readonly CmsPreferenceService $cmsPreferenceService,
-        private readonly LookupService $lookupService
+        private readonly LookupService $lookupService,
+        private readonly AclStampService $aclStamp,
     ) {
     }
 
@@ -65,7 +67,7 @@ class UserDataService
             $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_GROUP, (int) $group->getId());
         }
 
-        return $cacheBuilder->getList($cacheKey, function () use ($user) {
+        $data = $cacheBuilder->getList($cacheKey, function () use ($user) {
             return [
                 'id' => $user->getId(),
                 'email' => $user->getEmail(),
@@ -82,6 +84,12 @@ class UserDataService
                 'groups' => $this->getUserGroups($user)
             ];
         });
+
+        // The stamp is read fresh, never cached: it must equal the X-Acl-Stamp header of this very reply, or a
+        // client that compares the two would refetch user data on every response.
+        $data['acl_stamp'] = $this->aclStamp->stampFor($user);
+
+        return $data;
     }
 
     /**

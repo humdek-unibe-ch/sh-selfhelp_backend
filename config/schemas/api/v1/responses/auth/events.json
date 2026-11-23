@@ -15,19 +15,25 @@
                     "description": "Public URL of the Mercure hub the subscriber should connect to (MERCURE_PUBLIC_URL). The internal MERCURE_URL used by Symfony to publish is intentionally NOT exposed."
                 },
                 "topic": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "format": "uri",
-                    "description": "Per-user ACL change topic IRI (e.g. https://selfhelp.app/users/{id}/acl). Receives `acl-changed` events when the user's ACL version is bumped. Topics are opaque identifiers — never dereferenced."
+                    "description": "Per-user ACL change topic IRI, null for a guest (e.g. https://selfhelp.app/users/{id}/acl). Receives `acl-changed` events when the user's ACL version is bumped. Topics are opaque identifiers — never dereferenced."
                 },
                 "impersonationTopic": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "format": "uri",
-                    "description": "Per-user impersonation-lifecycle topic IRI (e.g. https://selfhelp.app/users/{id}/impersonation). Receives `impersonation-status` events when an admin starts or stops impersonating this user. Both topics share the same subscriber JWT in the `token` field."
+                    "description": "Per-user impersonation-lifecycle topic IRI, null for a guest (e.g. https://selfhelp.app/users/{id}/impersonation). Receives `impersonation-status` events when an admin starts or stops impersonating this user. Both topics share the same subscriber JWT in the `token` field."
                 },
                 "systemUpdateTopic": {
-                    "type": "string",
+                    "type": ["string", "null"],
                     "format": "uri",
-                    "description": "Per-user system-update progress topic IRI (e.g. https://selfhelp.app/users/{id}/system-update). Receives `system-update` events when an update operation this user requested changes state (CMS request or manager write-back), so the System Maintenance page tracks progress live instead of polling. Shares the same subscriber JWT in the `token` field."
+                    "description": "Per-user system-update progress topic IRI, null for a guest (e.g. https://selfhelp.app/users/{id}/system-update). Receives `system-update` events when an update operation this user requested changes state (CMS request or manager write-back), so the System Maintenance page tracks progress live instead of polling. Shares the same subscriber JWT in the `token` field."
+                },
+                "syncTopics": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "uri" },
+                    "minItems": 1,
+                    "description": "Live-sync topic IRIs this caller may read: <prefix>/sync/users/{id}, one <prefix>/sync/groups/{id} per group, one <prefix>/sync/roles/{id} per role and <prefix>/sync/public (signed in), or only <prefix>/sync/public (guest). The subscriber JWT authorises exactly these (plus the private topics above). Messages are `changed` events with {\"v\":1,\"tags\":[...]}: tags only, never content."
                 },
                 "pluginTopics": {
                     "type": "array",
@@ -44,7 +50,7 @@
                     "description": "Lifetime of token in seconds (MERCURE_SUBSCRIBER_TTL). Treat as an upper bound."
                 }
             },
-            "required": ["hubUrl", "topic", "impersonationTopic", "systemUpdateTopic", "pluginTopics", "token", "expiresIn"],
+            "required": ["hubUrl", "topic", "impersonationTopic", "systemUpdateTopic", "syncTopics", "pluginTopics", "token", "expiresIn"],
             "additionalProperties": false
         }
     },

@@ -32,7 +32,7 @@ final class UserDataControllerTest extends QaWebTestCase
     /** @var list<string> */
     private const REQUIRED_KEYS = [
         'id', 'email', 'name', 'user_name', 'blocked',
-        'acl_version', 'language', 'timezone', 'roles', 'permissions', 'groups',
+        'acl_version', 'acl_stamp', 'language', 'timezone', 'roles', 'permissions', 'groups',
         'receives_notifications', 'receives_emails',
     ];
 
