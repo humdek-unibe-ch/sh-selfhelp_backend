@@ -1,3 +1,34 @@
+# v0.1.50
+
+## Live sync follow-ups: idle lock end, lock for delete and publish
+
+- After the edit lock ends by idle (15 minutes without a draft write), the holder's
+  next `POST .../lock` answers `409 lock_idle_ended` with the free status; resume
+  through take-over (or a deliberate draft write). Others may take the free lock
+  as before. The idle mark lives at most 24 hours in the same cache pool.
+- Callers with only `admin.page.delete` or the version publish/delete rights
+  respect another's lock: those five routes answer `409 page_locked` while
+  someone else holds it (no version header required). A successful page delete
+  removes the lease. `GET .../lock` is readable for them (update or delete grant);
+  acquire, release and take-over still need `admin.page.update` and the update grant.
+- QA personas `qa.pagedelete@selfhelp.test` and `qa.pagepublish@selfhelp.test`
+  (roles `qa_page_delete`, `qa_page_publish`) with grants on content page `qa-events`.
+- Page create (`POST /admin/pages`) answers 400 when the request fails its JSON
+  Schema (F275); previously the catch-all turned that refusal into 500.
+- Frontend floor raised to `>=0.1.77` (handles `lock_idle_ended` and lock status
+  for delete/publish callers).
+- Cache: group page-ACL writes clear only the members' user scopes (plus group
+  and page), not every permissions list (F260 / F27).
+- Cache: a data write no longer bumps the writer's user scope; table-scoped
+  reads already cover form records (F269).
+- Auth: `UserContextService` implements `ResetInterface` and does not keep a
+  memoized guest after login (F265).
+- Tests: race-test CLI boots the test kernel with `.env.test.local` (F266);
+  ClockMock covers service namespaces (F267); composer process timeout disabled
+  so Golden finishes through composer (F272).
+- API: create-page navigation assignments no longer accept unused `labels`
+  (F270).
+
 # v0.1.49
 
 ## Live sync: change notices, access stamp, page sync block
