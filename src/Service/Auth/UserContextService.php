@@ -12,6 +12,7 @@ use App\Entity\User;
 use App\Service\Cache\Core\CacheService;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Contracts\Service\ResetInterface;
 
 /**
  * Request-scoped helper around the Symfony security context.
@@ -34,7 +35,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * audit trails and "who really did this?" decisions, `getEffectiveUserId()`
  * for authorisation decisions ("can THIS principal do THIS thing?").
  */
-class UserContextService
+class UserContextService implements ResetInterface
 {
     /**
      * Sentinel id used for anonymous (unauthenticated) visitors at the ACL
@@ -62,19 +63,28 @@ class UserContextService
     /**
      * Returns the current authenticated User entity or null if not authenticated.
      * Uses request-scoped caching to avoid multiple security context lookups.
+     * A memoized null is not kept when the token storage later gains a user
+     * (F265); a positive hit stays for the rest of the request until {@see reset()}.
      *
      * @return User|null
      */
     public function getCurrentUser(): ?User
     {
-        // Use request-scoped cache to avoid multiple security context lookups
-        if (!$this->userResolved) {
-            $user = $this->security->getUser();
-            $this->cachedUser = $user instanceof User ? $user : null;
-            $this->userResolved = true;
+        if ($this->userResolved && $this->cachedUser !== null) {
+            return $this->cachedUser;
         }
 
+        $user = $this->security->getUser();
+        $this->cachedUser = $user instanceof User ? $user : null;
+        $this->userResolved = true;
+
         return $this->cachedUser;
+    }
+
+    public function reset(): void
+    {
+        $this->cachedUser = null;
+        $this->userResolved = false;
     }
 
     public function getCache(): CacheService
