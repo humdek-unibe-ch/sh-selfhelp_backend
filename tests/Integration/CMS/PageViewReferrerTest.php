@@ -92,7 +92,11 @@ final class PageViewReferrerTest extends QaWebTestCase
 
     private function visitHome(?string $referrerHost): void
     {
-        $headers = $referrerHost !== null ? ['HTTP_X_REFERRER_HOST' => $referrerHost] : [];
+        // A real visit: the client marks it with X-Page-View (F135); the referrer rule is unchanged.
+        $headers = ['HTTP_X_PAGE_VIEW' => '1'];
+        if ($referrerHost !== null) {
+            $headers['HTTP_X_REFERRER_HOST'] = $referrerHost;
+        }
 
         $envelope = $this->jsonRequest('GET', self::PAGE_URI, null, null, $headers);
         $this->assertEnvelopeSuccess($envelope);

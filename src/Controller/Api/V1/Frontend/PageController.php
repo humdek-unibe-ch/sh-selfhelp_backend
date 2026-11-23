@@ -44,6 +44,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class PageController extends AbstractController
 {
+    /** Request header a client sets to `1` on the fetch that is a real page visit. */
+    public const PAGE_VIEW_HEADER = 'X-Page-View';
+
     /**
      * Constructor
      */
@@ -218,15 +221,18 @@ class PageController extends AbstractController
     }
 
     /**
-     * Record an anonymous page-view for the analytics dashboard. Live-preview
-     * requests are never counted; failures never break page delivery (the
-     * tracker swallows and logs internally).
+     * Record an anonymous page-view for the analytics dashboard. Only a request
+     * the client marked as a real visit (`X-Page-View: 1`) is counted: a refresh
+     * the client makes because something changed live (F135), a prefetch or a
+     * crawler fetch is not a view. Live-preview requests are never counted;
+     * failures never break page delivery (the tracker swallows and logs
+     * internally).
      *
      * @param array<string, mixed> $page
      */
     private function trackPageView(array $page, string $mode, bool $preview, Request $request): void
     {
-        if ($preview) {
+        if ($preview || $request->headers->get(self::PAGE_VIEW_HEADER) !== '1') {
             return;
         }
 
