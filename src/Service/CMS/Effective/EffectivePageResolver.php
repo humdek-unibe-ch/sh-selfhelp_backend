@@ -150,6 +150,22 @@ class EffectivePageResolver extends BaseService implements ResetInterface
             return $this->memo[$memoKey] = EffectivePage::published($pageId, $publishedId, $sections);
         }
 
+        return $this->draftOf($page);
+    }
+
+    /**
+     * The draft of a page, whatever the page serves. It does NOT authorize: only
+     * a caller that already decided the draft is the right version (the page
+     * endpoint serving an unpublished page, or an editor-side check) may use it.
+     */
+    public function draftOf(Page $page): EffectivePage
+    {
+        $pageId = (int) $page->getId();
+        $memoKey = $pageId . ':draft';
+        if (isset($this->memo[$memoKey])) {
+            return $this->memo[$memoKey];
+        }
+
         /** @var list<array<array-key, mixed>> $rows */
         $rows = $this->sectionRepository->fetchSectionsHierarchicalByPageId($pageId);
 

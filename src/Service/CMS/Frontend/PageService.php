@@ -28,6 +28,9 @@ use App\Service\Core\InterpolationService;
 use App\Service\Core\ServerBuiltString;
 use App\Service\Core\UserContextAwareService;
 use App\Service\Auth\UserContextService;
+use App\Service\Sync\ClockBoundaries;
+use App\Service\Sync\PageTableScanner;
+use App\Service\Sync\SyncTag;
 use App\Service\System\PlatformAboutService;
 
 class PageService extends BaseService
@@ -98,6 +101,8 @@ class PageService extends BaseService
         private readonly \App\Service\CMS\FormFileUploadService $formFiles,
         private readonly \App\Service\CMS\DataQuery\DataQueryEngine $dataQueryEngine,
         private readonly \App\Service\CMS\FormFieldKeyResolver $formFieldKeys,
+        private readonly ClockBoundaries $clockBoundaries,
+        private readonly PageTableScanner $tableScanner,
     ) {
     }
 
@@ -467,13 +472,78 @@ class PageService extends BaseService
         // otherwise serve the draft version (fresh from database). The same decision
         // ({@see EffectivePageResolver::servesPublished()}) picks the configuration every endpoint
         // behind the page (lists, form writes, history) acts on, so they cannot disagree with the page.
-        $pageData = $this->effectivePages->servesPublished($page, $preview)
-            ? $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements)
-            : $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements);
+        $servesPublished = $this->effectivePages->servesPublished($page, $preview);
+
+        // Everything the page decides by the clock (a condition on the date or time, a clock token in a
+        // text) reports its next change into this scope: it becomes `sync.valid_until`.
+        $served = $this->clockBoundaries->collect(
+            fn (): array => $servesPublished
+                ? $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements)
+                : $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements)
+        );
 
         // Both versions leave here, after every cache read: what the `version`
         // style shows depends on the caller, so it is added last.
-        return $this->withPlatformAboutOnPage($pageData);
+        $pageData = $this->withPlatformAboutOnPage($served['value']);
+        $pageData['sync'] = $this->syncBlock($page, $servesPublished, $served['valid_until']);
+
+        return $pageData;
+    }
+
+    /**
+     * The `sync` block of a page payload (live-sync contract C6): the change tags the page depends on
+     * and the moment time alone changes the result.
+     *
+     * @return array{depends_on: list<string>, valid_until: string|null}
+     */
+    private function syncBlock(\App\Entity\Page $page, bool $servesPublished, ?int $validUntil): array
+    {
+        $pageId = (int) $page->getId();
+        $effective = $servesPublished ? $this->effectivePages->forPage($page, false) : $this->effectivePages->draftOf($page);
+
+        $dependsOn = [$servesPublished ? SyncTag::page($pageId) : SyncTag::pageDraft($pageId)];
+        $tables = $this->tableScanner->scan($effective)['any'];
+        sort($tables);
+        foreach ($tables as $tableId) {
+            $dependsOn[] = SyncTag::table($tableId);
+        }
+        $dependsOn[] = SyncTag::GLOBAL_VALUES;
+
+        return [
+            'depends_on' => $dependsOn,
+            'valid_until' => $validUntil === null ? null : gmdate('Y-m-d\TH:i:s\Z', $validUntil),
+        ];
+    }
+
+    /**
+     * Cached value that never outlives the clock: the entry stores the moment time next changes its
+     * result, and an entry past that moment is dropped and built again. The moment also reaches the
+     * scope around the call, so a cache hit reports it just as a build does.
+     *
+     * @param callable(): mixed $compute
+     */
+    private function rememberUntilClockChanges(CacheService $cache, string $key, callable $compute): mixed
+    {
+        $value = null;
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $envelope = $cache->getItem($key, function () use ($compute): array {
+                $built = $this->clockBoundaries->collect($compute);
+
+                return ['value' => $built['value'], 'valid_until' => $built['valid_until']];
+            });
+
+            $until = $envelope['valid_until'];
+            if ($attempt === 0 && $until !== null && $until <= time()) {
+                $cache->invalidateItem($key);
+                continue;
+            }
+
+            $this->clockBoundaries->note($until);
+            $value = $envelope['value'];
+            break;
+        }
+
+        return $value;
     }
 
     /**
@@ -813,7 +883,7 @@ class PageService extends BaseService
 
         // Try to get from cache first. The route-param suffix keeps one cache
         // entry per param set so e.g. /team/7 and /team/8 never collide.
-        $cacheKey = "page_draft_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
+        $cacheKey = "page_draft_v2_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
 
         // Get flat sections to extract data table dependencies for page-level cache
         /** @var list<array<string, mixed>> $flatSections */
@@ -842,7 +912,7 @@ class PageService extends BaseService
             }
         }
 
-        $pageData = $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections, $routeParams, $routeRequirements) {
+        $pageData = $this->rememberUntilClockChanges($cacheService, $cacheKey, function () use ($languageId, $page, $flatSections, $routeParams, $routeRequirements) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
@@ -1240,7 +1310,7 @@ class PageService extends BaseService
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
 
-        $cacheKey = "page_sections_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
+        $cacheKey = "page_sections_v2_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
 
         // Get flat sections first to extract data table dependencies
         /** @var list<array<string, mixed>> $flatSections */
@@ -1270,7 +1340,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements, $page_id) {
+        $sections = $this->rememberUntilClockChanges($cacheService, $cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements, $page_id) {
             // Build nested hierarchical structure (without applying data initially)
             $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
 
@@ -1320,6 +1390,11 @@ class PageService extends BaseService
 
             return $sections;
         });
+
+        /** @var list<array<string, mixed>> $sections */
+        $sections = is_array($sections) ? array_values($sections) : [];
+
+        return $sections;
     }
 
     /**
@@ -2057,6 +2132,7 @@ class PageService extends BaseService
         }
 
         if (str_contains($raw, '{{')) {
+            $this->clockBoundaries->noteText($raw);
             $raw = $this->interpolationService->interpolate($raw, $sectionData);
         }
 
@@ -2324,6 +2400,8 @@ class PageService extends BaseService
         $isDebugEnabled = isset($section['debug']) && $section['debug'];
         $interpolateCondition = $isDebugEnabled && $conditionAsText;
 
+        $this->noteClockTexts($section);
+
         // Update section's retrieved_data for interpolation access
         $section['retrieved_data'] = $interpolationData;
 
@@ -2350,6 +2428,32 @@ class PageService extends BaseService
 
         // Interpolate only fields that actually exist in this section
         $this->interpolateExistingContentFields($section, $interpolationData, $interpolateCondition);
+    }
+
+    /**
+     * Report the clock tokens (`{{system.current_date}}` and the like) in the texts of one section
+     * that are about to be interpolated: such a text changes by itself as time passes, which the
+     * page reports as `sync.valid_until`. Only the section's own fields are read, never its children.
+     *
+     * @param array<string, mixed> $section
+     */
+    private function noteClockTexts(array $section): void
+    {
+        foreach (['css', 'css_mobile'] as $field) {
+            if (isset($section[$field]) && is_string($section[$field])) {
+                $this->clockBoundaries->noteText($section[$field]);
+            }
+        }
+        foreach (['content', 'meta'] as $field) {
+            if (isset($section[$field])) {
+                $this->clockBoundaries->noteTexts($section[$field]);
+            }
+        }
+        foreach ($section as $fieldValue) {
+            if (is_array($fieldValue) && isset($fieldValue['content']) && is_string($fieldValue['content'])) {
+                $this->clockBoundaries->noteText($fieldValue['content']);
+            }
+        }
     }
 
     /**
@@ -2454,6 +2558,8 @@ class PageService extends BaseService
         if (empty($availableData)) {
             return $config;
         }
+
+        $this->clockBoundaries->noteTexts($config);
 
         $interpolatedConfig = $config;
 

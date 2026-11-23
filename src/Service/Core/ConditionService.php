@@ -10,6 +10,7 @@ namespace App\Service\Core;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\VariableResolverService;
 use App\Service\Core\UserContextAwareService;
+use App\Service\Sync\ClockBoundaries;
 
 /**
  * Service for evaluating JSON Logic conditions for sections
@@ -37,7 +38,8 @@ class ConditionService
     public function __construct(
         private readonly VariableResolverService $variableResolverService,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly CmsPreferenceService $cmsPreferenceService
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly ClockBoundaries $clockBoundaries,
     ) {
     }
 
@@ -137,6 +139,12 @@ class ConditionService
             // Apply JsonLogic with the fixed condition and loaded variables
             $logicResult = \JWadhams\JsonLogic::apply($fixedCondition, $variables);
             $result['result'] = \JWadhams\JsonLogic::truthy($logicResult);
+
+            // A condition that reads the clock gives the page a moment at which its
+            // answer can change on its own (live-sync `valid_until`, F06).
+            if (is_array($fixedCondition)) {
+                $this->clockBoundaries->noteCondition($fixedCondition, $variables);
+            }
 
             // Add debugging information
             $result['debug'] = [
