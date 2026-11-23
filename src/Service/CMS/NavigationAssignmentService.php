@@ -95,10 +95,7 @@ class NavigationAssignmentService extends BaseService
                 $item->setMobileIcon($mobileIcon);
             }
 
-            $label = $assignment['label'] ?? null;
-            if (is_string($label) && $label !== '') {
-                $item->setLabel($label);
-            }
+            // Page menu items take the page title; do not accept a free-form label (F270).
 
             $this->entityManager->persist($item);
         }
