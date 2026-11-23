@@ -466,7 +466,7 @@ payload* clients use to subscribe to the hub, either directly or through a BFF.
 
 **Headers:**
 ```
-Authorization: Bearer your_jwt_token
+Authorization: Bearer your_jwt_token   (optional: a guest gets the public topic only)
 ```
 
 **Success response (`200 OK`, `application/json`):**
@@ -490,6 +490,12 @@ The payload is wrapped in the standard `ApiResponseFormatter` envelope
     "impersonationTopic": "https://selfhelp.app/users/123/impersonation",
     "systemUpdateTopic": "https://selfhelp.app/users/123/system-update",
     "pluginTopics": ["https://selfhelp.app/admin/plugins"],
+    "syncTopics": [
+      "https://selfhelp.app/sync/users/123",
+      "https://selfhelp.app/sync/groups/4",
+      "https://selfhelp.app/sync/roles/2",
+      "https://selfhelp.app/sync/public"
+    ],
     "token": "eyJhbGciOiJIUzI1NiJ9.eyJtZXJjdXJlIjp7InN1YnNjcmliZSI6Wy4uLl19fQ.…",
     "expiresIn": 3600
   }
@@ -503,6 +509,7 @@ The payload is wrapped in the standard `ApiResponseFormatter` envelope
 | `impersonationTopic` | string  | Per-user impersonation-lifecycle topic IRI (`impersonation-status` events).                                                   |
 | `systemUpdateTopic`  | string  | Per-user system-update progress topic IRI (`system-update` events) — fired when an update operation this user requested changes state (CMS request or manager write-back), so the System Maintenance page tracks progress live instead of polling. |
 | `pluginTopics`       | array   | Admin plugin-manager topic IRIs the user may subscribe to (empty for non-admins).                                            |
+| `syncTopics`         | array   | Live-sync topics (`changed` events): `[user, each group, each role, public]` for a signed-in user, `[public]` for a guest. The token's subscribe claim equals this list. For a guest `topic`, `impersonationTopic` and `systemUpdateTopic` are `null` (never `401`). See [live sync](../../developer/31-live-sync-change-notices.md). |
 | `token`              | string  | One HMAC-SHA256 JWT scoped to **all** the topics above; send as `Authorization: Bearer …`. One JWT ⇒ one upstream socket.    |
 | `expiresIn`          | integer | Lifetime of `token` in seconds. The frontend should treat this as an upper bound and re-call `/auth/events` on every reconnect. |
 

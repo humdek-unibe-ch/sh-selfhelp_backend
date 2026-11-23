@@ -29,7 +29,7 @@ holds 69.
 
 | Table | Purpose | Entity | Main readers / writers | Status |
 | --- | --- | --- | --- | --- |
-| `pages` | CMS pages: keyword, URL, access type, surface, system flag | `Page` | `PageService`, `AdminPageService`, `PageRepository`, `ACLService`, `NavigationMenuService` | used |
+| `pages` | CMS pages: keyword, URL, access type, surface, system flag, `draft_version` (raised by every draft write; sent back as `X-Page-Version`) | `Page` | `PageService`, `AdminPageService`, `PageRepository`, `ACLService`, `NavigationMenuService` | used |
 | `page_types` | Page type catalogue | `PageType` | `PageService`, `AdminPageService`, `PageTypeRepository` | used |
 | `page_routes` | Public parameterized route contract of a page | `PageRoute` | `PageRouteService`, `SectionAccessibleRouteService`, `PageRouteRepository` | used |
 | `page_versions` | Saved and published snapshots of a page | `PageVersion` | `PageVersionService`, `AdminPageService`, `SectionExportImportService`, `PageVersionRepository` | used |

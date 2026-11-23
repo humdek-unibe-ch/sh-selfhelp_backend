@@ -151,6 +151,8 @@ until the next focus event or 30 s stale window.
 
 ### Real-time ACL push (Mercure)
 
+> Live sync (change notices for pages, data, navigation, assets; the access stamp; the page `sync` block) is documented in [31-live-sync-change-notices.md](31-live-sync-change-notices.md). The `acl-changed` event below stays as it is.
+
 The transport from "version bumped" to "browser sees the change" is a
 [Mercure](https://mercure.rocks) hub (Caddy + the Mercure module). PHP
 never holds a long-lived connection — it only does cheap fire-and-forget
