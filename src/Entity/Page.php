@@ -89,6 +89,17 @@ class Page
     #[ORM\Column(name: 'cms_app_role', type: 'string', length: 32, nullable: true)]
     private ?string $cmsAppRole = null;
 
+    /**
+     * Counts the writes of the DRAFT (live-sync C8). Every successful draft write
+     * raises it by one, in one conditional UPDATE by
+     * {@see \App\Service\CMS\Admin\PageDraftVersionService}; the entity never
+     * changes it, so a flush of this entity cannot overwrite a newer value. A
+     * client sends the value it holds (`X-Page-Version`), and a write based on an
+     * older value is refused with 409.
+     */
+    #[ORM\Column(name: 'draft_version', type: 'integer', options: ['default' => 1])]
+    private int $draftVersion = 1;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -246,6 +257,16 @@ class Page
         $this->cmsApp = $cmsApp;
 
         return $this;
+    }
+
+    /**
+     * The draft version as loaded with this entity. It can be older than the row
+     * after a write of the same request; read the current value from
+     * {@see \App\Service\CMS\Admin\PageDraftVersionService::current()}.
+     */
+    public function getDraftVersion(): int
+    {
+        return $this->draftVersion;
     }
 
     public function getCmsAppRole(): ?string

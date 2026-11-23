@@ -12,6 +12,7 @@ use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminPageService;
+use App\Service\CMS\Admin\PageDraftVersionService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
@@ -38,6 +39,7 @@ class AdminPageController extends AbstractController
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
         private readonly \App\Service\CMS\Admin\PageExportImportService $pageExportImportService,
+        private readonly PageDraftVersionService $draftVersions,
     ) {
     }
 
@@ -91,7 +93,13 @@ class AdminPageController extends AbstractController
             $pageWithFields = $this->adminPageService->getPageWithFields($page_id);
             // Per caller, after the cached page is read: what this person may do with it.
             $pageWithFields['rights'] = $this->adminPageService->pageRightsForCurrentUser($page_id);
-            return $this->responseFormatter->formatSuccess($pageWithFields);
+            // The draft version is read fresh, after the cached page: a client sends it back with its next write.
+            $draftVersion = $this->draftVersions->current($page_id) ?? 1;
+            $pageWithFields['draft_version'] = $draftVersion;
+            $response = $this->responseFormatter->formatSuccess($pageWithFields);
+            $response->headers->set(PageDraftVersionService::HEADER, (string) $draftVersion);
+
+            return $response;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Exception $e) {
@@ -244,6 +252,8 @@ class AdminPageController extends AbstractController
 
             // Return updated page with fields
             $pageWithFields = $this->adminPageService->getPageWithFields($page_id);
+            // The version after this write (the response header carries the same value).
+            $pageWithFields['draft_version'] = $this->draftVersions->current($page_id) ?? 1;
 
             return $this->responseFormatter->formatSuccess($pageWithFields);
         } catch (ServiceException $e) {

@@ -15,6 +15,11 @@
                     "description": "List of fields associated with the page",
                     "items": { "$ref": "../../../entities/fieldEntity.json" }
                 },
+                "draft_version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The page's draft version (also the response header X-Page-Version). Send it as X-Page-Version on the next write to this page's draft; a stale or missing value is refused with 409 stale_page_version or 400 page_version_required."
+                },
                 "rights": {
                     "type": "object",
                     "description": "What the signed-in person may do with this page in the CMS: the route permission and the grant bit on the page (superuser: all). Per caller, never cached with the page.",
@@ -47,7 +52,7 @@
                     }
                 }
             },
-            "required": ["page", "fields", "routes", "rights"]
+            "required": ["page", "fields", "routes", "rights", "draft_version"]
         }
     },
     "required": ["data"]

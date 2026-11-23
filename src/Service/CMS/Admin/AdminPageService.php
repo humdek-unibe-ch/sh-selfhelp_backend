@@ -24,6 +24,7 @@ use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\NavigationAssignmentService;
 use App\Service\CMS\NavigationCacheInvalidator;
+use App\Service\Sync\ChangeNoticeService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
@@ -65,6 +66,7 @@ class AdminPageService extends BaseService
         private readonly PageParentRouteSyncService $pageParentRouteSyncService,
         private readonly NavigationAssignmentService $navigationAssignmentService,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly ChangeNoticeService $notices,
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly CmsAppService $cmsAppService,
@@ -367,6 +369,9 @@ class AdminPageService extends BaseService
 
             $this->entityManager->commit();
 
+            // Live sync: a new page changes the menu of the groups that see it.
+            $this->notices->navigationChanged();
+
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
             throw $e instanceof ServiceException ? $e : new ServiceException(
@@ -577,6 +582,16 @@ class AdminPageService extends BaseService
                 ->invalidateAllListsInCategory();
             $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
 
+            // Live sync: URL, open access, headless and page fields are live, not versioned,
+            // so the page and the menu changed for everyone who may see it.
+            $this->notices->pagePublishedChanged((int) $page->getId());
+
+            // The global values live in a field of the `sh-global-values` page: every page
+            // that interpolates `{{globals.*}}` has to be read again by everybody.
+            if ($page->getKeyword() === 'sh-global-values') {
+                $this->notices->globalValuesChanged();
+            }
+
             // Check if this is the CMS preferences page
             if ($page->getKeyword() == CmsPreferenceService::SH_CMS_PREFERENCES_KEYWORD) {
                 // Clear ALL cache categories when CMS preferences are updated
@@ -708,6 +723,9 @@ class AdminPageService extends BaseService
             // resolving (create/update already invalidate via syncRoutes()).
             $this->pageRouteService->invalidateResolverCache();
             $this->navigationCacheInvalidator->invalidateForPageDeletion($pageIdForLog);
+
+            // Live sync: the page left the menu (its group rows are gone, so only the menu is named).
+            $this->notices->navigationChanged();
 
             return $deleted_page;
         } catch (\Throwable $e) {

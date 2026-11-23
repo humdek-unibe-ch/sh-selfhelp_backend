@@ -21,7 +21,10 @@ use App\Service\Security\DataAccessSecurityService;
 use App\Tests\Support\Factories\RoleFactory;
 use App\Tests\Support\InteractsWithFormLists;
 use App\Tests\Support\QaWebTestCase;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group as PhpUnitGroup;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 /**
  * A list belongs to the page the visitor is served. A page that was published is served from its published
@@ -365,11 +368,24 @@ final class FormListPublishedConfigTest extends QaWebTestCase
 
     // -- helpers ----------------------------------------------------------------
 
+    /**
+     * Publishing needs the update grant (`PageVersionService::publishVersion`), so the service call
+     * runs as the signed-in QA admin; the token is dropped again so the requests that follow
+     * carry only their own bearer token.
+     */
     private function publish(Page $page): void
     {
-        $versions = $this->service(PageVersionService::class);
-        $version = $versions->createVersion((int) $page->getId());
-        $versions->publishVersion((int) $page->getId(), (int) $version->getId());
+        $tokens = $this->service(TokenStorageInterface::class);
+        $admin = $this->service(EntityManagerInterface::class)->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
+        self::assertInstanceOf(User::class, $admin);
+        $tokens->setToken(new UsernamePasswordToken($admin, 'main', $admin->getRoles()));
+        try {
+            $versions = $this->service(PageVersionService::class);
+            $version = $versions->createVersion((int) $page->getId());
+            $versions->publishVersion((int) $page->getId(), (int) $version->getId());
+        } finally {
+            $tokens->setToken(null);
+        }
         $this->pages->invalidatePageScopedCaches();
     }
 

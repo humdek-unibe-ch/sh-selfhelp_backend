@@ -29,6 +29,14 @@ framework:
                 adapter: cache.adapter.redis
                 default_lifetime: 7200 # 2 hours for lookup data
                 
+            # Leases of the page edit lock (live sync C9): one entry per page, judged
+            # by the times stored in it. Uses the application cache adapter (Redis in
+            # production, filesystem under the test environment). Not a CacheService
+            # category: nothing here is a cached copy of data.
+            cache.page_edit_lock:
+                adapter: cache.app
+                default_lifetime: 960
+
             # Cache pool for permissions and ACL data
             cache.permissions:
                 adapter: cache.adapter.redis

@@ -8,6 +8,7 @@
 namespace App\Tests\Controller\Api\V1;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\Tests\Support\CreatesPageVersionAwareClient;
 use App\Tests\Support\NarrowsJson;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -26,6 +27,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class BaseControllerTest extends WebTestCase
 {
+    use CreatesPageVersionAwareClient;
     use NarrowsJson;
 
     protected JsonSchemaValidationService $jsonSchemaValidationService;
@@ -36,7 +38,7 @@ class BaseControllerTest extends WebTestCase
 
     protected function setUp(): void
     {
-        $this->client = static::createClient();
+        $this->client = static::createPageVersionAwareClient();
         $service = self::getContainer()->get(JsonSchemaValidationService::class);
         self::assertInstanceOf(JsonSchemaValidationService::class, $service);
         $this->jsonSchemaValidationService = $service;
