@@ -1,4 +1,86 @@
-# Unreleased
+# v0.1.49
+
+## Live sync: change notices, access stamp, page sync block
+
+An open screen follows a change made elsewhere without polling. Full reference:
+`docs/developer/31-live-sync-change-notices.md`.
+
+- New Mercure event `changed` (private, `{"v":1,"tags":[...]}`, names and ids
+  only) on four new topics: `<prefix>/sync/public`, `/sync/users/<id>`,
+  `/sync/groups/<id>`, `/sync/roles/<id>`. `acl-changed` and the old topics stay.
+  One service (`ChangeNoticeService`) decides who gets which tag; notices of a
+  request, command, queue message or scheduled job are merged per topic and sent
+  once after the commit (`ChangeNoticeFlushListener`; the job runner flushes after
+  every job and drops the notices of a job that threw, F136/F211).
+- Notices are sent for: publish, unpublish and version publish of a page;
+  section saves in the admin; data record writes (`DataService`, to the owner,
+  to roles with a grant on the table, to groups that see a published page that
+  reads the table, and to `public` for open-access pages); navigation changes;
+  global values; asset changes; group and role access changes; a user's groups
+  and roles. Data a plugin keeps outside the data store does not update live.
+- `GET /auth/events` now also answers guests (200 with `syncTopics: [public]`
+  and `null` private topics, no longer 401) and returns `syncTopics` for
+  signed-in users (user, groups, roles, public). The token's subscribe claim
+  equals the list. Response schema `auth/events.json` updated.
+- Groups and roles got `acl_version` (migration `Version20261120103240`
+  generated from the entities, with a round-trip test). A group or role change
+  raises that version once and sends one message to the group or role topic; it
+  no longer rewrites `users.acl_version` for every member or holder (F250: role
+  grant changes now reach the open admin of every holder). Per-user cache scopes
+  are still cleared.
+- `X-Acl-Stamp` response header on every API reply to a signed-in caller (first
+  16 hex characters of SHA-256 over the user's, groups' and roles' `acl_version`);
+  `GET /auth/user-data` returns the same value as `acl_stamp`. CORS exposes the
+  header. Guests get none.
+- Page payloads (published and draft) carry `sync: {depends_on, valid_until}`:
+  the tags the page depends on (`page:<id>` or `page_draft:<id>`, `table:<id>`
+  per data table it reads, `global_values`) and the UTC moment time alone can
+  change the result. The page cache never keeps an entry past `valid_until`
+  (F06): conditions and texts that read the clock now bound the cache lifetime.
+  Response schema `frontend/get_page.json` updated.
+- A page view is counted only when the request carries `X-Page-View: 1` (F135);
+  revalidation, prefetch and live refetch no longer count. `X-Page-View` is an
+  allowed CORS request header.
+- `ACLService::addGroupAcl` no longer bumps the permissions category generation
+  (F27).
+
+## Page draft version and edit lock
+
+Two editors on one page no longer overwrite each other. Full reference:
+`docs/developer/31-live-sync-change-notices.md`, `docs/reference/api/04-admin-pages-sections.md`.
+
+- **BREAKING for the page editor:** every write to a page's draft (page update
+  and delete, every section write, import into a page, restore from version,
+  publish, unpublish, publish a version, delete a version) must send
+  `X-Page-Version`. Missing or malformed: `400 page_version_required`. Not the
+  current version: `409 stale_page_version` with `{page_id, current_version}`
+  and nothing written. The current version: the write runs and a 2xx answer
+  carries `X-Page-Version` one higher. The version is claimed with one
+  conditional `UPDATE`, so of two writes on the same version exactly one runs;
+  a failed write gives the claim back. `pages.draft_version` (migration
+  `Version20261120115909`, with a round-trip test) starts at 1.
+  `GET /admin/pages/{page_id}` returns `draft_version` and the header.
+  `supports.frontend` is raised to `>=0.1.76` (frontend 0.1.76 sends the
+  header); the compatibility matrix is updated.
+- Edit lock: `GET`, `POST`, `DELETE /admin/pages/{page_id}/lock` and
+  `POST /admin/pages/{page_id}/lock/take-over`, all `admin.page.update` plus
+  the update grant on the page (migration adds the four `api_routes` rows;
+  `api-routes.json` and `permissions.md` re-exported; response schema
+  `responses/admin/pages/page_lock.json`). One holder per page; the lease is an
+  entry in the new `cache.page_edit_lock` pool (not a table), ends 120 s after
+  the last renewal or 15 minutes after the holder's last draft write. A draft
+  write by someone else: `409 page_locked` with the holder's name; a write
+  while nobody holds the lock takes it. Take-over makes the caller the holder.
+  Acquire, take-over, release and an ended lease send `page_lock:<id>` to the
+  roles that edit the page; a draft write sends `page_draft:<id>`.
+- `PageDraftWriteGuardListener` enforces both on the routes in
+  `PageDraftWriteRoutes::NAMES`; `PageDraftWriteRoutesTest` fails when a write
+  route of a page is missing from the list. CORS allows and exposes
+  `X-Page-Version`.
+- Tests: `PageDraftVersionTest`, `PageEditLockTest` (ClockMock, Mercure
+  recorder, permission matrix, schema contract); `QaWebTestCase::jsonRequest()`
+  adds the current `X-Page-Version` to page writes (`NO_PAGE_VERSION` opts out)
+  and clears the lock pool in `setUp`.
 
 ## Access housekeeping
 
