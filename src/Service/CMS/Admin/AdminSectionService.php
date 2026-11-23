@@ -25,6 +25,7 @@ use App\Service\CMS\Admin\SectionCreationService;
 use App\Service\CMS\DataTableService;
 use App\Service\CMS\FormList\FormListConfigValidator;
 use App\Service\Core\UserContextAwareService;
+use App\Service\Sync\ChangeNoticeService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -52,7 +53,8 @@ class AdminSectionService extends BaseService
         private readonly SectionRepository $sectionRepository,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly SectionTableBindingGuard $tableBindingGuard,
-        private readonly FormListConfigValidator $listConfigValidator
+        private readonly FormListConfigValidator $listConfigValidator,
+        private readonly ChangeNoticeService $notices,
     ) {
     }
 
@@ -482,6 +484,9 @@ class AdminSectionService extends BaseService
             foreach (array_unique($affectedPageIds) as $affectedPageId) {
                 $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $affectedPageId);
             }
+
+            // Live sync (F56): other editors of the section and of every page that holds it.
+            $this->notices->sectionSaved($sectionId, array_values(array_unique($affectedPageIds)));
 
             return $section;
         } catch (\Throwable $e) {

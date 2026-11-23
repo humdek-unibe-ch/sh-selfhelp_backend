@@ -18,6 +18,7 @@ use App\Repository\SectionsFieldsTranslationRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\NavigationCacheInvalidator;
+use App\Service\Sync\ChangeNoticeService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
@@ -61,6 +62,7 @@ class PageVersionService extends BaseService
         private readonly CacheService $cache,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
         private readonly UserContextAwareService $userContextAwareService,
+        private readonly ChangeNoticeService $notices,
     ) {
     }
 
@@ -429,6 +431,9 @@ class PageVersionService extends BaseService
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
         $this->cache->withCategory(CacheService::CATEGORY_PAGES)->invalidateAllListsInCategory();
         $this->navigationCacheInvalidator->invalidateForPage($pageId);
+
+        // Live sync: the published page and the menu changed for everyone who may see the page.
+        $this->notices->pagePublishedChanged($pageId);
     }
 
     /**

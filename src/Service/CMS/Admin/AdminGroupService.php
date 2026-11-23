@@ -20,6 +20,7 @@ use App\Service\Cache\Core\CacheService;
 use App\Service\Security\CallerHoldingsService;
 use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Sync\ChangeNoticeService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -39,6 +40,7 @@ class AdminGroupService extends BaseService
         private readonly LookupService $lookupService,
         private readonly CreatorGrantService $creatorGrants,
         private readonly CallerHoldingsService $callerHoldings,
+        private readonly ChangeNoticeService $notices,
     ) {
     }
 
@@ -191,6 +193,7 @@ class AdminGroupService extends BaseService
      */
     public function createGroup(array $groupData): array
     {
+        $changedPageIds = [];
         $this->entityManager->beginTransaction();
 
         try {
@@ -207,7 +210,7 @@ class AdminGroupService extends BaseService
 
             // Create initial ACLs if provided
             if (isset($groupData['acls']) && is_array($groupData['acls'])) {
-                $this->updateGroupAclsInternal($group, $groupData['acls']);
+                $changedPageIds = $this->updateGroupAclsInternal($group, $groupData['acls']);
             }
 
             // Whoever creates an item can manage it (rule 6b): the caller's roles that
@@ -240,7 +243,7 @@ class AdminGroupService extends BaseService
             // any users in this group (usually none on create, but covered for
             // safety in case the group was pre-populated).
             if (isset($groupData['acls']) && is_array($groupData['acls'])) {
-                $this->invalidateGroupAclCaches($group);
+                $this->invalidateGroupAclCaches($group, $changedPageIds);
             }
 
             return $this->formatGroupForDetail($group);
@@ -263,6 +266,7 @@ class AdminGroupService extends BaseService
             throw new ServiceException('Insufficient permissions to update group', Response::HTTP_FORBIDDEN);
         }
 
+        $changedPageIds = [];
         $this->entityManager->beginTransaction();
 
         try {
@@ -285,7 +289,7 @@ class AdminGroupService extends BaseService
 
             // Update ACLs if provided
             if (isset($groupData['acls']) && is_array($groupData['acls'])) {
-                $this->updateGroupAclsInternal($group, $groupData['acls']);
+                $changedPageIds = $this->updateGroupAclsInternal($group, $groupData['acls']);
             }
 
             // Log transaction
@@ -314,7 +318,7 @@ class AdminGroupService extends BaseService
             // for every user in this group so page permissions reflect the
             // new rules immediately.
             if (isset($groupData['acls']) && is_array($groupData['acls'])) {
-                $this->invalidateGroupAclCaches($group);
+                $this->invalidateGroupAclCaches($group, $changedPageIds);
             }
 
             return $this->formatGroupForDetail($group);
@@ -428,7 +432,7 @@ class AdminGroupService extends BaseService
         $this->entityManager->beginTransaction();
 
         try {
-            $this->updateGroupAclsInternal($group, $aclsData);
+            $changedPageIds = $this->updateGroupAclsInternal($group, $aclsData);
 
             // Log transaction
             $this->transactionService->logTransaction(
@@ -455,7 +459,7 @@ class AdminGroupService extends BaseService
             // Invalidate per-user ACL caches for every member of this group.
             // ACLService::hasAccess caches under ENTITY_SCOPE_USER, so bumping
             // only the group scope is not enough to refresh member permissions.
-            $this->invalidateGroupAclCaches($group);
+            $this->invalidateGroupAclCaches($group, $changedPageIds);
 
             return $this->getGroupAcls($groupId);
         } catch (\Exception $e) {
@@ -641,17 +645,28 @@ class AdminGroupService extends BaseService
     /**
      * Internal method to update group ACLs (without transaction handling)
      *
+     * Bumps the group's `acl_version` in the same transaction, once, instead of
+     * every member's `users.acl_version` (the access stamp folds the group's
+     * value in).
+     *
      * @param array<array-key, mixed> $aclsData
+     * @return list<int> the pages whose visibility for the group was added or removed
      */
-    private function updateGroupAclsInternal(Group $group, array $aclsData): void
+    private function updateGroupAclsInternal(Group $group, array $aclsData): array
     {
         // First, remove all existing ACL permissions for this group
         $existingAcls = $this->entityManager->getRepository(PageAclGroup::class)
             ->findBy(['group' => $group]);
 
+        $before = [];
         foreach ($existingAcls as $existingAcl) {
+            $existingPageId = $existingAcl->getPage()?->getId();
+            if ($existingAcl->getAclSelect() && $existingPageId !== null) {
+                $before[$existingPageId] = true;
+            }
             $this->entityManager->remove($existingAcl);
         }
+        $after = [];
 
         // Flush the deletions first to avoid constraint violations
         $this->entityManager->flush();
@@ -705,56 +720,53 @@ class AdminGroupService extends BaseService
                 $acl->setGroup($group);
                 $acl->setPage($pageMap[$pageId]);
                 $acl->setAclSelect(true);
+                $after[$pageId] = true;
 
                 $this->entityManager->persist($acl);
             }
         }
 
+        // One bump for the whole group (live sync): members notice through the
+        // access stamp, not through a write per member.
+        $group->bumpAclVersion();
+
         // Flush the insertions
         $this->entityManager->flush();
+
+        $changed = array_keys(array_diff_key($before, $after) + array_diff_key($after, $before));
+        sort($changed);
+
+        return $changed;
     }
 
     /**
-     * Invalidate per-user ACL caches for every member of the given group and
-     * bump each member's acl_version so downstream clients (frontend BFF) can
-     * detect the change.
+     * After a group's page ACL changed (committed): clear the per-user ACL
+     * caches of its members and tell the group (live sync).
      *
-     * ACLService::hasAccess caches results under ENTITY_SCOPE_USER in the
-     * PERMISSIONS category. Only invalidating the group scope is not enough
-     * to refresh member permissions; we must touch each member's user scope
-     * explicitly and rotate their acl_version.
+     * ACLService::hasAccess reads ACL rows cached under ENTITY_SCOPE_USER in the
+     * PERMISSIONS category, so each member's user scope is still cleared (a cache
+     * rule). What no longer happens is a `users.acl_version` bump and a write
+     * per member: the group's own `acl_version` was bumped in the transaction and
+     * one notice goes to the group topic.
+     *
+     * @param list<int> $changedPageIds pages whose visibility for the group changed
      */
-    private function invalidateGroupAclCaches(Group $group): void
+    private function invalidateGroupAclCaches(Group $group, array $changedPageIds = []): void
     {
-        $memberUserIds = [];
-        foreach ($group->getUsersGroups() as $membership) {
-            /** @var UsersGroup $membership */
-            $user = $membership->getUser();
-            if ($user === null) {
-                continue;
-            }
-            $userId = $user->getId();
-            if ($userId === null) {
-                continue;
-            }
+        $groupId = (int) $group->getId();
 
-            $memberUserIds[$userId] = true;
-            $user->bumpAclVersion();
+        $memberUserIds = array_map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0, $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT id_users FROM rel_groups_users WHERE id_groups = :group',
+            ['group' => $groupId],
+            ['group' => \Doctrine\DBAL\ParameterType::INTEGER],
+        ));
+
+        if ($memberUserIds !== []) {
+            // Clearing the user entity scope invalidates every cache entry scoped
+            // to that user across all categories (ACLService::hasAccess keys its
+            // results under ENTITY_SCOPE_USER, so this is the key step).
+            $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_USER, $memberUserIds);
         }
-
-        if (empty($memberUserIds)) {
-            return;
-        }
-
-        // Persist the new acl_version values for all affected users.
-        $this->entityManager->flush();
-
-        $userIds = array_keys($memberUserIds);
-
-        // Bumping the user entity scope invalidates every cache entry scoped
-        // to that user across all categories (ACLService::hasAccess keys its
-        // results under ENTITY_SCOPE_USER, so this is the key step).
-        $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_USER, $userIds);
 
         // Lists in the users/permissions categories may also be stale.
         $this->cache
@@ -763,5 +775,7 @@ class AdminGroupService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
             ->invalidateAllListsInCategory();
+
+        $this->notices->groupAclChanged($groupId, $changedPageIds);
     }
 }

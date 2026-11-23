@@ -293,6 +293,7 @@ final class DataAccessSecurityServiceTest extends QaKernelTestCase
             $this->service(CacheService::class),
             $this->service(RequestStack::class),
             $logger,
+            $this->service(\App\Service\Sync\ChangeNoticeService::class),
         );
     }
 

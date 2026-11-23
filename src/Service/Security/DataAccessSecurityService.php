@@ -15,6 +15,7 @@ use App\Repository\RoleDataAccessRepository;
 use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
+use App\Service\Sync\ChangeNoticeService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -41,7 +42,8 @@ class DataAccessSecurityService
         private EntityManagerInterface $entityManager,
         private CacheService $cache,
         private RequestStack $requestStack,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private ChangeNoticeService $notices,
     ) {
     }
 
@@ -293,6 +295,17 @@ class DataAccessSecurityService
         foreach ($usersWithRole as $user) {
             $this->invalidateUserPermissions((int) $user->getId());
         }
+
+        // F250: a changed grant (a page, table or asset right) reaches the open admin of
+        // every holder. One bump of the role's own version (the access stamp folds it in,
+        // so holders notice on their next API reply) and one notice to the role topic,
+        // not a write per holder. A plain UPDATE: it needs no entity and no flush, and
+        // it belongs to whatever transaction the caller is in.
+        $this->entityManager->getConnection()->executeStatement(
+            'UPDATE roles SET acl_version = :version WHERE id = :id',
+            ['version' => bin2hex(random_bytes(16)), 'id' => $roleId],
+        );
+        $this->notices->roleAclChanged($roleId);
     }
 
 

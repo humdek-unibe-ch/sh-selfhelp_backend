@@ -16,6 +16,7 @@ use App\Repository\ScheduledJobRepository;
 use App\Repository\ScheduledJobRunnerRunRepository;
 use App\Repository\ScheduledJobRunnerSettingRepository;
 use App\Service\Cache\Core\CacheService;
+use App\Service\Sync\ChangeNotifier;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Lock\LockFactory;
@@ -43,6 +44,7 @@ class ScheduledJobRunnerService
         private readonly CacheService $cache,
         private readonly LockFactory $lockFactory,
         private readonly LoggerInterface $logger,
+        private readonly ChangeNotifier $changeNotifier,
     ) {
     }
 
@@ -96,7 +98,15 @@ class ScheduledJobRunnerService
 
             foreach ($jobs as $job) {
                 $attempted++;
-                $executed = $this->jobSchedulerService->executeJob((int) $job->getId(), LookupService::TRANSACTION_BY_BY_CRON_JOB);
+                try {
+                    $executed = $this->jobSchedulerService->executeJob((int) $job->getId(), LookupService::TRANSACTION_BY_BY_CRON_JOB);
+                } catch (\Throwable $e) {
+                    // What the job queued for the live-sync hub belongs to this job only (F136/F211).
+                    $this->changeNotifier->reset();
+                    throw $e;
+                }
+                // One job, one set of change notices: sent now, never carried into the next job.
+                $this->changeNotifier->flush();
 
                 if ($executed === false) {
                     $failed++;

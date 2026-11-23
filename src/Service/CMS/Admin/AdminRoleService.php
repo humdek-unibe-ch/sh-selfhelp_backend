@@ -10,7 +10,7 @@ namespace App\Service\CMS\Admin;
 
 use App\Entity\Role;
 use App\Entity\Permission;
-use App\Repository\UserRepository;
+use App\Service\Sync\ChangeNoticeService;
 use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
@@ -30,11 +30,11 @@ class AdminRoleService extends BaseService
     private const PERM_ROLE_DELETE = 'admin.role.delete';
 
     public function __construct(
-        private readonly UserRepository $userRepository,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
         private readonly EntityManagerInterface $entityManager,
         private readonly CallerHoldingsService $callerHoldings,
+        private readonly ChangeNoticeService $notices,
     ) {
     }
 
@@ -308,24 +308,27 @@ class AdminRoleService extends BaseService
     }
 
     /**
+     * After a role's permissions changed (committed): clear the per-user caches
+     * of its holders and tell the role (live sync).
+     *
+     * Each holder's user cache scope is still cleared (a cache rule). What no
+     * longer happens is a `users.acl_version` bump and a write per holder: the
+     * role's own `acl_version` was bumped in the transaction and one notice goes
+     * to the role topic.
+     *
      * @param int $roleId
      */
     private function invalidateUsersWithRole(int $roleId): void
     {
-        $usersWithRole = $this->userRepository->findByRole($roleId);
-        if (empty($usersWithRole)) {
-            return;
+        $holderIds = array_map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0, $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT id_users FROM rel_roles_users WHERE id_roles = :role',
+            ['role' => $roleId],
+            ['role' => \Doctrine\DBAL\ParameterType::INTEGER],
+        ));
+
+        if ($holderIds !== []) {
+            $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_USER, $holderIds);
         }
-
-        $userIds = [];
-        foreach ($usersWithRole as $user) {
-            $userIds[] = (int) $user->getId();
-            $user->bumpAclVersion();
-        }
-
-        $this->entityManager->flush();
-
-        $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_USER, $userIds);
 
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
@@ -333,6 +336,8 @@ class AdminRoleService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
             ->invalidateAllListsInCategory();
+
+        $this->notices->roleAclChanged($roleId);
     }
 
     public function deleteRole(int $callerId, int $roleId): void
@@ -843,6 +848,10 @@ class AdminRoleService extends BaseService
             }
             $role->addPermission($permission);
         }
+
+        // One bump for the whole role (live sync): holders notice through the
+        // access stamp, not through a write per holder. Same transaction as the change.
+        $role->bumpAclVersion();
 
         $this->entityManager->flush();
     }

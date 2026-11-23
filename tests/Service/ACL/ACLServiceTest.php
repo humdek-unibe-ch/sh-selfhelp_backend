@@ -119,6 +119,24 @@ final class ACLServiceTest extends QaKernelTestCase
         self::assertNull($this->rowForPage($guestRows, (int) $shared->getId()), 'An anonymous visitor is not listed a group page');
     }
 
+    public function testAddingAGroupAclDoesNotBumpThePermissionsCategoryGeneration(): void
+    {
+        // F27: one new ACL row used to bump the generation of the whole permissions category,
+        // which is part of every key of it. It now clears the group scope, the page scope and
+        // the category's lists. The generation is read through the key it builds: same key,
+        // same generation.
+        $cache = $this->service(CacheService::class)->withCategory(CacheService::CATEGORY_PERMISSIONS);
+        $keyOf = new \ReflectionMethod($cache, 'getCacheKey');
+        // The factory's page creation clears caches itself; take the baseline after it.
+        $page = $this->pages->createPage('qa_acl_f27_page', openAccess: false);
+        $before = $keyOf->invoke($cache, 'item', 'qa_f27_probe');
+
+        $this->acl->addGroupAcl($page, $this->subjectGroup(), $this->em, true);
+        $this->em->flush();
+
+        self::assertSame($before, $keyOf->invoke($cache, 'item', 'qa_f27_probe'), 'The category generation did not move.');
+    }
+
     public function testRemovingGroupAclIsSeenOnNextHasAccessWithoutManualCacheClear(): void
     {
         // F01: hasAccess must not cache the boolean; invalidating the ACL rows'

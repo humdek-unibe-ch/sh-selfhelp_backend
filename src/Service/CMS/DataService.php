@@ -32,6 +32,7 @@ use App\Service\CMS\DataRevision\LockedRecord;
 use App\Service\CMS\DataRevision\RecordWriteContext;
 use App\Service\CMS\DataRevision\RestorePlan;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Sync\ChangeNoticeService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -69,6 +70,7 @@ class DataService extends BaseService
         private readonly DataRevisionService $dataRevisionService,
         private readonly DataRestoreService $dataRestoreService,
         private readonly DataTableService $dataTableService,
+        private readonly ChangeNoticeService $notices,
     ) {
     }
 
@@ -175,7 +177,7 @@ class DataService extends BaseService
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
-                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $dataRow->getIdUsers());
 
                         $this->runActionOrchestration(
                             $dataTable,
@@ -222,7 +224,7 @@ class DataService extends BaseService
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
-                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $existingRow->getIdUsers());
 
                         $this->runActionOrchestration(
                             $dataTable,
@@ -248,7 +250,7 @@ class DataService extends BaseService
             $this->entityManager->commit();
 
             // Invalidate data table cache after creating new record
-            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $this->asIntOrNull($data['id_users'] ?? null));
 
             $this->runActionOrchestration(
                 $dataTable,
@@ -426,7 +428,7 @@ class DataService extends BaseService
             $this->entityManager->commit();
 
             // Invalidate data table cache after deleting record
-            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $dataRow->getIdUsers());
 
             $this->runActionOrchestration(
                 $dataTable,
@@ -575,7 +577,7 @@ class DataService extends BaseService
             $dataRow->setVersion($newVersion ?? $currentVersion);
             $this->entityManager->commit();
 
-            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $dataRow->getIdUsers());
 
             // Actions see the record as it is after the restore, like after any update.
             $values = ['record_id' => $recordId, 'id_users' => $dataRow->getIdUsers()];
@@ -1717,8 +1719,9 @@ class DataService extends BaseService
      *
      * @param DataTable $dataTable The data table entity
      * @param int|null $userId The user ID (null for guest users)
+     * @param int|null $ownerId The owner of the record that changed (live-sync notice), defaults to the acting user
      */
-    private function invalidateDataTableCache(DataTable $dataTable, ?int $userId): void
+    private function invalidateDataTableCache(DataTable $dataTable, ?int $userId, ?int $ownerId = null): void
     {
         $config = $this->getDataTableCurrentUserConfig((int) $dataTable->getId());
 
@@ -1747,6 +1750,11 @@ class DataService extends BaseService
 
         // Additionally invalidate form-record cache for this data table and user
         $this->invalidateFormRecordCache($dataTable, $userId);
+
+        // Live sync: write, cache clear and notice belong together. The notice names the
+        // table only; the owner, the editors of the table and the viewers of pages that
+        // show it to everybody learn of it (own records stay with their owner).
+        $this->notices->tableChanged((int) $dataTable->getId(), $ownerId ?? $userId);
     }
 
     /**

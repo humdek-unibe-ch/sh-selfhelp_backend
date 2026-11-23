@@ -126,12 +126,13 @@ class ACLService
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_GROUP, (int) $group->getId());
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
 
-        // Bump the whole permissions category generation. List and item keys
-        // that are not user-scoped would otherwise keep stale deny snapshots
-        // after create/import until the TTL expired.
+        // Clear the permission LISTS only (user ACL snapshots are lists and not
+        // user-scoped keys that the group/page scopes above reach), never the
+        // whole category generation: that wiped every permission item of every
+        // user on each page create or import (F27).
         $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->invalidateCategory();
+            ->invalidateAllListsInCategory();
     }
 
 }
