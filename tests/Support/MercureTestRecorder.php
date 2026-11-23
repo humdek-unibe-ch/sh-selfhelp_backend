@@ -33,8 +33,19 @@ use Symfony\Component\Mercure\Update;
  */
 final class MercureTestRecorder implements HubInterface
 {
+    /**
+     * The environment switch of the browser (e2e) stack: with it set to `1` every update is also
+     * sent to the real test hub, so the open pages of that stack really receive it. Unit and
+     * integration runs never set it and stay in memory.
+     */
+    public const FORWARD_ENV = 'SELFHELP_E2E_REAL_HUB';
+
     /** @var list<Update> */
     private array $updates = [];
+
+    public function __construct(private readonly ?HubInterface $forwardTo = null)
+    {
+    }
 
     public function getPublicUrl(): string
     {
@@ -49,6 +60,10 @@ final class MercureTestRecorder implements HubInterface
     public function publish(Update $update): string
     {
         $this->updates[] = $update;
+
+        if ($this->forwardTo !== null && getenv(self::FORWARD_ENV) === '1') {
+            return $this->forwardTo->publish($update);
+        }
 
         // The real hub returns the published event id; a deterministic stub is
         // enough for tests and keeps callers (which may log the id) happy.

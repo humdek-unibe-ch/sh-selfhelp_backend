@@ -11,6 +11,10 @@ services:
     # lets golden tests assert exactly what was published (by topic).
     App\Tests\Support\MercureTestRecorder:
         public: true
+        # The real hub: used only when the browser (e2e) stack sets SELFHELP_E2E_REAL_HUB=1
+        # (frontend `scripts/e2e-stack.mjs`), so live-sync updates reach open pages there.
+        arguments:
+            $forwardTo: '@mercure.hub.default'
 
     Symfony\Component\Mercure\HubInterface:
         alias: App\Tests\Support\MercureTestRecorder
