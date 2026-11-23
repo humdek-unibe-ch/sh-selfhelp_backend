@@ -9,6 +9,7 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminPageService;
@@ -192,6 +193,8 @@ class AdminPageController extends AbstractController
                 'responses/admin/pages/page',
                 Response::HTTP_CREATED
             );
+        } catch (RequestValidationException $e) {
+            return $this->responseFormatter->formatThrowable($e);
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Exception $e) {
