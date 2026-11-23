@@ -1723,8 +1723,6 @@ class DataService extends BaseService
      */
     private function invalidateDataTableCache(DataTable $dataTable, ?int $userId, ?int $ownerId = null): void
     {
-        $config = $this->getDataTableCurrentUserConfig((int) $dataTable->getId());
-
         // Always invalidate data table lists (this affects data table metadata)
         $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
@@ -1733,20 +1731,14 @@ class DataService extends BaseService
         // Always invalidate the data-table entity scope. Every read in
         // DataTableRepository scopes its cache by the data_table id, so
         // bumping that scope's generation counter is the only reliable
-        // way to invalidate plugin-owned data tables (no section
-        // references them via data_config, which would otherwise drive
-        // the has_global_config / has_current_user_config flags below).
+        // way to invalidate plugin-owned data tables (and every per-user
+        // form_record / page read that carries the same table scope).
+        // Do not also bump the writer's user scope (F269): that only rebuilt
+        // their profile, groups and ACL entries; the table scope already
+        // covers the current_user reads.
         $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
-
-        // If the data table has user-specific configs (current_user: true) and we have a user,
-        // invalidate the user-specific scope for this user
-        if ($config['has_current_user_config'] && $userId) {
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
-        }
 
         // Additionally invalidate form-record cache for this data table and user
         $this->invalidateFormRecordCache($dataTable, $userId);
