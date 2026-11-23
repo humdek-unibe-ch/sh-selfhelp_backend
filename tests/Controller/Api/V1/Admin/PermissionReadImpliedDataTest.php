@@ -102,21 +102,41 @@ final class PermissionReadImpliedDataTest extends QaWebTestCase
             'Every admin.section.delete holder must also hold admin.section.read'
         );
 
-        // Language pair travels together for every role that has either
+        // Language pair travels together for every role the migration repaired. The roles with the
+        // `qa_` prefix are the QA fixture's restricted personas (QaBaselineFixture seeds `qa_read_language`
+        // with the read right alone, on purpose), so they are left out of the comparison; the second check
+        // below covers every role, QA personas included.
         $readHolders = self::coerceInt($connection->fetchOne(
             "SELECT COUNT(DISTINCT rpr.id_roles) FROM rel_permissions_roles rpr"
+            . " JOIN roles r ON r.id = rpr.id_roles AND LEFT(r.name, 3) <> 'qa_'"
             . " JOIN permissions p ON p.id = rpr.id_permissions AND p.name = 'admin.language.read'"
         ));
         $updateHolders = self::coerceInt($connection->fetchOne(
             "SELECT COUNT(DISTINCT rpr.id_roles) FROM rel_permissions_roles rpr"
+            . " JOIN roles r ON r.id = rpr.id_roles AND LEFT(r.name, 3) <> 'qa_'"
             . " JOIN permissions p ON p.id = rpr.id_permissions AND p.name = 'admin.language.update'"
         ));
         self::assertSame(
             $readHolders,
             $updateHolders,
-            'admin.language.read and admin.language.update must have the same holders'
+            'admin.language.read and admin.language.update must have the same holders (roles without the qa_ prefix)'
         );
         self::assertGreaterThan(0, $readHolders, 'At least the former settings holders must have the language pair');
+
+        // Whoever updates languages may also read them (rule 4.13), whatever the role is called.
+        self::assertSame(
+            0,
+            self::coerceInt($connection->fetchOne(
+                "SELECT COUNT(*) FROM rel_permissions_roles rpr"
+                . " JOIN permissions p_upd ON p_upd.id = rpr.id_permissions AND p_upd.name = 'admin.language.update'"
+                . " WHERE NOT EXISTS ("
+                . "   SELECT 1 FROM rel_permissions_roles r2"
+                . "   JOIN permissions p_read ON p_read.id = r2.id_permissions AND p_read.name = 'admin.language.read'"
+                . "   WHERE r2.id_roles = rpr.id_roles"
+                . " )"
+            )),
+            'Every admin.language.update holder must also hold admin.language.read'
+        );
 
         // Superuser holds all new names
         self::assertSame(

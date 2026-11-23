@@ -1146,6 +1146,50 @@
       ]
     },
     {
+      "name": "admin_pages_lock_acquire",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/lock",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_lock_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/lock",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_lock_release",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/pages/{page_id}/lock",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_lock_take_over",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/lock/take-over",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
       "name": "admin_pages_add_section",
       "methods": [
         "PUT"
