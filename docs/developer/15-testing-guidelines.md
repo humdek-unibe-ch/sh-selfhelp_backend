@@ -340,7 +340,10 @@ Implemented state:
 ### Deterministic time (ClockMock)
 
 `phpunit.dist.xml` registers the Symfony PHPUnit bridge clock mock for the
-`App` namespace (`clock-mock-namespaces` parameter). Scope, verified empirically:
+namespaces that use unqualified `time()` / `date()` (`clock-mock-namespaces`:
+`App`, `App\Service\Sync`, `App\Service\CMS\Admin`, `App\Service\CMS\Frontend`,
+`App\Service\Core`, `App\Service\Auth`). The bridge registers each listed
+namespace only (not recursively). Scope, verified empirically:
 
 - **It intercepts** the *unqualified* time functions (`time()`, `microtime()`,
   `date()`, `sleep()`, …) called inside `App\…` classes. Freeze with

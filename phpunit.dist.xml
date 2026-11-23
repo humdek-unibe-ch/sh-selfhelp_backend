@@ -81,7 +81,13 @@
 
     <extensions>
         <bootstrap class="Symfony\Bridge\PhpUnit\SymfonyExtension">
-            <parameter name="clock-mock-namespaces" value="App" />
+            <!--
+                ClockMock registers unqualified time()/date() per namespace only
+                (not recursively). List every App\Service\… namespace that
+                time-sensitive production code uses (F267). Keep App for
+                top-level App\ classes; Auth for JWTService.
+            -->
+            <parameter name="clock-mock-namespaces" value="App,App\Service\Sync,App\Service\CMS\Admin,App\Service\CMS\Frontend,App\Service\Core,App\Service\Auth" />
             <parameter name="dns-mock-namespaces" value="App" />
         </bootstrap>
         <!--
