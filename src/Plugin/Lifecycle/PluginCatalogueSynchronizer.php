@@ -170,10 +170,15 @@ final class PluginCatalogueSynchronizer
             $name = self::requiredString($style, 'name', $context, 'styles');
             $this->renameInPlace($context, 'styles', 'style', $name, self::stringList($style, 'renamedFrom'));
 
-            $values = [
-                'description' => self::optionalString($style, 'description'),
-                'can_have_children' => self::optionalBool($style, 'canHaveChildren') ? 1 : 0,
-            ];
+            // A key the manifest leaves out keeps the row's value (a plugin that
+            // still seeds its style in a migration keeps working).
+            $values = [];
+            if (array_key_exists('description', $style)) {
+                $values['description'] = self::optionalString($style, 'description');
+            }
+            if (array_key_exists('canHaveChildren', $style)) {
+                $values['can_have_children'] = self::optionalBool($style, 'canHaveChildren') ? 1 : 0;
+            }
             $groupName = self::optionalString($style, 'group');
             if ($groupName !== null) {
                 $groupId = $this->fetchId('SELECT id FROM style_groups WHERE name = :name', ['name' => $groupName]);
@@ -197,11 +202,13 @@ final class PluginCatalogueSynchronizer
                         $name
                     ));
                 }
-                $this->connection->insert('styles', ['name' => $name, 'id_plugins' => $context->pluginRowId] + $values);
+                $this->connection->insert('styles', ['name' => $name, 'id_plugins' => $context->pluginRowId] + $values + ['can_have_children' => 0]);
                 $styleId = (int) $this->connection->lastInsertId();
             } else {
                 $this->assertOwned($context, 'style', $name, $row);
-                $this->connection->update('styles', $values, ['id' => $row['id']]);
+                if ($values !== []) {
+                    $this->connection->update('styles', $values, ['id' => $row['id']]);
+                }
                 $styleId = $row['id'];
             }
 

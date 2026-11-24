@@ -144,6 +144,22 @@ final class PluginCatalogueSynchronizerTest extends QaKernelTestCase
         self::assertSame($this->plugin->getId(), $this->owner('field_types', 'qa-catalogue-type'));
     }
 
+    public function testAStyleKeyTheManifestLeavesOutKeepsItsValue(): void
+    {
+        $this->synchronizer->sync($this->plugin, $this->manifest());
+        // A container style seeded by a migration before its manifest declared it.
+        $this->connection->update('styles', ['can_have_children' => 1], ['name' => 'qa-catalogue-style']);
+
+        $data = $this->manifestData();
+        unset($data['styles'][0]['description'], $data['styles'][0]['canHaveChildren']);
+        $this->synchronizer->sync($this->plugin, new PluginManifest($data));
+
+        $row = $this->connection->fetchAssociative('SELECT description, can_have_children FROM styles WHERE name = :n', ['n' => 'qa-catalogue-style']);
+        self::assertIsArray($row);
+        self::assertSame('QA style', $row['description']);
+        self::assertEquals(1, $row['can_have_children']);
+    }
+
     public function testPurgeRemovesEveryRowThePluginOwns(): void
     {
         $this->synchronizer->sync($this->plugin, $this->manifest());
