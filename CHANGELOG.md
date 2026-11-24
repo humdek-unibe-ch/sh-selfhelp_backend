@@ -1,5 +1,10 @@
 # Unreleased
 
+**The register page falls back like the other system pages.** It was missing
+from `PageService::FALLBACK_CHECK_KEYWORDS`, so a register page without its
+`register` section left visitors at a dead end instead of the web app's
+built-in screen (`should_fallback`).
+
 **Fixes from the pre-PR review of the SurveyJS upgrade.**
 
 - Data columns of value type `file` can be sorted and filtered (as text);

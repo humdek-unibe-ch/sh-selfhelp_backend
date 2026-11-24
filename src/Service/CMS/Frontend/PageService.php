@@ -67,6 +67,7 @@ class PageService extends BaseService
         'two-factor-authentication' => 'two-factor-auth',
         'reset-password'           => 'reset-password',
         'profile'                  => 'profile',
+        'register'                 => 'register',
         'no-access'                => 'no-access',
         'no-access-guest'          => 'no-access',
         'missing'                  => 'missing',
