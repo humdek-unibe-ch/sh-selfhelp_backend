@@ -11,6 +11,11 @@ namespace App\Tests\Integration\CMS;
 
 use App\Entity\DataTable;
 use App\Service\CMS\DataColumnService;
+use App\Service\CMS\DataQuery\DataFilter;
+use App\Service\CMS\DataQuery\DataFilterGroup;
+use App\Service\CMS\DataQuery\DataQuery;
+use App\Service\CMS\DataQuery\DataQueryEngine;
+use App\Service\CMS\DataQuery\DataSort;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\CMS\FormFileUploadService;
@@ -81,6 +86,24 @@ final class PluginFileColumnTest extends QaKernelTestCase
         $this->service(DataTableService::class)->deleteDataTable(self::TABLE);
 
         self::assertFileDoesNotExist($path, 'deleting the table erases the file');
+    }
+
+    public function testTheDataScreenSortsAndFiltersAFileColumnAsText(): void
+    {
+        $first = $this->save(['qa_track' => 'uploads/form-files/b.gpx']);
+        $second = $this->save(['qa_track' => 'uploads/form-files/a.gpx']);
+        $this->save(['qa_note' => 'no file']);
+        $table = $this->table();
+        $this->service(DataColumnService::class)->markFileColumns($table, ['qa_track']);
+        $this->em->clear();
+        $engine = $this->service(DataQueryEngine::class);
+        $tableId = (int) $table->getId();
+
+        $sorted = $engine->run(new DataQuery($tableId, sorts: [new DataSort('qa_track')]));
+        self::assertSame([$second, $first], array_slice(array_map(static fn (array $row): int => is_numeric($row['record_id'] ?? null) ? (int) $row['record_id'] : 0, $sorted->rows), 0, 2), 'sorted by the file names, rows without a file last');
+
+        $withFile = $engine->run(new DataQuery($tableId, filter: new DataFilterGroup(children: [new DataFilter('qa_track', DataFilter::OP_NOT_EMPTY)])));
+        self::assertCount(2, $withFile->rows);
     }
 
     public function testARefusedTypeIsNotStored(): void

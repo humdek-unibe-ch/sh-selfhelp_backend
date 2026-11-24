@@ -643,6 +643,8 @@ class DataQueryEngine extends BaseService
             LookupService::DATA_COL_VALUE_TYPES_DATE,
             LookupService::DATA_COL_VALUE_TYPES_DATETIME,
             LookupService::DATA_COL_VALUE_TYPES_BOOLEAN,
+            // File cells name uploaded files: compared and sorted as text.
+            LookupService::DATA_COL_VALUE_TYPES_FILE,
         ];
         if (!in_array($type, $known, true)) {
             throw new DataQueryException(sprintf('Unknown value type "%s".', $type));

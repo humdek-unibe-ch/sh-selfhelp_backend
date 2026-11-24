@@ -185,10 +185,13 @@ class FormFileUploadService extends BaseService
         );
 
         $keyToName = $this->formFieldKeyResolver->getFieldKeyToName($tableName);
+        // Read once for the table, not once per cell.
+        $fileTyped = $this->fileTypedKeysOf($tableName);
         $files = [];
         foreach ($rows as $row) {
             $fieldKey = is_scalar($row['field_key']) ? (string) $row['field_key'] : '';
-            if (!$this->isFileInputField($fieldKey, $tableName) || !is_string($row['value'])) {
+            $isFileColumn = $this->formFieldKeyResolver->isFileInput($tableName, $fieldKey) || isset($fileTyped[$fieldKey]);
+            if (!$isFileColumn || !is_string($row['value'])) {
                 continue;
             }
             foreach ($this->resolveCellValue($row['value']) as $absolutePath) {
@@ -837,11 +840,23 @@ class FormFileUploadService extends BaseService
     /** Whether the table's column is declared with the value type `file` (a plugin's upload column). */
     private function isFileTypedColumn(string $tableName, string $fieldKey): bool
     {
-        return $this->entityManager->getConnection()->fetchOne(
-            'SELECT 1 FROM data_cols dc JOIN data_tables t ON t.id = dc.id_data_tables'
+        return isset($this->fileTypedKeysOf($tableName)[$fieldKey]);
+    }
+
+    /**
+     * The table's columns declared with the value type `file`, in one query.
+     *
+     * @return array<string, int> field key => index
+     */
+    private function fileTypedKeysOf(string $tableName): array
+    {
+        $keys = $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT dc.field_key FROM data_cols dc JOIN data_tables t ON t.id = dc.id_data_tables'
             . ' JOIN lookups l ON l.id = dc.id_value_type'
-            . ' WHERE t.name = :table AND dc.field_key = :key AND l.type_code = :type AND l.lookup_code = :code',
-            ['table' => $tableName, 'key' => $fieldKey, 'type' => LookupService::DATA_COL_VALUE_TYPES, 'code' => LookupService::DATA_COL_VALUE_TYPES_FILE]
-        ) !== false;
+            . ' WHERE t.name = :table AND l.type_code = :type AND l.lookup_code = :code',
+            ['table' => $tableName, 'type' => LookupService::DATA_COL_VALUE_TYPES, 'code' => LookupService::DATA_COL_VALUE_TYPES_FILE]
+        );
+
+        return array_flip(array_values(array_filter($keys, 'is_string')));
     }
 }
