@@ -1348,6 +1348,10 @@ class PageService extends BaseService
      * the section is not on the page or an ancestor is hidden by its condition; whether the caller
      * may see the section at all is checked before, by the caller.
      *
+     * Known limit: the call names the section, not a row. Under a repeating ancestor (an entry
+     * list or a loop) every copy gets the first row's variables, and under a data view none.
+     * Telling the copies apart needs the row in the plugin's call.
+     *
      * @param array<string, string> $routeParams public route params ({{route.*}})
      * @return array<array-key, mixed>
      */

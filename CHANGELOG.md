@@ -1,5 +1,19 @@
 # Unreleased
 
+**Fixes from the pre-PR review of the SurveyJS upgrade.**
+
+- Data columns of value type `file` can be sorted and filtered (as text);
+  before, the query engine refused the type.
+- A style key the manifest leaves out (`description`, `canHaveChildren`)
+  keeps its value on update (plugins still seed styles in migrations, rule 7.8
+  is a target).
+- "Download all" reads the file-typed columns once per table instead of once
+  per cell.
+- Excel export: a text cell over Excel's 32,767 characters is cut with a mark
+  (Excel reported the file as damaged).
+- Documented limit: `PageService::variablesForSection()` gives the first row's
+  variables under an entry list or loop (the plugin call names no row).
+
 **Plugins check their field values when a section is authored (SurveyJS
 upgrade wave 6, H7).** `SectionTableBindingGuard` dispatches the new
 `App\Plugin\Event\SectionFieldBindingEvent` for every non-empty field value of
