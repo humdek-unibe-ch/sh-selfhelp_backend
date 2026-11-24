@@ -62,6 +62,27 @@ final class DataTableExportTest extends QaKernelTestCase
         }
     }
 
+    public function testAnExcelCellOverExcelsLimitIsCutAndTheFileStaysValid(): void
+    {
+        $long = str_repeat('a', 40000);
+        $file = $this->exports->xlsx([[['answer' => $long, 'score' => 7]]]);
+
+        $path = (string) tempnam(sys_get_temp_dir(), 'qa_xlsx_');
+        file_put_contents($path, $file);
+        try {
+            $zip = new \ZipArchive();
+            self::assertTrue($zip->open($path) === true, 'the export is a readable zip');
+            $sheet = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+            $zip->close();
+        } finally {
+            unlink($path);
+        }
+        self::assertStringNotContainsString($long, $sheet);
+        self::assertSame(1, preg_match('/<t xml:space="preserve">(a+) \[cut: too long for Excel\]<\/t>/', $sheet, $match), 'the cell is cut with a mark');
+        self::assertLessThanOrEqual(32767, strlen($match[1] ?? '') + strlen(' [cut: too long for Excel]'));
+        self::assertStringContainsString('<c><v>7</v></c>', $sheet, 'numbers stay numbers');
+    }
+
     public function testCsvIsTheSameFileForEveryBatchSize(): void
     {
         $table = $this->livelyTable();

@@ -27,6 +27,10 @@ final class DataTableExportService
     /** Bytes a spool or an output buffer keeps in memory before PHP moves it to a temporary file. */
     private const MEMORY_LIMIT_BYTES = 4 * 1024 * 1024;
 
+    /** Under Excel's 32,767 per cell, leaving room for characters Excel counts twice. */
+    private const XLSX_CELL_MAX = 32000;
+    private const XLSX_CUT_MARK = ' [cut: too long for Excel]';
+
     public function __construct(private readonly DataService $dataService)
     {
     }
@@ -189,6 +193,10 @@ final class DataTableExportService
             $text = is_bool($value) ? ($value ? '1' : '0') : (string) $value;
             // XML 1.0 has no place for most control characters; drop them.
             $text = (string) preg_replace('/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u', '', $text);
+            // Excel refuses a cell over 32,767 characters (it reports the file as damaged).
+            if (mb_strlen($text, 'UTF-8') > self::XLSX_CELL_MAX) {
+                $text = mb_substr($text, 0, self::XLSX_CELL_MAX - mb_strlen(self::XLSX_CUT_MARK, 'UTF-8'), 'UTF-8') . self::XLSX_CUT_MARK;
+            }
             $cells .= '<c t="inlineStr"><is><t xml:space="preserve">'
                 . htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8')
                 . '</t></is></c>';
