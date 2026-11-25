@@ -66,6 +66,29 @@ Manifest schema: new `styleGroups`, `fieldTypes`, `fields`, and `group`,
 `renamedFrom`, `fields` on a style (copies of the schema in plugin repos and the
 registry must be updated to stay byte-identical).
 
+# v0.1.45
+
+## Entry List with Form is its own form
+
+- `entry-form-list` is a form style: its input children are the form body and the
+  first submit creates `data_tables.name = "<list section id>"`.
+- Form authoring fields (`name`, button labels, alerts, confirm, redirect, …)
+  are linked onto the style (migration `Version20261117091217`).
+- A nested `form-record` / `form-log` / `entry-record-form` / `entry-form-list`
+  under an entry list is refused (`reason: form_inside_list`).
+- `data_table` on the list is a read-only override: delete and quick actions
+  only; add, edit and input children are refused.
+- The CMS app wizard and the six example bundles put inputs on the list and
+  own the table as `@section:<slug>-cms-list`.
+
+## Compatibility
+
+- `release-manifest.json`: `supports.frontend` is raised to `>=0.1.72 <0.2.0`
+  (the first frontend that renders the list as its own form).
+- Pairs with `@selfhelp/shared` 1.25.0 (`FORM_SECTION_STYLE_NAMES`) and
+  frontend `supports.core` `>=0.1.45`.
+- `selfhelp_cms_version_default` is `0.1.45`.
+
 # v0.1.44
 
 **Navigation `item_limit`:** web_header default raised from 5 to 8 when still on

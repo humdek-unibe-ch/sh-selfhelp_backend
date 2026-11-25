@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: CMS administrators and content editors (non-technical).  
 Status: active.  
 Applies to: SelfHelp2 Host Admin (`/admin/cms-apps`) and the public/CMS site shell.  
-Last verified: 2026-11-13.  
+Last verified: 2026-11-17.  
 Source of truth: Live Host Admin UI + first-class `cms_apps` backend behaviour.
 
 This guide explains **CMS Apps**: little products inside your site (team directory,
@@ -24,7 +24,7 @@ area under `/cms/...`. You do **not** need to write code.
 | **Public pages** (`/team-members`, …) | What visitors see (lists and profiles). |
 
 You never build a second “record editor” inside Host Admin. Records live on the
-CMS surface, in **one list that holds the form**: the same fields are used to add,
+CMS surface, in **one list that is the form**: the same fields are used to add,
 to edit and to restore a record, and the public pages read the very same data.
 
 ## Import the Team Members demo (recommended first try)
@@ -107,7 +107,7 @@ That slug is already used by an app with pages attached.
 
    | Page | Route | What it is |
    | --- | --- | --- |
-   | CMS list | `/cms/<base>` | One entry list that holds the form: add, edit, delete, restore |
+   | CMS list | `/cms/<base>` | One entry list that is the form: add, edit, delete, restore |
    | Public list | `/<base>` | A read-only list of the same records |
    | Public detail | `/<base>/{record_id}` | One record |
 
@@ -158,7 +158,8 @@ on upload and never shown inline on a public page.
 
 ## Data binding reminders
 
-- The **CMS list** (`entry-form-list`) reads the table of its own form. The
+- The **CMS list** (`entry-form-list`) **is** the form: its inputs sit directly
+  inside it and it owns the table (`@section:<slug>-cms-list`). The
   **public list** (`data-view`, or an `entry-list` for custom layouts) and the
   **detail page** (`entry-record`) take that table in **Data table** (the importer
   fills it in).

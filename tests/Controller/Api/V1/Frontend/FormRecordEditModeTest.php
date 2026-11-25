@@ -40,7 +40,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * The centralized rule ({@see DataAccessSecurityService::canUpdateOwnedRecord})
  * covers three ownership modes:
  *  - own record: always editable (diary mode, own_entries_only default on);
- *  - foreign record on an own_entries_only section: never editable;
+ *  - foreign record on an own_entries_only section: looks like not found (404);
  *  - foreign record on a shared section (own_entries_only=0): requires UPDATE
  *    data-access permission on the form's data table (collaborative/admin
  *    CMS-in-CMS mode; the admin role override grants it implicitly).
@@ -105,14 +105,14 @@ final class FormRecordEditModeTest extends QaWebTestCase
 
     // -- Foreign record, own_entries_only section ------------------------------
 
-    public function testForeignUpdateOnOwnEntriesOnlySectionIsForbidden(): void
+    public function testForeignUpdateOnOwnEntriesOnlySectionLooksLikeNotFound(): void
     {
         [$page, $section] = $this->setUpFormPage('qa_editmode_strict', ownEntriesOnly: true);
         $recordId = $this->submitRecord($this->loginAsQaUser(), $page, $section, 'owner value');
 
         $otherToken = $this->loginAsFactoryUser('qa.editmode.strict@selfhelp.test');
         $envelope = $this->updateRecord($otherToken, $page, $section, $recordId, 'hijacked');
-        $this->assertEnvelope403($envelope);
+        $this->assertEnvelope404($envelope);
     }
 
     // -- Foreign record, shared section (own_entries_only=0) -------------------

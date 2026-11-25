@@ -144,7 +144,14 @@ class PageExportImportService extends BaseService
             $hierarchical = $this->sectionRepository->fetchSectionsHierarchicalByPageId($pageId);
             $this->collectSectionIndex($hierarchical, $idToName, $nameCounts);
             foreach (FormListLayout::listSectionIds($hierarchical) as $listId) {
-                $formId = FormListLayout::inlineFormSectionId($hierarchical, $listId);
+                $style = '';
+                foreach ($hierarchical as $row) {
+                    if (is_numeric($row['id'] ?? null) && (int) $row['id'] === $listId) {
+                        $style = is_string($row['style_name'] ?? null) ? $row['style_name'] : '';
+                        break;
+                    }
+                }
+                $formId = FormListLayout::formSectionIdOf($style, $listId);
                 if ($formId !== null) {
                     $listFormIds[$formId] = true;
                 }

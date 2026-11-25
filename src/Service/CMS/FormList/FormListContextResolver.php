@@ -149,15 +149,22 @@ class FormListContextResolver extends BaseService
         $rows = $effective->rows();
         $this->assertKeyIsUnique($config, $effective, $rows);
 
+        if ($style === StyleNames::STYLE_ENTRY_FORM_LIST && FormListLayout::hasNestedForm($rows, $sectionId)) {
+            throw new FormListConfigException(
+                [['field' => 'children', 'message' => FormListLayout::FORM_INSIDE_LIST_MESSAGE]],
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+            );
+        }
+
         $user = $this->userContext->getCurrentUser();
         $tableId = $this->guard->tableIdOf($config, $rows);
-        $formSectionId = $config->isEditable() ? FormListLayout::inlineFormSectionId($rows, $sectionId) : null;
+        $formSectionId = FormListLayout::formSectionIdOf($config->style, $sectionId, $config->dataTableId);
         $form = $formSectionId === null
             ? null
             : $this->formFactory->build($effective, $formSectionId, fn (array $row): bool => $this->formValidation->conditionHolds($row));
         // F169: every input the form declares, including ones never saved (no
-        // data_cols row yet). data-view / public lists have no inline form; the
-        // owning form is still reachable via the table name (section id).
+        // data_cols row yet). data-view / foreign-table lists have no form; the
+        // owning table is still reachable via data_table or the list section id.
         $optionalColumns = $tableId !== null ? $this->optionalColumnsForTable($tableId) : [];
 
         return new FormListContext(

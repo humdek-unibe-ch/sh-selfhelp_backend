@@ -3,16 +3,24 @@
 Audience: Backend developers (and renderer authors who need the server rules).
 Status: active.
 Applies to: SelfHelp2 backend, `App\Service\CMS\FormList\*`, `FormListController`, `PageController` (migration `Version20261113120844`).
-Last verified: 2026-11-15.
+Last verified: 2026-11-17.
 Source of truth: the classes above, `FormController` and `FormListGuard`, the JSON schemas under `config/schemas/api/v1/` (`common/_form_list_state.json`, `common/_form_list_error.json`, `responses/frontend/form_list_*.json`, `requests/frontend/list_*.json`), and the tests listed at the end.
 
-A list is the server-rendered view of the records of a form with a create / view /
-edit / delete workflow. It adds **no new storage, cache, permission system or
-extension point**: records live in the generic data store, reads go through the
-[data query engine](./data-query-engine.md), writes go through the ordinary form
-endpoints and `DataService`, history is the [record history](./record-history.md),
-and who sees what is decided by groups (pages, data access) and roles (editing).
-The server decides; clients draw.
+An `entry-form-list` **is** the form: its input children are the form body and
+it owns `data_tables.name = "<list section id>"` (unless `data_table` points at
+another table). It is the server-rendered view of those records with a create /
+view / edit / delete workflow. It adds **no new storage, cache, permission
+system or extension point**: records live in the generic data store, reads go
+through the [data query engine](./data-query-engine.md), writes go through the
+ordinary form endpoints and `DataService`, history is the
+[record history](./record-history.md), and who sees what is decided by groups
+(pages, data access) and roles (editing). The server decides; clients draw.
+
+**Why `data_table` instead of SelfHelp 1's shared form name.** Tables and columns
+are keyed by section id, not by the form label (`concepts/concepts.md`, "The
+generic data store"): renaming is safe and same-named forms never share data. A
+second list that should work on another list's records names that table in
+`data_table` (read-only override: delete and quick actions only).
 
 - Styles and fields for authors and administrators: [../reference/styles/forms.md](../reference/styles/forms.md#entry-form-list).
 - Wire contract: [../reference/api/22-form-lists.md](../reference/api/22-form-lists.md).
@@ -34,10 +42,11 @@ section is saved and when a bundle is imported**; there is no unchecked
 configuration path. If a bad value gets into the store another way, the list
 answers `500 invalid_list_config` without taking the page down.
 
-A list reads **one table**: its own `data_table`, otherwise the table of its
-inline form (the shallowest form of the `form-record` / `form-log` /
-`entry-record-form` family under it, by level, position and id;
-`FormListLayout`). A `data-view` always names a table.
+A list reads **one table**: its own `data_table` when set (foreign / read-only
+override), otherwise the table named by the list section id
+(`FormListLayout::formSectionIdOf`). A nested form style under an
+`entry-form-list` is refused (`form_inside_list`). A `data-view` always names a
+table and has no form (`form_section_id` is null).
 
 ## The dataset boundary
 
@@ -57,7 +66,7 @@ page asks for the preview (`preview=true`: `admin.page.update` plus the update d
 grant on that page; the admin role passes), and the draft for a page that was never
 published. A guest preview is `401`; a signed-in caller without those rights gets `403` and
 nothing from the draft. The list configuration (`FormListConfigReader` over the section
-fields of that version), the inline form (`EffectiveFormFactory`: inputs, rules, options,
+fields of that version), the list-as-form (`EffectiveFormFactory`: inputs, rules, options,
 files, conditions), the conditions of the section and its ancestors, the quick actions and
 the row template all come from it, so a request can never combine the published page tree
 with live list properties or the draft form with the published list. The resolver is
@@ -136,7 +145,7 @@ record (the only list style with free children; the children of an `entry-form-l
 
 ## Writes
 
-A list has no create/update/delete route. The inline form submits through
+A list has no create/update/delete route. The list-as-form submits through
 `POST /forms/submit`, `PUT /forms/update` (`update_based_on.record_id` plus
 `expected_version`) and `DELETE /forms/delete` (`section_id` = the list).
 `FormListGuard` is consulted by `FormController` for each: the operation switches
@@ -212,8 +221,8 @@ Bundles must not carry install-specific ids. `FormListPortability` +
 `FormListColumnReferences` (the one place that knows where a list names a
 column: columns, default order, controls, fixed filter, quick actions) do this:
 
-- a list bound to a form of the same bundle names its table by the owner token `@section:<form name>` (like entry tables) and its columns by **input name**;
-- export converts field keys to names (and adds the inline forms' rows when `includeDataRows` is on; two sections with the name of an exported form refuse the export);
+- a list that owns the table of the same bundle names that table by the owner token `@section:<list name>` (like entry tables) and its columns by **input name**;
+- export converts field keys to names (and adds the owning list's rows when `includeDataRows` is on; two sections with the name of an exported form refuse the export);
 - import relinks names to the new field keys after the sections exist and again after owner tokens resolve, then validates strictly; a list that cannot work with its data answers `422 Import failed: the list "<name>" cannot work with its data: ...` and creates nothing. The relink is idempotent;
 - input names that appear in a list must match `^[A-Za-z][A-Za-z0-9_]{0,63}$` (use snake_case); `detail_url` is a site path and gets the route prefix of the import; a list bound to another install's numeric table id exports as is (install-local).
 

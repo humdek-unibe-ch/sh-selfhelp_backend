@@ -19,7 +19,7 @@ parameters:
     # Impersonation JWT lifetime (seconds). Default 900 s / 15 min.
     # Override with the IMPERSONATION_TOKEN_TTL env var. The `default:900:`
     # prefix lets the container boot even when ops have not set the var
-    # (older deployments) — the var ALWAYS resolves to a positive integer.
+    # (older deployments) â€” the var ALWAYS resolves to a positive integer.
     jwt_impersonation_token_ttl: '%env(default:jwt_impersonation_token_ttl_default:int:IMPERSONATION_TOKEN_TTL)%'
     jwt_impersonation_token_ttl_default: 900
     # Mobile-preview scoped JWT lifetime (seconds). Default 900 s / 15 min.
@@ -68,8 +68,8 @@ parameters:
     ai_prompt_template_dir: '%env(default:default_ai_prompt_template_dir:AI_PROMPT_TEMPLATE_DIR)%'
     default_ai_prompt_template_dir: 'docs/ai'
 
-    # Mercure topic IRI prefix. Topics are opaque identifiers — never
-    # dereferenced — but Mercure recommends URL-shaped names so wildcard
+    # Mercure topic IRI prefix. Topics are opaque identifiers â€” never
+    # dereferenced â€” but Mercure recommends URL-shaped names so wildcard
     # subscriptions stay unambiguous. See `App\Service\Mercure\MercureTopicResolver`
     # and docs/developer/13-acl-system.md#real-time-acl-push-mercure.
     mercure_topic_prefix: '%env(default:default_mercure_topic_prefix:MERCURE_TOPIC_PREFIX)%'
@@ -86,7 +86,7 @@ parameters:
     # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
     # match the deployed application version.
     selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
-    selfhelp_cms_version_default: '0.1.44'
+    selfhelp_cms_version_default: '0.1.45'
 
     # Plugin SDK contract version exposed to plugin compatibility
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
@@ -149,7 +149,7 @@ parameters:
     # Config-presence inputs for the aggregated system health endpoint. The
     # SystemHealthService only derives a boolean "configured" from these (it
     # NEVER returns the raw value), so a credential-bearing DSN is safe to
-    # inject here — it is reduced to configured/not_configured.
+    # inject here â€” it is reduced to configured/not_configured.
     selfhelp.health.mercure_url: '%env(default:selfhelp_health_mercure_url_default:MERCURE_URL)%'
     selfhelp_health_mercure_url_default: ''
     selfhelp.health.mailer_dsn: '%env(default:selfhelp_health_mailer_dsn_default:MAILER_DSN)%'
@@ -187,10 +187,10 @@ parameters:
     # Allow a standalone `.shplugin` archive to ship a `composer.json#scripts`
     # block. Defaults to false (production-safe). The Messenger worker
     # already passes `--no-scripts` to every `composer require`, so the
-    # rejection is defence-in-depth — set to `true` only for local
+    # rejection is defence-in-depth â€” set to `true` only for local
     # developer ergonomics where the plugin's own composer.json carries
-    # dev-only scripts (`phpstan`, `phpunit`, …) you want to keep. See
-    # docs/plugins/installation.md §2 and docs/plugins/shplugin-archive.md
+    # dev-only scripts (`phpstan`, `phpunit`, â€¦) you want to keep. See
+    # docs/plugins/installation.md Â§2 and docs/plugins/shplugin-archive.md
     # under "Failure modes".
     selfhelp_plugin_allow_composer_scripts_default: false
 
@@ -241,7 +241,7 @@ services:
         arguments:
             $env: '%kernel.environment%'
 
-    # Plugin layer realtime publisher — wraps the Mercure hub.
+    # Plugin layer realtime publisher â€” wraps the Mercure hub.
     App\Plugin\Realtime\PluginRealtimePublisher:
         arguments:
             $topicPrefix: '%mercure_topic_prefix%'
@@ -249,7 +249,7 @@ services:
     App\Plugin\Realtime\PluginRealtimePublisherInterface:
         alias: App\Plugin\Realtime\PluginRealtimePublisher
 
-    # Plugin manifest validator — schema path is project-relative.
+    # Plugin manifest validator â€” schema path is project-relative.
     App\Plugin\Manifest\PluginManifestValidator:
         arguments:
             $schemaPath: '%kernel.project_dir%/docs/plugins/plugin-manifest.schema.json'
@@ -259,7 +259,7 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
-    # Plugin health service — full §17 doctor coverage.
+    # Plugin health service â€” full Â§17 doctor coverage.
     # The optional args (`httpClient`, `mercureHubUrl`, `mobileHostDir`)
     # wire the live probes: Mercure reachability, per-plugin health
     # endpoint HTTP GET, and `npm ls` of the plugin's mobile package
@@ -273,12 +273,12 @@ services:
             $mercureHubUrl: '%env(default::MERCURE_PUBLIC_URL)%'
             $mobileHostDir: '%env(default::SELFHELP_MOBILE_HOST_DIR)%'
 
-    # Plugin scheduled-job dispatcher — wires the tagged iterator
+    # Plugin scheduled-job dispatcher â€” wires the tagged iterator
     # for `selfhelp.plugin.scheduled_job_handler` so plugins can
     # register runtime executors for new `jobTypes` lookup codes
     # (declared via the manifest + `ScheduledJobTypeEvent`). Without
     # this, `JobSchedulerService::executeByType` had no way to invoke
-    # plugin-contributed job types — they showed up in the admin
+    # plugin-contributed job types â€” they showed up in the admin
     # catalog but always returned `false` at execution time.
     App\Plugin\ScheduledJob\PluginScheduledJobRegistry:
         arguments:
@@ -288,7 +288,7 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
-    # Plugin bundles file writer — atomically generates config/selfhelp_plugin_bundles.php.
+    # Plugin bundles file writer â€” atomically generates config/selfhelp_plugin_bundles.php.
     App\Plugin\Bundle\PluginBundlesFileWriter:
         arguments:
             $projectDir: '%kernel.project_dir%'
@@ -298,14 +298,14 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
-    # Install-mode resolver — env-driven, with safe defaults for production.
+    # Install-mode resolver â€” env-driven, with safe defaults for production.
     App\Plugin\Lifecycle\InstallModeResolver:
         arguments:
             $appEnv: '%kernel.environment%'
             $installModeEnv: '%env(default::SELFHELP_PLUGIN_INSTALL_MODE)%'
             $allowWebPluginInstall: '%env(bool:default::SELFHELP_ALLOW_WEB_PLUGIN_INSTALL)%'
 
-    # Plugin operation lock — wraps the Symfony Lock factory created
+    # Plugin operation lock â€” wraps the Symfony Lock factory created
     # by `framework.lock.plugin_operation` so concurrent installs
     # across multiple app servers cannot race.
     App\Plugin\Lifecycle\PluginOperationLock:
@@ -321,7 +321,7 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
-    # Plugin dependency policy — surfaces drift between a plugin
+    # Plugin dependency policy â€” surfaces drift between a plugin
     # package's composer.json#require and the host-provided packages
     # exposed via var/plugin-composer/composer.json#provide. Soft check;
     # Composer's solver remains the authoritative gate at install time.
@@ -338,7 +338,7 @@ services:
             $projectDir: '%kernel.project_dir%'
             $maxBytes: '%env(int:default:selfhelp_plugin_archive_max_bytes_default:SELFHELP_PLUGIN_ARCHIVE_MAX_BYTES)%'
 
-    # Archive validator — wires the composer-scripts allow flag from
+    # Archive validator â€” wires the composer-scripts allow flag from
     # SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS. Symfony's Dotenv only
     # populates $_ENV / $_SERVER, so injecting via DI is the only
     # reliable way to pick the value up at runtime.
@@ -428,7 +428,7 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
-    # Canonical signed-payload builder — cross-impl with sign.mjs.
+    # Canonical signed-payload builder â€” cross-impl with sign.mjs.
     App\Plugin\Security\SignedPayloadBuilder: ~
 
     # Unified resolver for registry / url / paste / archive install sources.
@@ -443,7 +443,7 @@ services:
     App\Plugin\Backup\PluginBackupHookInterface:
         alias: App\Plugin\Backup\NoopPluginBackupHook
 
-    # Plugin Ed25519 signature verifier — uses the trusted-keys env to
+    # Plugin Ed25519 signature verifier â€” uses the trusted-keys env to
     # check publisher signatures on registry entries and .shplugin
     # archives. Configure with SELFHELP_PLUGIN_TRUSTED_KEYS +
     # SELFHELP_PLUGIN_REQUIRE_SIGNATURE.
@@ -462,14 +462,14 @@ services:
         arguments:
             $enabled: '%env(default:selfhelp_plugin_data_access_guard_default:bool:SELFHELP_PLUGIN_DATA_ACCESS_GUARD)%'
 
-    # Plugin compatibility validator — checks plugin manifests against
+    # Plugin compatibility validator â€” checks plugin manifests against
     # the current CMS + SDK version.
     App\Plugin\Versioning\PluginCompatibilityValidator:
         arguments:
             $cmsVersion: '%selfhelp.cms_version%'
             $sdkApiVersion: '%selfhelp.plugin_api_version%'
 
-    # Plugin capability validator — needs the current Symfony env so it
+    # Plugin capability validator â€” needs the current Symfony env so it
     # can relax the HTTPS-only check on `frontend.runtime.entrypoint`
     # during local development.
     App\Plugin\Security\PluginCapabilityValidator:
@@ -484,7 +484,7 @@ services:
             $cmsVersion: '%selfhelp.cms_version%'
             $sdkApiVersion: '%selfhelp.plugin_api_version%'
 
-    # Plugin registry client — uses the optional auth header from
+    # Plugin registry client â€” uses the optional auth header from
     # PluginSource and reads its secret from the environment.
     App\Plugin\Registry\PluginSourceUrlResolver:
         arguments:
@@ -545,14 +545,14 @@ services:
             $totalMax: '%registration_code_total_max%'
             $requestMax: '%registration_code_request_max%'
 
-    # Mercure topic resolver — single source of truth for topic IRIs used
+    # Mercure topic resolver â€” single source of truth for topic IRIs used
     # by both publishers (AclVersionMercurePublisher) and the subscriber
     # bootstrap endpoint (AuthEventsController).
     App\Service\Mercure\MercureTopicResolver:
         arguments:
             $topicPrefix: '%mercure_topic_prefix%'
 
-    # Auth events controller — issues short-lived Mercure subscriber JWTs.
+    # Auth events controller â€” issues short-lived Mercure subscriber JWTs.
     # The hub URL is the *public* URL the browser-side BFF connects to (the
     # internal `MERCURE_URL` is only used by Symfony to publish to the hub).
     App\Controller\Api\V1\Auth\AuthEventsController:
@@ -571,7 +571,7 @@ when@test:
         # external internet). Pin the registry base URL to a closed local port
         # so every registry read fails fast and the system endpoints
         # (advisories, update preflight/releases, registry health) degrade
-        # offline DETERMINISTICALLY — in CI and on dev machines alike, even
+        # offline DETERMINISTICALLY â€” in CI and on dev machines alike, even
         # when SELFHELP_PLUGIN_DEFAULT_REGISTRY_URL is set in the ambient env
         # (.env.default sets it). Tests that exercise real registry parsing
         # inject a MockHttpClient instead of fetching anything.

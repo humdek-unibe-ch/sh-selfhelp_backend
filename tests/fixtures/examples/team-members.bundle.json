@@ -11,10 +11,10 @@
         "file upload",
         "translatable"
     ],
-    "_comment": "Flagship CMS-in-CMS template: a Team Members app in three pages. PUBLIC: /team-members renders a responsive card grid (portrait or initials, role badge, bio, contact links) and /team-members/{record_id} a shareable profile page; both read the table of the form through \"@section:team-members-form\". CMS: /cms/team-members is ONE entry-form-list that holds the form: search, filter by role, add and edit members in a dialog (including the portrait upload, which is public so the pages can show it), delete them and restore earlier versions. The inputs are defined once, in the form inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). The bio is translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
+    "_comment": "Flagship CMS-in-CMS template: a Team Members app in three pages. PUBLIC: /team-members renders a responsive card grid (portrait or initials, role badge, bio, contact links) and /team-members/{record_id} a shareable profile page; both read the table of the list through \"@section:team-members-cms-list\". CMS: /cms/team-members is ONE entry-form-list that is the form: search, filter by role, add and edit members in a dialog (including the portrait upload, which is public so the pages can show it), delete them and restore earlier versions. The inputs sit directly inside the list. data_tables[] carries the columns and sample rows (import with options.importData=true). The bio is translatable. Content locales: de-CH + en-GB. Pages are not open to guests until you set their access. Import via Admin > CMS Apps > Import template. NOT auto-seeded.",
     "data_tables": [
         {
-            "owner_section_name": "team-members-form",
+            "owner_section_name": "team-members-cms-list",
             "columns": [
                 "name",
                 "role",
@@ -231,254 +231,246 @@
                             "en-GB": {
                                 "content": "Delete this member?"
                             }
+                        },
+                        "alert_success": {
+                            "de-CH": {
+                                "content": "Mitglied gespeichert."
+                            },
+                            "en-GB": {
+                                "content": "Member saved."
+                            }
+                        },
+                        "btn_save_label": {
+                            "de-CH": {
+                                "content": "Speichern"
+                            },
+                            "en-GB": {
+                                "content": "Save"
+                            }
+                        },
+                        "btn_update_label": {
+                            "de-CH": {
+                                "content": "Aktualisieren"
+                            },
+                            "en-GB": {
+                                "content": "Update"
+                            }
                         }
                     },
                     "children": [
                         {
-                            "section_name": "team-members-form",
-                            "style_name": "form-record",
+                            "section_name": "team-members-form-name",
+                            "style_name": "text-input",
                             "fields": {
-                                "alert_success": {
-                                    "de-CH": {
-                                        "content": "Mitglied gespeichert."
-                                    },
-                                    "en-GB": {
-                                        "content": "Member saved."
+                                "name": {
+                                    "all": {
+                                        "content": "name"
                                     }
                                 },
-                                "btn_save_label": {
+                                "label": {
                                     "de-CH": {
-                                        "content": "Speichern"
+                                        "content": "Name"
                                     },
                                     "en-GB": {
-                                        "content": "Save"
+                                        "content": "Name"
                                     }
                                 },
-                                "btn_update_label": {
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "placeholder": {
                                     "de-CH": {
-                                        "content": "Aktualisieren"
+                                        "content": "Vor- und Nachname"
                                     },
                                     "en-GB": {
-                                        "content": "Update"
+                                        "content": "First and last name"
                                     }
                                 }
-                            },
-                            "children": [
-                                {
-                                    "section_name": "team-members-form-name",
-                                    "style_name": "text-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "name"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Name"
-                                            },
-                                            "en-GB": {
-                                                "content": "Name"
-                                            }
-                                        },
-                                        "is_required": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        },
-                                        "placeholder": {
-                                            "de-CH": {
-                                                "content": "Vor- und Nachname"
-                                            },
-                                            "en-GB": {
-                                                "content": "First and last name"
-                                            }
-                                        }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-role",
+                            "style_name": "select",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "role"
                                     }
                                 },
-                                {
-                                    "section_name": "team-members-form-role",
-                                    "style_name": "select",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "role"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Rolle"
-                                            },
-                                            "en-GB": {
-                                                "content": "Role"
-                                            }
-                                        },
-                                        "options": {
-                                            "all": {
-                                                "content": "[{\"value\":\"Lead\",\"sort\":1},{\"value\":\"Researcher\",\"sort\":2},{\"value\":\"Pioneer\",\"sort\":3},{\"value\":\"Analyst\",\"sort\":4},{\"value\":\"Director\",\"sort\":5},{\"value\":\"Architect\",\"sort\":6}]"
-                                            }
-                                        },
-                                        "option_labels": {
-                                            "de-CH": {
-                                                "content": "{\"Lead\":\"Leitende Entwicklung\",\"Researcher\":\"Forschung\",\"Pioneer\":\"Compiler-Pionierin\",\"Analyst\":\"Trajektorienanalyse\",\"Director\":\"Softwareleitung\",\"Architect\":\"Web-Architektur\"}"
-                                            },
-                                            "en-GB": {
-                                                "content": "{\"Lead\":\"Lead Engineer\",\"Researcher\":\"Researcher\",\"Pioneer\":\"Compiler Pioneer\",\"Analyst\":\"Trajectory Analyst\",\"Director\":\"Software Director\",\"Architect\":\"Web Architect\"}"
-                                            }
-                                        },
-                                        "value": {
-                                            "all": {
-                                                "content": "Researcher"
-                                            }
-                                        }
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Rolle"
+                                    },
+                                    "en-GB": {
+                                        "content": "Role"
                                     }
                                 },
-                                {
-                                    "section_name": "team-members-form-email",
-                                    "style_name": "text-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "email"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "E-Mail"
-                                            },
-                                            "en-GB": {
-                                                "content": "Email"
-                                            }
-                                        },
-                                        "placeholder": {
-                                            "all": {
-                                                "content": "name@example.org"
-                                            }
-                                        }
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"Lead\",\"sort\":1},{\"value\":\"Researcher\",\"sort\":2},{\"value\":\"Pioneer\",\"sort\":3},{\"value\":\"Analyst\",\"sort\":4},{\"value\":\"Director\",\"sort\":5},{\"value\":\"Architect\",\"sort\":6}]"
                                     }
                                 },
-                                {
-                                    "section_name": "team-members-form-bio",
-                                    "style_name": "textarea",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "bio"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Kurzbiografie"
-                                            },
-                                            "en-GB": {
-                                                "content": "Short bio"
-                                            }
-                                        },
-                                        "description": {
-                                            "de-CH": {
-                                                "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
-                                            },
-                                            "en-GB": {
-                                                "content": "Translatable — enter a separate text per language."
-                                            }
-                                        },
-                                        "translatable": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        },
-                                        "rows": {
-                                            "all": {
-                                                "content": "4"
-                                            }
-                                        }
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"Lead\":\"Leitende Entwicklung\",\"Researcher\":\"Forschung\",\"Pioneer\":\"Compiler-Pionierin\",\"Analyst\":\"Trajektorienanalyse\",\"Director\":\"Softwareleitung\",\"Architect\":\"Web-Architektur\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"Lead\":\"Lead Engineer\",\"Researcher\":\"Researcher\",\"Pioneer\":\"Compiler Pioneer\",\"Analyst\":\"Trajectory Analyst\",\"Director\":\"Software Director\",\"Architect\":\"Web Architect\"}"
                                     }
                                 },
-                                {
-                                    "section_name": "team-members-form-status",
-                                    "style_name": "select",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "status"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Status"
-                                            },
-                                            "en-GB": {
-                                                "content": "Status"
-                                            }
-                                        },
-                                        "is_required": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        },
-                                        "options": {
-                                            "all": {
-                                                "content": "[{\"value\":\"draft\",\"sort\":1},{\"value\":\"published\",\"sort\":2}]"
-                                            }
-                                        },
-                                        "option_labels": {
-                                            "de-CH": {
-                                                "content": "{\"draft\":\"Entwurf\",\"published\":\"Veröffentlicht\"}"
-                                            },
-                                            "en-GB": {
-                                                "content": "{\"draft\":\"Draft\",\"published\":\"Published\"}"
-                                            }
-                                        },
-                                        "value": {
-                                            "all": {
-                                                "content": "draft"
-                                            }
-                                        },
-                                        "clearable": {
-                                            "all": {
-                                                "content": "0"
-                                            }
-                                        }
-                                    }
-                                },
-                                {
-                                    "section_name": "team-members-form-portrait",
-                                    "style_name": "file-input",
-                                    "fields": {
-                                        "name": {
-                                            "all": {
-                                                "content": "portrait"
-                                            }
-                                        },
-                                        "label": {
-                                            "de-CH": {
-                                                "content": "Porträt"
-                                            },
-                                            "en-GB": {
-                                                "content": "Portrait"
-                                            }
-                                        },
-                                        "files_public": {
-                                            "all": {
-                                                "content": "1"
-                                            }
-                                        },
-                                        "web_file_input_accept": {
-                                            "all": {
-                                                "content": "image/jpeg,image/png,image/webp,image/gif"
-                                            }
-                                        },
-                                        "description": {
-                                            "de-CH": {
-                                                "content": "Optionales Bild (JPG oder PNG). Es ist öffentlich sichtbar."
-                                            },
-                                            "en-GB": {
-                                                "content": "Optional picture (JPG or PNG). It is publicly visible."
-                                            }
-                                        }
+                                "value": {
+                                    "all": {
+                                        "content": "Researcher"
                                     }
                                 }
-                            ]
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-email",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "email"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "E-Mail"
+                                    },
+                                    "en-GB": {
+                                        "content": "Email"
+                                    }
+                                },
+                                "placeholder": {
+                                    "all": {
+                                        "content": "name@example.org"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-bio",
+                            "style_name": "textarea",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "bio"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Kurzbiografie"
+                                    },
+                                    "en-GB": {
+                                        "content": "Short bio"
+                                    }
+                                },
+                                "description": {
+                                    "de-CH": {
+                                        "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
+                                    },
+                                    "en-GB": {
+                                        "content": "Translatable — enter a separate text per language."
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "rows": {
+                                    "all": {
+                                        "content": "4"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-status",
+                            "style_name": "select",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "status"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Status"
+                                    },
+                                    "en-GB": {
+                                        "content": "Status"
+                                    }
+                                },
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"draft\",\"sort\":1},{\"value\":\"published\",\"sort\":2}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"draft\":\"Entwurf\",\"published\":\"Veröffentlicht\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"draft\":\"Draft\",\"published\":\"Published\"}"
+                                    }
+                                },
+                                "value": {
+                                    "all": {
+                                        "content": "draft"
+                                    }
+                                },
+                                "clearable": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-portrait",
+                            "style_name": "file-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "portrait"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Porträt"
+                                    },
+                                    "en-GB": {
+                                        "content": "Portrait"
+                                    }
+                                },
+                                "files_public": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "web_file_input_accept": {
+                                    "all": {
+                                        "content": "image/jpeg,image/png,image/webp,image/gif"
+                                    }
+                                },
+                                "description": {
+                                    "de-CH": {
+                                        "content": "Optionales Bild (JPG oder PNG). Es ist öffentlich sichtbar."
+                                    },
+                                    "en-GB": {
+                                        "content": "Optional picture (JPG or PNG). It is publicly visible."
+                                    }
+                                }
+                            }
                         }
                     ]
                 }
@@ -944,7 +936,7 @@
                             "fields": {
                                 "data_table": {
                                     "all": {
-                                        "content": "@section:team-members-form"
+                                        "content": "@section:team-members-cms-list"
                                     }
                                 },
                                 "own_entries_only": {
@@ -1320,7 +1312,7 @@
                             "fields": {
                                 "data_table": {
                                     "all": {
-                                        "content": "@section:team-members-form"
+                                        "content": "@section:team-members-cms-list"
                                     }
                                 },
                                 "own_entries_only": {

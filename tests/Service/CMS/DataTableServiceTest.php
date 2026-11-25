@@ -59,10 +59,12 @@ final class DataTableServiceTest extends QaKernelTestCase
     public function testCreateDataTableForFormSectionIsIdempotentAndAdminGranted(): void
     {
         $section = $this->pages->createSection('qa_dts_form_section', 'form-record');
+        $this->pages->setSectionField($section, 'name', 'My form table');
 
         $table = $this->service->createDataTableForFormSection($section);
         self::assertInstanceOf(DataTable::class, $table);
         self::assertSame((string) $section->getId(), $table->getName());
+        self::assertSame('My form table', $table->getDisplayName());
 
         // Idempotent: a second call returns the same row, not a duplicate.
         $again = $this->service->createDataTableForFormSection($section);

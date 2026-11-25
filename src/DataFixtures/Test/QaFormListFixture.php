@@ -42,10 +42,10 @@ use Doctrine\Persistence\ObjectManager;
  *
  *   page  qa-entries  /qa-entries   private; the `subject` group may read, add, edit and delete
  *     ├─ entry-form-list  list_key=entries  form in a modal, history on, 5 per page,
- *     │    search + sort + status filter, quick action "Mark done" for open records
- *     │    └─ form-record  inputs: qa_entry_title (required), qa_entry_status (select), qa_entry_notes
- *     └─ entry-form-list  list_key=tasks    form on a page, 25 per page
- *          └─ form-record  inputs: qa_task_title (required), qa_task_notes, qa_task_file (an upload)
+ *     │    search + sort + status filter, quick action "Mark done" for open records;
+ *     │    inputs directly inside: qa_entry_title (required), qa_entry_status (select), qa_entry_notes
+ *     └─ entry-form-list  list_key=tasks    form on a page, 25 per page;
+ *          inputs directly inside: qa_task_title (required), qa_task_notes, qa_task_file (an upload)
  *   page  qa-events   /qa-events    open access; read only
  *     └─ data-view  list_key=events  12 seeded events, search + sort + city filter, 5 per page
  *   page  qa-event-cards  /qa-event-cards  open access; read only
@@ -159,27 +159,23 @@ final class QaFormListFixture extends Fixture implements FixtureGroupInterface
         $page = $this->page(self::ENTRIES_PAGE_KEYWORD, self::ENTRIES_PAGE_URL, false);
         $this->pageTitle($page, 'QA entries');
 
-        // The entries list: a form in a modal.
+        // The entries list: inputs directly inside the list (modal form).
         $entries = $this->section(self::ENTRIES_LIST_SECTION_NAME, 'entry-form-list');
-        $entriesForm = $this->section('qa-entries-form', 'form-record');
-        $entryTitle = $this->input($entriesForm, 'qa-entry-title', 'text-input', 'qa_entry_title', 'Title', 10);
-        $entryStatus = $this->input($entriesForm, 'qa-entry-status', 'select', 'qa_entry_status', 'Status', 20);
-        $entryNotes = $this->input($entriesForm, 'qa-entry-notes', 'textarea', 'qa_entry_notes', 'Notes', 30);
+        $entryTitle = $this->input($entries, 'qa-entry-title', 'text-input', 'qa_entry_title', 'Title', 10);
+        $entryStatus = $this->input($entries, 'qa-entry-status', 'select', 'qa_entry_status', 'Status', 20);
+        $entryNotes = $this->input($entries, 'qa-entry-notes', 'textarea', 'qa_entry_notes', 'Notes', 30);
         $this->required($entryTitle);
         $this->property($entryStatus, 'options', '[{"value":"open","label":"Open"},{"value":"done","label":"Done"}]');
         $this->property($entryStatus, 'value', 'open');
         $this->link($page, $entries, 10);
-        $this->child($entries, $entriesForm, 10);
 
-        // The tasks list: a form on its own page.
+        // The tasks list: inputs directly inside the list (page form).
         $tasks = $this->section(self::TASKS_LIST_SECTION_NAME, 'entry-form-list');
-        $tasksForm = $this->section('qa-tasks-form', 'form-record');
-        $taskTitle = $this->input($tasksForm, 'qa-task-title', 'text-input', 'qa_task_title', 'Task', 10);
-        $taskNotes = $this->input($tasksForm, 'qa-task-notes', 'textarea', 'qa_task_notes', 'Details', 20);
-        $taskFile = $this->input($tasksForm, 'qa-task-file', 'file-input', 'qa_task_file', 'Attachment', 30);
+        $taskTitle = $this->input($tasks, 'qa-task-title', 'text-input', 'qa_task_title', 'Task', 10);
+        $taskNotes = $this->input($tasks, 'qa-task-notes', 'textarea', 'qa_task_notes', 'Details', 20);
+        $taskFile = $this->input($tasks, 'qa-task-file', 'file-input', 'qa_task_file', 'Attachment', 30);
         $this->required($taskTitle);
         $this->link($page, $tasks, 20);
-        $this->child($tasks, $tasksForm, 10);
 
         // Ids are needed for the column keys and for the ACL row.
         $this->em->flush();
@@ -320,20 +316,18 @@ final class QaFormListFixture extends Fixture implements FixtureGroupInterface
         $this->pageTitle($page, 'QA wide forms');
 
         $lists = [
-            [self::WIDE_LIST_SECTION_NAME, self::WIDE_LIST_KEY, 'Wide entries', 'modal', 'qa-wide-form', 'qa_wide', 10],
-            [self::WIDE_PAGE_LIST_SECTION_NAME, self::WIDE_PAGE_LIST_KEY, 'Wide entries on a page', 'page', 'qa-wide-page-form', 'qa_widepage', 20],
+            [self::WIDE_LIST_SECTION_NAME, self::WIDE_LIST_KEY, 'Wide entries', 'modal', 'qa_wide', 10],
+            [self::WIDE_PAGE_LIST_SECTION_NAME, self::WIDE_PAGE_LIST_KEY, 'Wide entries on a page', 'page', 'qa_widepage', 20],
         ];
 
         $built = [];
-        foreach ($lists as [$listName, , , , $formName, $prefix, $position]) {
+        foreach ($lists as [$listName, , , , $prefix, $position]) {
             $list = $this->section($listName, 'entry-form-list');
-            $form = $this->section($formName, 'form-record');
             $inputs = [];
             for ($n = 1; $n <= self::WIDE_FIELD_COUNT; ++$n) {
-                $inputs[] = $this->wideInput($form, $prefix, $n);
+                $inputs[] = $this->wideInput($list, $prefix, $n);
             }
             $this->link($page, $list, $position);
-            $this->child($list, $form, 10);
             $built[] = [$list, $inputs];
         }
 

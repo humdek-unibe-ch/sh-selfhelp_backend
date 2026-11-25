@@ -124,9 +124,7 @@ final class QaFormListFixtureSmokeTest extends QaKernelTestCase
 
             $labels = $this->em->getConnection()->fetchFirstColumn(
                 'SELECT t.content FROM rel_sections_hierarchy h
-                   INNER JOIN sections form ON form.id = h.id_child_section
-                   INNER JOIN rel_sections_hierarchy hi ON hi.id_parent_section = form.id
-                   INNER JOIN sections input ON input.id = hi.id_child_section
+                   INNER JOIN sections input ON input.id = h.id_child_section
                    INNER JOIN sections_fields_translation t ON t.id_sections = input.id
                    INNER JOIN fields f ON f.id = t.id_fields AND f.name = \'label\'
                    INNER JOIN languages l ON l.id = t.id_languages AND l.locale = \'en-GB\'
