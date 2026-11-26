@@ -13,6 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 #[ORM\Table(name: 'data_rows')]
 #[ORM\Index(name: 'idx_data_rows_id_data_tables', columns: ['id_data_tables'])]
+#[ORM\Index(name: 'idx_data_rows_id_users', columns: ['id_users'])]
 // Ordered and owner-scoped pages and counts of the data query engine: the index order is
 // `ORDER BY timestamp DESC, id DESC` and the deleted marker is in the index (see the migration).
 #[ORM\Index(name: 'idx_data_rows_table_timestamp', columns: ['id_data_tables', 'timestamp', 'id', 'id_action_trigger_types'])]
