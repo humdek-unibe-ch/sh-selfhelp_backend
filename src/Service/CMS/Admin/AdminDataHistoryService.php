@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\Language;
 use App\Exception\ServiceException;
 use App\Service\CMS\DataRevision\DataRecordHistoryService;
 use App\Service\CMS\DataRevision\RecordWriteContext;
@@ -216,7 +217,7 @@ class AdminDataHistoryService extends BaseService
             $entry = $field;
             if (($entry['kind'] ?? '') === 'file' && is_array($entry['files'] ?? null)) {
                 $fieldKey = $this->asString($entry['field_key'] ?? '');
-                $languageId = $this->asInt($entry['language_id'] ?? 1);
+                $languageId = $this->asInt($entry['language_id'] ?? Language::INDEPENDENT_ID);
                 $entry['files'] = $this->attachUrls($tableName, $recordId, $fieldKey, $languageId, $entry['files'], $version);
             }
             $out[] = $entry;
@@ -240,7 +241,7 @@ class AdminDataHistoryService extends BaseService
             $entry = $item;
             $version = $this->asInt($entry['version'] ?? $defaultVersion ?? 0);
             $fieldKey = $this->asString($entry['field_key'] ?? '');
-            $languageId = $this->asInt($entry['language_id'] ?? 1);
+            $languageId = $this->asInt($entry['language_id'] ?? Language::INDEPENDENT_ID);
             foreach (['before_files', 'after_files', 'files'] as $filesKey) {
                 $files = $entry[$filesKey] ?? null;
                 if (!is_array($files) || $version < 1) {

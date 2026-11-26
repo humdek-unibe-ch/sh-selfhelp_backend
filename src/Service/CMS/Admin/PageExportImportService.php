@@ -79,7 +79,7 @@ class PageExportImportService extends BaseService
         'url_cancel', 'redirect_at_end', 'redirect_on_save', 'detail_url',
     ];
 
-    /** The locale of the language-independent cells of a data table (language id 1). */
+    /** The locale of language-independent data cells ({@see Language::INDEPENDENT_LOCALE}). */
     private const DEFAULT_CELL_LOCALE = 'all';
 
     private const ISSUE_ERROR = 'error';
@@ -1010,7 +1010,7 @@ class PageExportImportService extends BaseService
      * Fail import when a translatable (display=1) field carries content in a
      * locale that is not installed on this CMS, naming the missing locale so the
      * operator can either add the language or re-export. Property (display=0)
-     * fields are stored under the internal language and are not checked.
+     * fields are stored on the language-independent row and are not checked.
      *
      * @param array<string, mixed> $page
      * @param array<string, int> $installedLocales
@@ -2043,7 +2043,7 @@ class PageExportImportService extends BaseService
                 $contentString = $content === null ? null : $this->asString($content);
                 $languageId = $display
                     ? ($localeMap[$this->asString($translation['language_code'] ?? '')] ?? null)
-                    : 1;
+                    : Language::INDEPENDENT_ID;
                 if ($languageId === null) {
                     continue;
                 }
@@ -2875,7 +2875,7 @@ class PageExportImportService extends BaseService
             if (!is_array($entry)) {
                 continue;
             }
-            if ($this->asInt($entry['language_id'] ?? null) === 1) {
+            if ($this->asInt($entry['language_id'] ?? null) === Language::INDEPENDENT_ID) {
                 return $this->asString($entry['content'] ?? '');
             }
             $languageCode = $this->asString($entry['language_code'] ?? '');

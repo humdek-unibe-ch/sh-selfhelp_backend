@@ -582,7 +582,7 @@ class DataService extends BaseService
             // Actions see the record as it is after the restore, like after any update.
             $values = ['record_id' => $recordId, 'id_users' => $dataRow->getIdUsers()];
             foreach ($stateAfter as $field) {
-                if ($field->languageId === 1) {
+                if ($field->languageId === Language::INDEPENDENT_ID) {
                     $values[$field->key] = $field->value;
                     continue;
                 }
@@ -745,7 +745,7 @@ class DataService extends BaseService
             $fieldName = $this->asString($dataCell->getDataCol()?->getFieldKey());
             $language = $dataCell->getLanguage()?->getId();
 
-            if ($language && $language !== 1) {
+            if ($language && $language !== Language::INDEPENDENT_ID) {
                 if (!isset($values[$fieldName]) || !is_array($values[$fieldName])) {
                     $values[$fieldName] = [];
                 }
@@ -918,10 +918,10 @@ class DataService extends BaseService
                     }
                 }
             } else {
-                // Single language field (default language 1)
-                $defaultLanguage = $this->entityManager->getRepository(Language::class)->find(1);
+                // Single language field (language-independent row)
+                $defaultLanguage = $this->entityManager->getRepository(Language::class)->find(Language::INDEPENDENT_ID);
                 if ($defaultLanguage) {
-                    // Find existing cell or create new one for default language
+                    // Find existing cell or create new one for the language-independent row
                     $dataCell = $this->entityManager->getRepository(DataCell::class)
                         ->findOneBy(['dataRow' => $dataRow, 'dataCol' => $column, 'language' => $defaultLanguage]);
 
@@ -1020,8 +1020,8 @@ class DataService extends BaseService
                     }
                 }
             } else {
-                // Single language field (default language 1)
-                $defaultLanguage = $this->entityManager->getRepository(Language::class)->find(1);
+                // Single language field (language-independent row)
+                $defaultLanguage = $this->entityManager->getRepository(Language::class)->find(Language::INDEPENDENT_ID);
                 if ($defaultLanguage) {
                     $dataCell = new DataCell();
                     $dataCell->setDataRow($dataRow);
@@ -1405,7 +1405,7 @@ class DataService extends BaseService
         ?int $userId = null,
         bool $dbFirst = false,
         bool $excludeDeleted = true,
-        int $languageId = 1,
+        int $languageId = Language::INDEPENDENT_ID,
         string $selectedColumns = '',
     ): array {
         try {
@@ -1488,7 +1488,7 @@ class DataService extends BaseService
         int $currentUserId,
         string $filter = '',
         bool $excludeDeleted = true,
-        int $languageId = 1
+        int $languageId = Language::INDEPENDENT_ID
     ): array {
         try {
             $rawFilter = $filter;
@@ -1543,7 +1543,7 @@ class DataService extends BaseService
         int $dataTableId,
         ?int $userId = null,
         bool $excludeDeleted = true,
-        int $languageId = 1,
+        int $languageId = Language::INDEPENDENT_ID,
         int $batchSize = 500,
     ): \Generator {
         try {
@@ -1611,7 +1611,7 @@ class DataService extends BaseService
         int $dataTableId,
         int $currentUserId,
         bool $excludeDeleted = true,
-        int $languageId = 1,
+        int $languageId = Language::INDEPENDENT_ID,
         int $batchSize = 500,
     ): \Generator {
         try {

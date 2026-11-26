@@ -62,7 +62,7 @@ use Doctrine\Persistence\ObjectManager;
  * content, so seeding it is what makes the spec's "Success" assertion pass.
  *
  * Non-translatable property fields (`name`, `type_input`) are stored under
- * the property language (`id_languages = 1` = the `all` locale); translatable
+ * property fields (language-independent row, locale `all`); translatable
  * fields (`alert_success`, `label`, `placeholder`) are stored for every
  * shipped content locale (de-CH + en-GB) so the form renders correctly
  * whatever the resolved CMS language is — the exact convention the system-page
@@ -87,13 +87,6 @@ final class QaFrontendGoldenFixture extends Fixture implements FixtureGroupInter
 
     /** Input section name. */
     public const QA_FORM_INPUT_SECTION_NAME = 'qa-feedback-message';
-
-    /**
-     * Property language id used for non-translatable fields. Matches
-     * `PageService::PROPERTY_LANGUAGE_ID` and the `id_languages = 1`
-     * convention of the system-page seed migration.
-     */
-    private const PROPERTY_LANGUAGE_ID = 1;
 
     /** Content locales every shipped install carries (de-CH + en-GB). */
     private const CONTENT_LOCALES = ['de-CH', 'en-GB'];
@@ -226,7 +219,7 @@ final class QaFrontendGoldenFixture extends Fixture implements FixtureGroupInter
      */
     private function setPropertyField(Section $section, string $fieldName, string $content): void
     {
-        $this->persistTranslation($section, $fieldName, $this->language(self::PROPERTY_LANGUAGE_ID), $content);
+        $this->persistTranslation($section, $fieldName, $this->language(Language::INDEPENDENT_ID), $content);
     }
 
     /**

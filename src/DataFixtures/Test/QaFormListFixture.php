@@ -104,7 +104,6 @@ final class QaFormListFixture extends Fixture implements FixtureGroupInterface
     public const EVENTS_TABLE_NAME = 'qa_events_table';
 
     /** Property language id used for non-translatable fields (`all`). */
-    private const PROPERTY_LANGUAGE_ID = 1;
 
     /** Content locales every shipped install carries. */
     private const CONTENT_LOCALES = ['de-CH', 'en-GB'];
@@ -450,7 +449,7 @@ final class QaFormListFixture extends Fixture implements FixtureGroupInterface
             foreach ($cells as $key => $value) {
                 $db->executeStatement(
                     'INSERT INTO data_cells (id_data_rows, id_data_cols, id_languages, `value`) VALUES (:r, :c, :l, :v)',
-                    ['r' => $rowId, 'c' => $columns[$key], 'l' => self::PROPERTY_LANGUAGE_ID, 'v' => $value],
+                    ['r' => $rowId, 'c' => $columns[$key], 'l' => Language::INDEPENDENT_ID, 'v' => $value],
                     ['r' => ParameterType::INTEGER, 'c' => ParameterType::INTEGER, 'l' => ParameterType::INTEGER, 'v' => ParameterType::STRING]
                 );
             }
@@ -557,7 +556,7 @@ final class QaFormListFixture extends Fixture implements FixtureGroupInterface
     /** A field that is not translated: stored once under the property language. */
     private function property(Section $section, string $fieldName, string $content): void
     {
-        $this->translation($section, $fieldName, $this->language(self::PROPERTY_LANGUAGE_ID), $content);
+        $this->translation($section, $fieldName, $this->language(Language::INDEPENDENT_ID), $content);
     }
 
     /** A field that is translated: stored for every content locale. */

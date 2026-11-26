@@ -7,6 +7,7 @@
 
 namespace App\Controller\Api\V1\Admin;
 
+use App\Entity\Language;
 use App\Controller\Api\V1\Frontend\FormFileController;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
@@ -144,7 +145,7 @@ class AdminDataController extends AbstractController
 
             $userId = $request->query->has('user_id') ? (int) $request->query->get('user_id') : null;
             $excludeDeleted = filter_var($request->query->get('exclude_deleted', 'true'), FILTER_VALIDATE_BOOLEAN);
-            $languageId = $request->query->has('language_id') ? (int) $request->query->get('language_id') : 1;
+            $languageId = $request->query->has('language_id') ? (int) $request->query->get('language_id') : Language::INDEPENDENT_ID;
 
             $hasFullTableAccess = $this->dataTableService->canAccessDataTable(
                 $currentUserId,
@@ -493,7 +494,7 @@ class AdminDataController extends AbstractController
             }
 
             $userId = $request->query->has('user_id') ? (int) $request->query->get('user_id') : null;
-            $languageId = $request->query->has('language_id') ? (int) $request->query->get('language_id') : 1;
+            $languageId = $request->query->has('language_id') ? (int) $request->query->get('language_id') : Language::INDEPENDENT_ID;
             $excludeDeleted = filter_var($request->query->get('exclude_deleted', 'true'), FILTER_VALIDATE_BOOLEAN);
 
             $hasFullAccess = $this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE);
@@ -597,7 +598,7 @@ class AdminDataController extends AbstractController
             $tableNames = $this->toStringList($data['table_names'] ?? []);
             $format = strtolower($this->asStringField($data, 'format', 'csv'));
             $userId = isset($data['user_id']) && is_int($data['user_id']) ? $data['user_id'] : null;
-            $languageId = isset($data['language_id']) && is_int($data['language_id']) ? $data['language_id'] : 1;
+            $languageId = isset($data['language_id']) && is_int($data['language_id']) ? $data['language_id'] : Language::INDEPENDENT_ID;
             $excludeDeleted = $this->asBoolField($data, 'exclude_deleted', true);
 
             // Authorise all tables up-front; 403 on first unauthorised table
@@ -814,7 +815,7 @@ class AdminDataController extends AbstractController
                 $userId,
                 $version,
                 $fieldKey,
-                max(1, (int) $request->query->get('file_language', 1)),
+                max(Language::INDEPENDENT_ID, (int) $request->query->get('file_language', Language::INDEPENDENT_ID)),
                 max(0, (int) $request->query->get('index', 0)),
             );
             $response = new BinaryFileResponse($file['absolutePath']);

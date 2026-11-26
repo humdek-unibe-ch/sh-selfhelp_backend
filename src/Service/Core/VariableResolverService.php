@@ -7,6 +7,7 @@
 
 namespace App\Service\Core;
 
+use App\Entity\Language;
 use App\Entity\Page;
 use App\Entity\User;
 use App\Repository\UserRepository;
@@ -65,7 +66,7 @@ class VariableResolverService
      * @param bool $includeGlobalVars Whether to include global variables from sh-global-values page
      * @return array<string, mixed> Array of variable names to their actual values
      */
-    public function getAllVariables(?int $userId = null, int $languageId = 1, bool $includeGlobalVars = true): array
+    public function getAllVariables(?int $userId = null, int $languageId = Language::INDEPENDENT_ID, bool $includeGlobalVars = true): array
     {
         // Get current user if not specified
         if ($userId === null) {

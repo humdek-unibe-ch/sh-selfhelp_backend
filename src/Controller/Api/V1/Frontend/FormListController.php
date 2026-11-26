@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Controller\Api\V1\Frontend;
 
+use App\Entity\Language;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
@@ -237,7 +238,7 @@ class FormListController extends AbstractController
                 $record_id,
                 $version,
                 $field_key,
-                $this->optionalInt($query, 'file_language', 1),
+                $this->optionalInt($query, 'file_language', Language::INDEPENDENT_ID),
                 $this->optionalInt($query, 'index', 0),
             );
 

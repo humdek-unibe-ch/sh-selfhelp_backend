@@ -9,6 +9,7 @@
 namespace App\Repository;
 
 use App\Entity\DataTable;
+use App\Entity\Language;
 use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\CMS\DataQuery\DataFilter;
 use App\Service\CMS\DataQuery\DataFilterGroup;
@@ -57,7 +58,7 @@ class DataTableRepository extends ServiceEntityRepository
         int $userId,
         string $filter,
         bool $excludeDeleted,
-        int $languageId = 1,
+        int $languageId = Language::INDEPENDENT_ID,
         string $timezoneCode = 'UTC',
         string $selectedColumns = '',
     ): array {
@@ -81,7 +82,7 @@ class DataTableRepository extends ServiceEntityRepository
      * @return list<array<string, mixed>>
      * @throws \App\Service\CMS\DataQuery\DataQueryException when the filter cannot be read as a structured filter
      */
-    public function getDataTableWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC'): array
+    public function getDataTableWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = Language::INDEPENDENT_ID, string $timezoneCode = 'UTC'): array
     {
         return $this->read($tableId, DataQuery::OWNER_GROUPS, $currentUserId, $filter, $excludeDeleted, $languageId, $timezoneCode, '', false);
     }
@@ -122,7 +123,7 @@ class DataTableRepository extends ServiceEntityRepository
         int $userId,
         string $filter,
         bool $excludeDeleted,
-        int $languageId = 1,
+        int $languageId = Language::INDEPENDENT_ID,
         string $timezoneCode = 'UTC',
         string $selectedColumns = '',
         int $batchSize = 500,
@@ -179,7 +180,7 @@ class DataTableRepository extends ServiceEntityRepository
      * @return \Generator<int, list<array<string, mixed>>>
      * @throws \App\Service\CMS\DataQuery\DataQueryException when the filter cannot be read as a structured filter
      */
-    public function batchesWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC', int $batchSize = 500): \Generator
+    public function batchesWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = Language::INDEPENDENT_ID, string $timezoneCode = 'UTC', int $batchSize = 500): \Generator
     {
         $query = $this->queryFor($tableId, DataQuery::OWNER_GROUPS, $currentUserId, $filter, $excludeDeleted, $languageId, $timezoneCode, '', false);
         if ($query === null) {

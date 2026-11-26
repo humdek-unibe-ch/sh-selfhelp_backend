@@ -9,6 +9,7 @@
 namespace App\Service\CMS\Admin;
 
 use App\Entity\DataTable;
+use App\Entity\Language;
 use App\Entity\Field;
 use App\Entity\Group;
 use App\Entity\Page;
@@ -218,11 +219,11 @@ class SectionFieldService extends BaseService
                     }
                 }
             } else {
-                // Property field (display=0) - use language_id = 1 only
-                if (isset($translationsByFieldLang[$fieldId][1])) {
-                    $propertyTranslation = $translationsByFieldLang[$fieldId][1];
+                // Property field (display=0) - language-independent row only
+                if (isset($translationsByFieldLang[$fieldId][Language::INDEPENDENT_ID])) {
+                    $propertyTranslation = $translationsByFieldLang[$fieldId][Language::INDEPENDENT_ID];
                     $translations[] = [
-                        'language_id' => 1,
+                        'language_id' => Language::INDEPENDENT_ID,
                         'language_code' => 'all',  // This is a property, not actually language-specific
                         'content' => $propertyTranslation['content'],
                         'meta' => $propertyTranslation['meta']
@@ -612,7 +613,7 @@ class SectionFieldService extends BaseService
             $field = $this->entityManager->getRepository(Field::class)->find($fieldId);
 
             if ($field && $field->getName() === 'name') {
-                // Get the first translation content (assuming language_id = 1 for displayName)
+                // displayName is stored on the language-independent row
                 $content = $fieldUpdate['value'] ?? null;
                 if ($content) {
                     return $this->asString($content);

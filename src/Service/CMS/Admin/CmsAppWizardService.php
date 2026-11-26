@@ -455,9 +455,8 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Resolve the content locales (everything except the internal `all`
-     * language) and the property locale (the internal language id 1, used for
-     * non-translatable fields like a link URL).
+     * Resolve the content locales (real languages only) and the property locale
+     * ({@see Language::INDEPENDENT_LOCALE}, used for non-translatable fields like a link URL).
      *
      * @return array{0: list<string>, 1: string}
      */
@@ -473,7 +472,7 @@ class CmsAppWizardService extends BaseService
             if ($locale === null || $locale === '') {
                 continue;
             }
-            if ((int) $language->getId() === 1) {
+            if ((int) $language->getId() === Language::INDEPENDENT_ID) {
                 $propertyLocale = $locale;
                 continue;
             }
@@ -999,8 +998,8 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Non-translatable (display=0) field value, written under the internal
-     * property locale only.
+     * Non-translatable (display=0) field value, written under the
+     * language-independent property locale only.
      *
      * @return array<string, array{content: string}>
      */

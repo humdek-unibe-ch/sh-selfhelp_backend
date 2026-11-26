@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\FormList;
 
+use App\Entity\Language;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\Effective\EffectivePage;
 use App\Service\CMS\DataQuery\DataFilterGroup;
@@ -36,8 +37,6 @@ class FormListConfigReader extends BaseService
 {
     /** Class names only: no quotes, angle brackets, backslashes or control characters. */
     private const ROW_CSS_PATTERN = '/^[^"\'<>\\\\\x00-\x1f]+$/';
-
-    private const PROPERTY_LANGUAGE = 1;
 
     private const ID_PATTERN = '/^[a-z][a-z0-9_]{0,31}$/';
     private const FIELD_PATTERN = '/^[A-Za-z][A-Za-z0-9_]{0,63}$/';
@@ -123,7 +122,7 @@ class FormListConfigReader extends BaseService
             'SELECT t.id_sections AS section_id, t.content AS content'
             . ' FROM sections_fields_translation t JOIN fields f ON f.id = t.id_fields'
             . ' WHERE f.name = :name AND t.id_languages = :language AND t.id_sections IN (:ids)',
-            ['name' => 'list_key', 'language' => self::PROPERTY_LANGUAGE, 'ids' => $sectionIds],
+            ['name' => 'list_key', 'language' => Language::INDEPENDENT_ID, 'ids' => $sectionIds],
             ['name' => ParameterType::STRING, 'language' => ParameterType::INTEGER, 'ids' => ArrayParameterType::INTEGER],
         );
         $stored = [];
@@ -176,7 +175,7 @@ class FormListConfigReader extends BaseService
         $default = FormListConfig::defaultsFor(StyleNames::STYLE_ENTRY_FORM_LIST)['list_key'];
         $keys = [];
         foreach ($sectionIds as $id) {
-            $stored = trim($page->rawFields($id)['list_key'][self::PROPERTY_LANGUAGE] ?? '');
+            $stored = trim($page->rawFields($id)['list_key'][Language::INDEPENDENT_ID] ?? '');
             $keys[$id] = $stored !== '' ? $stored : $default;
         }
 
@@ -221,8 +220,8 @@ class FormListConfigReader extends BaseService
         $value = static function (string $field, bool $translated = false) use ($raw, $defaults, $languageId): string {
             $stored = $raw[$field] ?? [];
             $content = $translated
-                ? ($stored[$languageId] ?? $stored[self::PROPERTY_LANGUAGE] ?? null)
-                : ($stored[self::PROPERTY_LANGUAGE] ?? ($stored === [] ? null : $stored[array_key_first($stored)]));
+                ? ($stored[$languageId] ?? $stored[Language::INDEPENDENT_ID] ?? null)
+                : ($stored[Language::INDEPENDENT_ID] ?? ($stored === [] ? null : $stored[array_key_first($stored)]));
 
             return ($content === null || $content === '') ? ($defaults[$field] ?? '') : $content;
         };

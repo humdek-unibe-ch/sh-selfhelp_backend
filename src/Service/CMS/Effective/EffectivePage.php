@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\Effective;
 
+use App\Entity\Language;
+
 /**
  * The configuration of one page exactly as one visitor is served it: the
  * published version for everyone, the draft only for an authorized preview.
@@ -149,7 +151,7 @@ final class EffectivePage
     /**
      * The first stored content of a field of a section ('' when it holds none).
      */
-    public function fieldContent(int $sectionId, string $field, int $languageId = 1): string
+    public function fieldContent(int $sectionId, string $field, int $languageId = Language::INDEPENDENT_ID): string
     {
         $stored = $this->rawFields($sectionId)[$field] ?? [];
 
