@@ -12,6 +12,7 @@ use App\Exception\ServiceException;
 use App\Repository\RoleDataAccessRepository;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminDataAccessService;
+use App\Service\CMS\Admin\PluginResourceTypeService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -33,7 +34,32 @@ class AdminDataAccessController extends AbstractController
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
+        private readonly PluginResourceTypeService $pluginResourceTypes,
     ) {
+    }
+
+    /**
+     * Data-access resource types that enabled plugins add (H6), shown on the
+     * "Permissions for role" screen next to pages, data tables and groups.
+     */
+    public function getPluginResourceTypes(): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->pluginResourceTypes->listTypes(),
+            'responses/admin/data_access/plugin_resource_types'
+        );
+    }
+
+    /**
+     * The resources of one plugin resource type (for example every survey),
+     * contributed by the plugin through DataAccessResourcesEvent.
+     */
+    public function getPluginResources(string $typeCode): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->pluginResourceTypes->listResources($typeCode),
+            'responses/admin/data_access/plugin_resources'
+        );
     }
 
     /**

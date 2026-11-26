@@ -213,6 +213,70 @@ class ManagedModeInstallTest extends BaseControllerTest
         $this->assertSame(self::TEST_PLUGIN_ID, $detailData['pluginId'] ?? null);
     }
 
+    public function testInstallAcceptsManifestDeclaredCatalogueRows(): void
+    {
+        $this->ensureAdminAvailable();
+
+        $manifest = $this->manifest() + $this->catalogueSections();
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/plugins/install',
+            [], [],
+            $this->adminHeaders(),
+            (string) json_encode(['source' => 'paste', 'manifest' => $manifest]),
+        );
+
+        $this->assertSame(
+            Response::HTTP_ACCEPTED,
+            $this->client->getResponse()->getStatusCode(),
+            'styleGroups, fieldTypes, fields and a style field list are valid manifest sections (rule 7.8). Body: '
+                . $this->client->getResponse()->getContent(),
+        );
+    }
+
+    public function testInstallRejectsACatalogueFieldNameThatIsNotSnakeCase(): void
+    {
+        $this->ensureAdminAvailable();
+
+        $sections = $this->catalogueSections();
+        $sections['fields'][0]['name'] = 'qaCatalogueField';
+        $this->client->request(
+            'POST',
+            '/cms-api/v1/admin/plugins/install',
+            [], [],
+            $this->adminHeaders(),
+            (string) json_encode(['source' => 'paste', 'manifest' => $this->manifest() + $sections]),
+        );
+
+        $status = $this->client->getResponse()->getStatusCode();
+        $this->assertGreaterThanOrEqual(400, $status, 'A camelCase field name must be refused, got ' . $status);
+        $this->assertLessThan(500, $status, 'A camelCase field name must not crash with 5xx, got ' . $status);
+    }
+
+    /**
+     * @return array{
+     *     styleGroups: list<array<string,mixed>>,
+     *     fieldTypes: list<array<string,mixed>>,
+     *     fields: list<array<string,mixed>>,
+     *     styles: list<array<string,mixed>>
+     * }
+     */
+    private function catalogueSections(): array
+    {
+        return [
+            'styleGroups' => [['name' => 'qa-doctor-group', 'position' => 990]],
+            'fieldTypes' => [['name' => 'qa-doctor-type']],
+            'fields' => [['name' => 'qa_doctor_field', 'type' => 'qa-doctor-type', 'translatable' => false]],
+            'styles' => [[
+                'name' => 'qa-doctor-style',
+                'description' => 'QA style',
+                'canHaveChildren' => false,
+                'group' => 'qa-doctor-group',
+                'fields' => [['name' => 'qa_doctor_field', 'title' => 'QA field']],
+            ]],
+        ];
+    }
+
     public function testInstallRejectsManifestMissingRequiredFields(): void
     {
         $this->ensureAdminAvailable();

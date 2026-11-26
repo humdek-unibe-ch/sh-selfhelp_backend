@@ -25,6 +25,7 @@ use App\Tests\Support\Factories\PageSectionFactory;
 use App\Tests\Support\Factories\RoleDataAccessFactory;
 use App\Tests\Support\Factories\RoleFactory;
 use App\Tests\Support\Factories\UserFactory;
+use App\Tests\Support\Plugin\QaSectionFieldBindingSubscriber;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group as PhpUnitGroup;
@@ -38,6 +39,10 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * Both ways of binding a table are covered: the `data_table` property of a
  * style, and a `table` inside the section's `data_config`. A refusal must leave
  * the section unchanged.
+ *
+ * H7: a plugin may refuse a field value that points at one of its resources
+ * (a survey) the editor may not use, on save and on import, through
+ * `SectionFieldBindingEvent` (QA double `QaSectionFieldBindingSubscriber`).
  */
 #[PhpUnitGroup('security')]
 final class SectionTableBindingTest extends QaWebTestCase
@@ -184,7 +189,57 @@ final class SectionTableBindingTest extends QaWebTestCase
         self::assertSame($before + 1, $this->sectionCountOnPage($world['page']));
     }
 
+    public function testAPluginRefusesAFieldValueTheEditorMayNotUse(): void
+    {
+        $world = $this->world('qa_h7_deny');
+
+        $envelope = $this->bindPropertyValue($world['token'], $world['page'], $world['section'], QaSectionFieldBindingSubscriber::FORBIDDEN_VALUE);
+
+        $this->assertEnvelope403($envelope);
+        self::assertNull($this->storedDataTable($world['section']), 'A refused save must leave the section unchanged.');
+    }
+
+    public function testAPluginRefusesAnImportedFieldValueTheEditorMayNotUse(): void
+    {
+        $world = $this->world('qa_h7_import_deny');
+        $before = $this->sectionCountOnPage($world['page']);
+
+        $envelope = $this->importSection($world['token'], $world['page'], [
+            'section_name' => 'qa_h7_imported',
+            'style_name' => 'entry-table',
+            'fields' => ['data_table' => ['all' => ['content' => QaSectionFieldBindingSubscriber::FORBIDDEN_VALUE]]],
+        ]);
+
+        $this->assertEnvelope403($envelope);
+        self::assertSame($before, $this->sectionCountOnPage($world['page']), 'A refused import must not create any section.');
+    }
+
+    public function testThePluginDecidesForItsResourcesEvenForTheAdmin(): void
+    {
+        $world = $this->world('qa_h7_admin');
+
+        $envelope = $this->bindPropertyValue($this->loginAsQaAdmin(), $world['page'], $world['section'], QaSectionFieldBindingSubscriber::FORBIDDEN_VALUE);
+
+        $this->assertEnvelope403($envelope);
+    }
+
     // -- helpers ----------------------------------------------------------------
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function bindPropertyValue(string $token, Page $page, Section $section, string $value): array
+    {
+        $field = $this->em->getRepository(Field::class)->findOneBy(['name' => 'data_table']);
+        self::assertInstanceOf(Field::class, $field);
+
+        return $this->jsonRequest(
+            'PUT',
+            sprintf('/cms-api/v1/admin/pages/%d/sections/%d', $page->getId(), $section->getId()),
+            ['contentFields' => [], 'propertyFields' => [['fieldId' => (int) $field->getId(), 'value' => $value]]],
+            $token,
+        );
+    }
 
     /**
      * A page with one `entry-table` section, an editor who may update the page

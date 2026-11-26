@@ -30,3 +30,15 @@ services:
         autoconfigure: true
         autowire: true
         public: true
+
+    # H6: a plugin listing the resources of its data-access resource type, so
+    # AdminPluginResourceTypeControllerTest drives the real event dispatch.
+    App\Tests\Support\Plugin\QaResourceTypeSubscriber:
+        autoconfigure: true
+        autowire: true
+
+    # H7: a plugin refusing a section field value that points at a resource
+    # the editor may not use, so SectionTableBindingTest drives the real event.
+    App\Tests\Support\Plugin\QaSectionFieldBindingSubscriber:
+        autoconfigure: true
+        autowire: true

@@ -113,6 +113,19 @@ opts in.
 - Tables in the DB whose name pattern matches the plugin's prefix but
   that are **not** declared in `tables.owned` → `warning`.
 
+## Files a user uploads
+
+A plugin stores uploads as core form files, not in a table of its own:
+`FormFileUploadService::storeRecordFile()` stores a file for one cell of an
+existing record (`user_<id>/…`, or `guest/…` when there is no user) with the
+core's type, content and size checks, and the plugin writes the returned key
+into the cell, alone or inside a richer answer. Declaring the column with
+`DataColumnService::markFileColumns()` (value type `file`) makes the Data
+screen show, download and zip the files. Cleaning the user, deleting the
+table and deleting the column erase them after the commit, like a form's
+files. `isRecordFileKey()` tells whether a key belongs to a record, so a
+plugin can refuse a key a client copied from someone else's answer.
+
 ## Plugin author responsibilities
 
 When you ship a plugin that stores personal data:

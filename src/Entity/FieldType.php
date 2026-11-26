@@ -12,6 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'field_types')]
+#[ORM\Index(name: 'idx_field_types_id_plugins', columns: ['id_plugins'])]
 #[ORM\UniqueConstraint(name: 'uq_field_types_name', columns: ['name'])]
 class FieldType
 {
@@ -33,6 +34,15 @@ class FieldType
 
     #[ORM\Column(name: 'position', type: 'integer')]
     private int $position;
+
+    /**
+     * Plugin that declared this row in its manifest. NULL = core-owned.
+     * Written by the plugin installer ({@see \App\Plugin\Lifecycle\PluginCatalogueSynchronizer});
+     * `ON DELETE SET NULL` like styles and fields, purge deletes the rows.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
 
     public function getId(): ?int
     {
@@ -59,6 +69,18 @@ class FieldType
     public function setPosition(int $position): static
     {
         $this->position = $position;
+
+        return $this;
+    }
+
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
+    {
+        $this->plugin = $plugin;
 
         return $this;
     }

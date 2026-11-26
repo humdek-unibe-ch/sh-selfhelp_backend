@@ -519,6 +519,28 @@
       ]
     },
     {
+      "name": "admin_data_access_plugin_resource_types",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data-access/plugin-resource-types",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
+      "name": "admin_data_access_plugin_resources",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data-access/plugin-resource-types/{typeCode}/resources",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
       "name": "admin_data_access_roles_list",
       "methods": [
         "GET"

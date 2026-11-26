@@ -10,6 +10,7 @@ namespace App\Service\CMS;
 
 use App\Exception\ServiceException;
 use App\Service\Core\BaseService;
+use App\Service\Core\LookupService;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -36,11 +37,13 @@ class FormFileUploadService extends BaseService
         'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf',
         // Archives
         'zip', 'rar', '7z', 'tar', 'gz',
+        // Audio and video (recordings)
+        'mp3', 'wav', 'ogg', 'm4a', 'webm', 'mp4',
         // Other
-        'csv', 'json', 'xml'
+        'csv', 'json', 'xml', 'gpx'
     ];
 
-    private const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
+    private const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB per file
     private const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total per form submission
     private const MAX_ZIP_SIZE = 500 * 1024 * 1024; // 500MB per "download all" archive
 
@@ -143,17 +146,17 @@ class FormFileUploadService extends BaseService
             return null;
         }
 
-        $isPublic = $connection->fetchOne(
+        $isPublic = str_starts_with($fieldKey, FormFieldKeyResolver::FIELD_KEY_PREFIX) && $connection->fetchOne(
             'SELECT sft.content FROM sections_fields_translation sft JOIN fields f ON f.id = sft.id_fields'
             . " WHERE sft.id_sections = :section AND f.name = 'files_public' LIMIT 1",
             ['section' => (int) substr($fieldKey, strlen(FormFieldKeyResolver::FIELD_KEY_PREFIX))]
-        );
+        ) === '1';
 
         return [
             'absolutePaths' => $absolutePaths,
             'dataTableId' => is_numeric($row['table_id']) ? (int) $row['table_id'] : 0,
             'ownerId' => is_numeric($row['id_users']) ? (int) $row['id_users'] : null,
-            'public' => $isPublic === '1',
+            'public' => $isPublic,
         ];
     }
 
@@ -182,10 +185,13 @@ class FormFileUploadService extends BaseService
         );
 
         $keyToName = $this->formFieldKeyResolver->getFieldKeyToName($tableName);
+        // Read once for the table, not once per cell.
+        $fileTyped = $this->fileTypedKeysOf($tableName);
         $files = [];
         foreach ($rows as $row) {
             $fieldKey = is_scalar($row['field_key']) ? (string) $row['field_key'] : '';
-            if (!$this->isFileInputField($fieldKey, $tableName) || !is_string($row['value'])) {
+            $isFileColumn = $this->formFieldKeyResolver->isFileInput($tableName, $fieldKey) || isset($fileTyped[$fieldKey]);
+            if (!$isFileColumn || !is_string($row['value'])) {
                 continue;
             }
             foreach ($this->resolveCellValue($row['value']) as $absolutePath) {
@@ -281,9 +287,10 @@ class FormFileUploadService extends BaseService
     }
 
     /**
-     * The logical file keys a stored value names: one key, or a JSON list of keys.
-     * Anything that is not a safe `uploads/form-files/...` key is ignored. Used for
-     * current cells and for history values alike.
+     * The logical file keys a stored value names: one key, or JSON holding keys at
+     * any depth (a list of keys, or an answer object with its key next to other
+     * data, as a plugin stores). Anything that is not a safe `uploads/form-files/...`
+     * key is ignored. Used for current cells and for history values alike.
      *
      * @return list<string>
      */
@@ -293,7 +300,14 @@ class FormFileUploadService extends BaseService
             return [];
         }
         $decoded = json_decode($value, true);
-        $candidates = is_array($decoded) ? array_values($decoded) : [$value];
+        $candidates = [];
+        if (is_array($decoded)) {
+            array_walk_recursive($decoded, static function (mixed $leaf) use (&$candidates): void {
+                $candidates[] = $leaf;
+            });
+        } else {
+            $candidates[] = $value;
+        }
         $keys = [];
         foreach ($candidates as $candidate) {
             if (is_string($candidate) && str_starts_with($candidate, self::UPLOAD_DIR) && !str_contains($candidate, '..')) {
@@ -301,7 +315,7 @@ class FormFileUploadService extends BaseService
             }
         }
 
-        return $keys;
+        return array_values(array_unique($keys));
     }
 
     /**
@@ -456,6 +470,57 @@ class FormFileUploadService extends BaseService
     }
 
     /**
+     * Store one uploaded file for a cell of an existing record, outside a form
+     * submit and with or without a user (a guest has none). Same checks as a
+     * form upload; the caller writes the returned key into the cell. Files of a
+     * user sit under `user_<id>/` so cleaning the user removes them; a guest's
+     * under `guest/`, removed with the data that names them.
+     *
+     * @return string the logical key to store in the cell
+     * @throws ServiceException 400 when the file is refused
+     */
+    public function storeRecordFile(UploadedFile $file, int $dataTableId, int $recordId, string $fieldKey, ?int $userId): string
+    {
+        $this->validateFile($file);
+
+        $relative = sprintf(
+            '%s/table_%d/record_%d/field_%s/',
+            $userId !== null ? 'user_' . $userId : 'guest',
+            $dataTableId,
+            $recordId,
+            $this->sanitizeFieldName($fieldKey)
+        );
+        $safeName = $this->generateSafeFilename($file->getClientOriginalName(), strtolower($file->getClientOriginalExtension()));
+        $directory = $this->storageRoot() . '/' . $relative;
+        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+            throw new ServiceException('Failed to create upload directory', Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+        try {
+            $file->move($directory, $safeName);
+        } catch (\Exception $e) {
+            throw new ServiceException('Failed to save uploaded file: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return self::UPLOAD_DIR . $relative . $safeName;
+    }
+
+    /**
+     * Whether a key was stored by {@see storeRecordFile()} for this record (any of
+     * its cells), so a caller can refuse a key that names another record's file.
+     */
+    public function isRecordFileKey(string $key, int $dataTableId, int $recordId): bool
+    {
+        if (!str_starts_with($key, self::UPLOAD_DIR) || str_contains($key, '..')) {
+            return false;
+        }
+
+        return preg_match(
+            sprintf('#^(user_\d+|guest)/table_%d/record_%d/field_[A-Za-z0-9_-]+/[^/]+$#', $dataTableId, $recordId),
+            substr($key, strlen(self::UPLOAD_DIR))
+        ) === 1;
+    }
+
+    /**
      * Validate an uploaded file
      *
      * @param UploadedFile $file The file to validate
@@ -532,9 +597,18 @@ class FormFileUploadService extends BaseService
             'tar' => ['application/x-tar'],
             'gz' => ['application/gzip', 'application/x-gzip'],
             // Other
+            // Audio and video
+            'mp3' => ['audio/mpeg'],
+            'wav' => ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave'],
+            'ogg' => ['audio/ogg', 'video/ogg', 'application/ogg'],
+            'm4a' => ['audio/mp4', 'audio/x-m4a', 'video/mp4'],
+            'webm' => ['audio/webm', 'video/webm'],
+            'mp4' => ['video/mp4', 'audio/mp4'],
+            // Other
             'csv' => ['text/csv', 'application/csv', 'text/plain'],
             'json' => ['application/json', 'text/plain'],
-            'xml' => ['application/xml', 'text/xml', 'text/plain']
+            'xml' => ['application/xml', 'text/xml', 'text/plain'],
+            'gpx' => ['application/gpx+xml', 'application/xml', 'text/xml', 'text/plain'],
         ];
 
         if (!isset($allowedMimeTypes[$extension]) || !in_array($mimeType, $allowedMimeTypes[$extension])) {
@@ -759,6 +833,30 @@ class FormFileUploadService extends BaseService
      */
     public function isFileInputField(string $fieldName, string $formTableName): bool
     {
-        return $this->formFieldKeyResolver->isFileInput($formTableName, $fieldName);
+        return $this->formFieldKeyResolver->isFileInput($formTableName, $fieldName)
+            || $this->isFileTypedColumn($formTableName, $fieldName);
+    }
+
+    /** Whether the table's column is declared with the value type `file` (a plugin's upload column). */
+    private function isFileTypedColumn(string $tableName, string $fieldKey): bool
+    {
+        return isset($this->fileTypedKeysOf($tableName)[$fieldKey]);
+    }
+
+    /**
+     * The table's columns declared with the value type `file`, in one query.
+     *
+     * @return array<string, int> field key => index
+     */
+    private function fileTypedKeysOf(string $tableName): array
+    {
+        $keys = $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT dc.field_key FROM data_cols dc JOIN data_tables t ON t.id = dc.id_data_tables'
+            . ' JOIN lookups l ON l.id = dc.id_value_type'
+            . ' WHERE t.name = :table AND l.type_code = :type AND l.lookup_code = :code',
+            ['table' => $tableName, 'type' => LookupService::DATA_COL_VALUE_TYPES, 'code' => LookupService::DATA_COL_VALUE_TYPES_FILE]
+        );
+
+        return array_flip(array_values(array_filter($keys, 'is_string')));
     }
 }

@@ -212,6 +212,61 @@ final class AdminDataControllerTest extends QaWebTestCase
         self::assertNotEmpty($decoded, 'Export JSON must contain the seeded row.');
     }
 
+    public function testExportTableAsExcelReturnsAWorkbookWithTheHeaderAndRows(): void
+    {
+        // A value that looks like a formula must stay text in the sheet.
+        $table = $this->dataTables->createTableWithRow('qa_data_export_xlsx', $this->qaUserId(), '=1+1 <answer> & more')[0];
+
+        $response = $this->rawRequest(
+            'GET',
+            self::BASE . '/tables/' . $table->getName() . '/export?format=xlsx',
+            $this->loginAsQaAdmin(),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            $response->headers->get('Content-Type')
+        );
+        self::assertStringContainsString('.xlsx"', (string) $response->headers->get('Content-Disposition'));
+
+        $sheet = $this->xlsxSheet((string) $response->getContent());
+        $xml = simplexml_load_string($sheet);
+        self::assertNotFalse($xml, 'the sheet is well-formed XML');
+        $cells = [];
+        foreach ($xml->sheetData->row as $row) {
+            $line = [];
+            foreach ($row->c as $cell) {
+                $line[] = (string) ($cell->is->t ?? $cell->v);
+            }
+            $cells[] = $line;
+        }
+        self::assertGreaterThanOrEqual(2, count($cells), 'a header row and the seeded row');
+        self::assertContains('qa_field', $cells[0], 'the header has the table column');
+        self::assertContains('=1+1 <answer> & more', $cells[1], 'the value is kept as text, unescaped on read');
+        self::assertStringNotContainsString('<f>', $sheet, 'no cell is a formula');
+    }
+
+    public function testBulkExportAsExcelHasOneWorkbookPerTable(): void
+    {
+        $a = $this->dataTables->createTableWithRow('qa_data_bulk_xlsx_a', $this->qaUserId(), 'a value')[0];
+        $b = $this->dataTables->createTableWithRow('qa_data_bulk_xlsx_b', $this->qaUserId(), 'b value')[0];
+
+        $response = $this->rawRequest(
+            'POST',
+            self::BASE . '/tables/bulk-export',
+            $this->loginAsQaAdmin(),
+            ['table_names' => [$a->getName(), $b->getName()], 'format' => 'xlsx'],
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        $entries = $this->zipEntryNames((string) $response->getContent());
+        self::assertCount(2, $entries);
+        foreach ($entries as $name) {
+            self::assertStringEndsWith('.xlsx', $name);
+        }
+    }
+
     public function testBulkExportReturnsZipWithOneEntryPerTable(): void
     {
         $a = $this->dataTables->createTableWithRow('qa_data_bulk_a', $this->qaUserId(), 'a value')[0];
@@ -280,7 +335,7 @@ final class AdminDataControllerTest extends QaWebTestCase
 
     public function testBulkExportRejectsInvalidFormat(): void
     {
-        // `format` is constrained to the csv/json enum; anything else must fail
+        // `format` is constrained to the csv/json/xlsx enum; anything else must fail
         // validation (400) rather than silently defaulting.
         $table = $this->dataTables->createTable('qa_data_bulk_bad_format');
 
@@ -556,6 +611,28 @@ final class AdminDataControllerTest extends QaWebTestCase
         unlink($tmp);
 
         return $names;
+    }
+
+    /**
+     * The worksheet XML of an exported workbook; asserts the parts Excel needs are there.
+     */
+    private function xlsxSheet(string $xlsxBlob): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'qa_xlsx_');
+        self::assertIsString($tmp);
+        file_put_contents($tmp, $xlsxBlob);
+
+        $zip = new \ZipArchive();
+        self::assertTrue($zip->open($tmp) === true, 'The Excel export must be a readable zip.');
+        foreach (['[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels'] as $part) {
+            self::assertNotFalse($zip->locateName($part), $part . ' is part of the workbook');
+        }
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+        unlink($tmp);
+        self::assertIsString($sheet);
+
+        return $sheet;
     }
 
     /**

@@ -1,3 +1,71 @@
+# Unreleased
+
+**The register page falls back like the other system pages.** It was missing
+from `PageService::FALLBACK_CHECK_KEYWORDS`, so a register page without its
+`register` section left visitors at a dead end instead of the web app's
+built-in screen (`should_fallback`).
+
+**Fixes from the pre-PR review of the SurveyJS upgrade.**
+
+- Data columns of value type `file` can be sorted and filtered (as text);
+  before, the query engine refused the type.
+- A style key the manifest leaves out (`description`, `canHaveChildren`)
+  keeps its value on update (plugins still seed styles in migrations, rule 7.8
+  is a target).
+- "Download all" reads the file-typed columns once per table instead of once
+  per cell.
+- Excel export: a text cell over Excel's 32,767 characters is cut with a mark
+  (Excel reported the file as damaged).
+- Documented limit: `PageService::variablesForSection()` gives the first row's
+  variables under an entry list or loop (the plugin call names no row).
+
+**Plugins check their field values when a section is authored (SurveyJS
+upgrade wave 6, H7).** `SectionTableBindingGuard` dispatches the new
+`App\Plugin\Event\SectionFieldBindingEvent` for every non-empty field value of
+a section save or import; a plugin refuses a value pointing at a resource the
+editor may not use (a survey) and the request answers 403 before anything is
+written, the same rule as binding a data table (F07).
+
+**Excel export of data tables (SurveyJS upgrade wave 4, H5).** The single and
+bulk export endpoints accept `format=xlsx` next to `csv` and `json`, for every
+data table: one sheet with the CSV's header and rows; text stays text, numbers
+are numbers. Written with ZipArchive, no new dependency.
+
+**Plugin extension points for public section endpoints and data access
+(SurveyJS upgrade, wave 3).**
+
+- `PublicSectionAccessService::forSection()` (H4): a plugin endpoint decides
+  like a core form (rule 7.7, F109): page ACL or open page, section on the
+  effective page and not hidden by a condition, expected style; returns the
+  section's stored fields. `variables()` (H1, through the new
+  `PageService::variablesForSection()`) returns the variables that section
+  sees on its page, computed by processing only its ancestors and itself.
+- Plugin data-access resource types (H6): the `resourceTypes` lookup is now
+  `plugin_extendable`, so a plugin declares its type in `lookups.extends` and
+  the installer writes it. New event `DataAccessResourcesEvent` lists a type's
+  resources; new admin routes `GET /admin/data-access/plugin-resource-types`
+  and `.../{typeCode}/resources` (`admin.role.read`, migration
+  `Version20261117103339`). Grants are stored and checked like page grants;
+  the lookup row's `ON DELETE CASCADE` removes them on purge. The frontend's
+  role screen needs these routes: raise `supports.frontend` / the frontend's
+  `supports.core` to the releases that ship them.
+
+**The plugin installer writes a plugin's catalogue rows from its manifest (rule
+7.8, F112).** New `PluginCatalogueSynchronizer` runs on install and update,
+after the plugin's migrations and before the route sync. It writes the style
+groups, field types, fields, styles with their field lists, permissions
+(`defaultRoles` granted once, on creation) and lookup entries the manifest
+declares, all tagged with `id_plugins`. A name held by core or another plugin
+is refused; `renamedFrom` renames a plugin's style or field in place, so
+sections keep their content; permissions, lookup entries and style-field links
+no longer declared are removed, styles and fields never are. Manifest sections
+a plugin does not declare are left untouched, so plugins that still seed their
+catalogue in a migration keep working. Migration `Version20261117095959` adds
+`id_plugins` to `field_types` and `style_groups`; purge now also deletes those.
+Manifest schema: new `styleGroups`, `fieldTypes`, `fields`, and `group`,
+`renamedFrom`, `fields` on a style (copies of the schema in plugin repos and the
+registry must be updated to stay byte-identical).
+
 # v0.1.51
 
 ## Language-independent row (id 1): one meaning, one constant

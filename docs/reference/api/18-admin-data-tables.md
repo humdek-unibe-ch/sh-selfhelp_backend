@@ -230,7 +230,7 @@ Returns `{ "data": { "deleted_column_count": 2 } }`.
 > export endpoints below do **not** wrap their payload in the standard
 > `{status, message, error, logged_in, meta, data}` envelope and do **not** go
 > through `ApiResponseFormatter` on success. They return the raw file body
-> (CSV / JSON / ZIP) with a `Content-Disposition: attachment` header so the
+> (CSV / Excel / JSON / ZIP) with a `Content-Disposition: attachment` header so the
 > frontend can read the response as a `blob`. **Error** responses *do* still use
 > the standard envelope. Do not "normalise" these to the envelope — the raw body
 > is intentional. (This is the same pattern as the registration-codes CSV
@@ -240,8 +240,8 @@ Both export endpoints apply the same read permission and per-table access /
 group-filter logic as `GET /admin/data`. Rows are read in stable batches of 500
 through the data query engine ([data-query-engine.md](../../developer/data-query-engine.md))
 and written to the response as they arrive, so the memory an export needs does not
-grow with the table (CSV spools its rows through a temporary buffer to write the
-header once). The files are identical to what the single read produced.
+grow with the table (CSV and Excel spool their rows through a temporary buffer to
+write the header once). The files are identical to what the single read produced.
 
 ### Export a single table
 
@@ -251,13 +251,17 @@ header once). The files are identical to what the single read produced.
 
 | Param | Type | Default | Notes |
 |-------|------|---------|-------|
-| `format` | `csv` \| `json` | `csv` | Output format |
+| `format` | `csv` \| `xlsx` \| `json` | `csv` | Output format |
 | `user_id` | int | _all users_ | Restrict to one user |
 | `language_id` | int | `1` | Translation language |
 | `exclude_deleted` | bool | `true` | Skip soft-deleted rows |
 
 - `format=csv` → `Content-Type: text/csv`, attachment. The header row is the
   **union of all column names** across the table; missing cells are empty.
+- `format=xlsx` → `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+  attachment: one sheet named `Data` with the same header and rows as the CSV.
+  Text stays text (leading zeros kept, nothing becomes a formula); integer and
+  decimal values are numbers. Written without a spreadsheet library.
 - `format=json` → `Content-Type: application/json`, a raw array of row objects
   (not the envelope).
 

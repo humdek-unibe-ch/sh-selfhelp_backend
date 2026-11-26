@@ -398,6 +398,29 @@ class DataColumnService extends BaseService
     }
 
     /**
+     * Mark columns of a table as holding uploaded files (value type `file`),
+     * creating them when missing. For a source that stores form file keys
+     * without a `file-input` section, such as a plugin; a core form column
+     * keeps the type its input states.
+     *
+     * @param list<string> $fieldKeys
+     */
+    public function markFileColumns(DataTable $dataTable, array $fieldKeys): void
+    {
+        $changed = false;
+        foreach ($this->resolveColumns($dataTable, $fieldKeys) as $key => $column) {
+            if ($this->isCoreFormKey($key) || $column->getValueTypeCode() === LookupService::DATA_COL_VALUE_TYPES_FILE) {
+                continue;
+            }
+            $this->setColumnValueType($column, LookupService::DATA_COL_VALUE_TYPES_FILE);
+            $changed = true;
+        }
+        if ($changed) {
+            $this->entityManager->flush();
+        }
+    }
+
+    /**
      * Propagate a renamed core form input to its data column label: refresh the
      * auto-curated display_name of the column addressed by the immutable
      * field_key (`section_<input id>`). A no-op when the column does not exist

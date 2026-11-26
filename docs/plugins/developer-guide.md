@@ -122,6 +122,64 @@ Key rules:
 
 See `plugin-manifest.schema.json` for the full property list.
 
+### Catalogue rows: styles, fields, permissions, lookups (rule 7.8)
+
+Everything a plugin adds to core catalogue tables is declared in the
+manifest and written by the host installer
+(`PluginCatalogueSynchronizer`), tagged with `id_plugins`. A plugin
+migration creates and changes only the plugin's own tables.
+
+```json
+{
+  "styleGroups": [{ "name": "Plugin: Example", "position": 900 }],
+  "fieldTypes": [{ "name": "select-example", "position": 100 }],
+  "fields": [
+    { "name": "example_source", "type": "select-example" },
+    { "name": "example_label", "type": "markdown-inline", "translatable": true, "renamedFrom": ["exampleLabel"] }
+  ],
+  "styles": [
+    {
+      "name": "example-banner",
+      "description": "A banner style contributed by the example plugin.",
+      "canHaveChildren": true,
+      "group": "Plugin: Example",
+      "fields": [
+        { "name": "example_source", "title": "Source", "help": "Where the banner reads from.", "default": "" },
+        { "name": "example_label", "title": "Label" },
+        { "name": "own_entries_only", "title": "Own entries only", "default": "0" }
+      ]
+    }
+  ],
+  "permissions": [{ "key": "example.banners.manage", "description": "Manage banners", "defaultRoles": ["admin"] }],
+  "lookups": { "extends": [{ "typeCode": "exampleStatus", "ownership": "plugin_owned", "entries": [{ "code": "on", "value": "On" }] }] }
+}
+```
+
+How the installer treats them, on install and on every update:
+
+- **Order.** After the plugin's migrations, before the API route sync
+  (routes link to the permissions written here).
+- **Ownership.** A name that core or another plugin already holds is
+  refused, and the install or update fails. Style groups and field types
+  used only by this plugin, and entries of a lookup type core does not
+  know, are adopted, because they had no owner before.
+- **A style's `fields`** is the complete list of its field links: the
+  plugin's own fields or core fields. `css`, `css_mobile`, `condition`,
+  `data_config` and `debug` are global section fields and are not listed.
+  Links missing from the list are removed.
+- **Renames.** `renamedFrom` on a field or style renames the existing row
+  in place. Sections reference styles and field values by id, so they keep
+  their content.
+- **Removal.** Permissions and lookup entries the manifest no longer
+  declares are removed. Styles, fields, field types and style groups are
+  never removed on update, because sections may still use them; purge
+  removes them.
+- **`defaultRoles`** is granted once, when the permission is created.
+  Later changes on the role screen are the admin's.
+- **Sections left out.** When the manifest has no `styleGroups`,
+  `fieldTypes` or `fields`, or a style has no `fields`, that part of the
+  catalogue is left as it is.
+
 ---
 
 ## 3. The SDK (`@selfhelp/shared/plugin-sdk`)
@@ -256,6 +314,17 @@ If your plugin needs rich text, use `api.richTextEditor` rather than
 embedding your own editor. The host provides a Tiptap-backed adapter
 with consistent styling, paste handling, sanitization, and a stable
 serialization format.
+
+### Showing HTML
+
+Before you render any CMS or user HTML (`dangerouslySetInnerHTML`), pass it
+through `api.sanitizeHtml(html, 'inline' | 'block')`. The web host runs its
+own DOMPurify with the rules core pages use and rewrites record file links
+through the web proxy; `inline` keeps inline markup, `block` also keeps
+headings, lists and paragraphs. Do not bundle a sanitizer of your own and do
+not import host internals. Mobile has no `sanitizeHtml` (React Native does not
+render HTML): show CMS text with `parseInlineRich` / `stripHtmlToText` from
+`@selfhelp/shared`.
 
 ---
 
@@ -523,6 +592,65 @@ Manifest-driven surfaces consumed without tags or events:
 - **Lookups** — declare `lookups.extends[]` / `lookups.owned[]` in
   the manifest as a static alternative to subscribing to
   `LookupRegistryEvent`.
+
+### Public section endpoints: access and variables (rule 7.7, F109)
+
+A plugin endpoint that serves or accepts data for a section on a page
+(a survey, a map) decides like a core form. Call
+`App\Service\CMS\Effective\PublicSectionAccessService` first:
+
+```php
+$scope = $this->sectionAccess->forSection($pageId, $sectionId, 'surveyjs', $preview);
+$surveyKey = $scope->field('survey_js');          // read settings from the section, never the request
+$variables = $this->sectionAccess->variables($scope, $languageId, $routeParams);
+$definition = $this->interpolation->interpolateArray($definition, $variables);
+```
+
+- `forSection()` refuses (403) a page the caller may not see (page ACL
+  `select`; a guest needs an open page), a section that is not on the
+  page or is hidden by its condition or an ancestor's; 400 a section of
+  another style; 401/403 a preview without edit rights on the page. It
+  acts on the published version for visitors.
+- `variables()` returns what `{{name}}` resolves to in that section on
+  that page for the current user: user and system values, globals,
+  route parameters and the data its and its ancestors' `data_config`
+  load. Replace on text values (`InterpolationService::interpolateArray`),
+  never on serialized JSON. An unknown variable becomes empty, as on the
+  page.
+
+### Data-access resource types (H6)
+
+A plugin can make its own resources (for example each survey) grantable
+per role, next to pages, data tables, assets and groups:
+
+1. Declare the type as an entry of the core `resourceTypes` lookup:
+   `"lookups": { "extends": [{ "typeCode": "resourceTypes", "ownership": "plugin_extendable", "entries": [{ "code": "surveyjs_survey", "value": "Surveys" }] }] }`.
+   The installer writes it, tagged with the plugin.
+2. List the resources: subscribe to `App\Plugin\Event\DataAccessResourcesEvent`
+   and call `addResource($id, $name, $description)` when
+   `$event->resourceTypeCode` is your code. The "Permissions for role"
+   screen shows one entry per type and stores grants in `role_data_access`.
+3. Check a grant like any other:
+   `DataAccessSecurityService::hasPermission($userId, 'surveyjs_survey', $surveyId, DataAccessSecurityService::PERMISSION_UPDATE)`.
+   The admin role passes every check.
+
+Removing the entry from the manifest, or purging the plugin, deletes the
+lookup row; the database removes its grants with it.
+
+### Checking a field value when a section is authored (H7)
+
+A plugin field can point at one of the plugin's resources: a survey section
+stores which survey it shows. Like binding a data table (F07), the editor may
+place only what they may use, checked when the section is saved or imported,
+never when it is shown.
+
+Subscribe to `App\Plugin\Event\SectionFieldBindingEvent`. It is dispatched by
+`SectionTableBindingGuard` once for every non-empty field value of a section
+save or import, with `fieldName`, `fieldTypeName`, `value` and `userId`. When
+the value is yours and the editor may not use it, call
+`$event->deny('message')`: the save or import answers 403 and writes nothing.
+The event is not dispatched for system actors (no signed-in user). The core
+does not exempt the admin role: the plugin decides for its own resources.
 
 Field renderers, page-lifecycle hooks, and other surfaces from
 earlier proposals are **not** consumed by the host. Do not register

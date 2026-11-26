@@ -1,0 +1,24 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin Resources Response Schema",
+    "description": "Schema for the admin/data-access/plugin-resource-types/{typeCode}/resources endpoint: the resources of one plugin resource type (H6).",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["id", "name", "description"],
+                "additionalProperties": false,
+                "properties": {
+                    "id": { "type": "integer", "description": "Resource id, used as resource_id in role permissions" },
+                    "name": { "type": "string" },
+                    "description": { "type": ["string", "null"] }
+                }
+            }
+        }
+    }
+}

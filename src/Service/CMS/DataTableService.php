@@ -546,9 +546,10 @@ class DataTableService extends BaseService
      * in the Data browser) followed by the table's dynamic data columns
      * (`standard:false`). `fieldKey` is the immutable storage key; `displayName`
      * is the mutable human label (null when never curated). `isFile` tells the
-     * Data browser which columns hold uploaded files: true only for a column of
-     * a core form that belongs to a `file-input` section, so the client never
-     * guesses it from a cell's value. Returns false if the table is not found.
+     * Data browser which columns hold uploaded files: a column of a core form
+     * that belongs to a `file-input` section, or one declared with the value
+     * type `file` (a plugin's upload column), so the client never guesses it
+     * from a cell's value. Returns false if the table is not found.
      *
      * @return list<array<string, mixed>>|false
      */
@@ -578,7 +579,10 @@ class DataTableService extends BaseService
                 'displayName' => $col->getDisplayName(),
                 'locked' => $col->isDisplayNameManual(),
                 'standard' => false,
-                'isFile' => $fieldKey !== null && $this->formFieldKeyResolver->isFileInput($tableName, $fieldKey),
+                'isFile' => $fieldKey !== null && (
+                    $col->getValueTypeCode() === LookupService::DATA_COL_VALUE_TYPES_FILE
+                    || $this->formFieldKeyResolver->isFileInput($tableName, $fieldKey)
+                ),
             ];
         }
         return $result;
