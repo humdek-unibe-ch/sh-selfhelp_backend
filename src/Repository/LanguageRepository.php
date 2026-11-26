@@ -23,15 +23,16 @@ class LanguageRepository extends ServiceEntityRepository
     }
 
     /**
-     * Find all languages with ID greater than 1
-     * 
+     * All real languages (excludes the language-independent row).
+     *
      * @return Language[]
      */
-    public function findAllExceptInternal(): array
+    public function findRealLanguages(): array
     {
         /** @var list<Language> $result */
         $result = $this->createQueryBuilder('l')
-            ->where('l.id > 1')
+            ->where('l.id > :independentId')
+            ->setParameter('independentId', Language::INDEPENDENT_ID)
             ->orderBy('l.id', 'ASC')
             ->getQuery()
             ->getResult();
@@ -54,5 +55,19 @@ class LanguageRepository extends ServiceEntityRepository
 
         return $result;
     }
-    
+
+    /**
+     * Lowest id among real languages (never the language-independent row).
+     */
+    public function findLowestRealLanguageId(): int
+    {
+        $id = $this->createQueryBuilder('l')
+            ->select('MIN(l.id)')
+            ->where('l.id > :independentId')
+            ->setParameter('independentId', Language::INDEPENDENT_ID)
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return (int) $id;
+    }
 }

@@ -198,7 +198,7 @@ class LanguageControllerTest extends BaseControllerTest
         
         $content = $this->decodeArray();
         $this->assertArrayHasKey('error', $content);
-        $this->assertEquals('Cannot delete the default language', $content['error']);
+        $this->assertEquals('Cannot delete the language-independent row', $content['error']);
     }
 
     public function testCannotUpdateDefaultLanguage(): void
@@ -206,7 +206,7 @@ class LanguageControllerTest extends BaseControllerTest
         // Get an admin token
         $token = $this->getAdminAccessToken();
 
-        // Try to update the default language (ID = 1)
+        // Try to update the language-independent row (ID = 1)
         $updateData = [
             'locale' => 'en-US',
             'language' => 'English (US)'
@@ -226,7 +226,7 @@ class LanguageControllerTest extends BaseControllerTest
         
         $content = $this->decodeArray();
         $this->assertArrayHasKey('error', $content);
-        $this->assertEquals('Cannot update the default language', $content['error']);
+        $this->assertEquals('Cannot update the language-independent row', $content['error']);
     }
 
     public function testNonAdminCannotAccessAdminEndpoints(): void

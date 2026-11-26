@@ -34,8 +34,8 @@ class LanguageService extends BaseService
     }
 
     /**
-     * Get all languages with ID > 1
-     * 
+     * All languages including the language-independent row.
+     *
      * @return list<array<string, mixed>>
      */
     public function getAllLanguages(): array
@@ -53,14 +53,14 @@ class LanguageService extends BaseService
     }
 
     /**
-     * Get all languages except the internal one (ID = 1)
-     * Always returns the default language first, followed by other languages
-     * 
+     * Real languages only (excludes the language-independent row).
+     * Always returns the CMS default language first when configured, followed by other languages.
+     *
      * @return list<array<string, mixed>>
      */
-    public function getAllNonInternalLanguages(): array
+    public function getRealLanguages(): array
     {
-        $cacheKey = 'non_internal_languages';
+        $cacheKey = 'real_languages';
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_LANGUAGES)
@@ -70,8 +70,7 @@ class LanguageService extends BaseService
                     // Clear any cached entities to avoid proxy objects
                     $this->entityManager->clear();
 
-                    // Get all non-internal languages
-                    $languages = $this->languageRepository->findAllExceptInternal();
+                    $languages = $this->languageRepository->findRealLanguages();
 
                     // Get default language from CMS preferences
                     $defaultLanguage = null;
@@ -209,9 +208,8 @@ class LanguageService extends BaseService
                 throw new NotFoundHttpException('Language not found');
             }
 
-            // Cannot update language with ID = 1
-            if ($id === 1) {
-                throw new BadRequestHttpException('Cannot update the default language');
+            if ($id === Language::INDEPENDENT_ID) {
+                throw new BadRequestHttpException('Cannot update the language-independent row');
             }
 
             // Store original values for logging
@@ -276,9 +274,8 @@ class LanguageService extends BaseService
                 throw new NotFoundHttpException('Language not found');
             }
 
-            // Cannot delete language with ID = 1
-            if ($id === 1) {
-                throw new BadRequestHttpException('Cannot delete the default language');
+            if ($id === Language::INDEPENDENT_ID) {
+                throw new BadRequestHttpException('Cannot delete the language-independent row');
             }
 
             // Store language data for logging before deletion
