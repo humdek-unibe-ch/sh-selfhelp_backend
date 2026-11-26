@@ -445,20 +445,21 @@ CREATE TABLE `data_cells` (
 
 #### Translation Logic Rules
 
-1. **Language ID 1 (Internal/Default)**: Represents the internal language, cannot be translated
-2. **Language ID > 1 (Translatable)**: Can have multiple translations
-3. **Translation Rule**: If a cell exists with `language_id = 1`, it cannot have translations
-4. **Multi-translation Rule**: If a cell exists with `language_id > 1`, it can have multiple translations
+1. **Language ID 1 (language independent)**: Seeded row (`locale = all`) for values that are the same in every language (properties, plain form cells). Not a real language: not editable, not deletable, not selectable as a user language or CMS default. Referenced only as `Language::INDEPENDENT_ID`.
+2. **Language ID > 1 (real languages)**: Can have multiple translations; the CMS default is one of these.
+3. **Property / plain value**: Stored under language id 1.
+4. **Translated value**: One cell per real language; a visitor read falls back L → independent → CMS default.
 
 #### Data Retrieval with `get_data_table_filtered`
 
 > **Superseded (2026-11-13).** No code path calls the `get_data_table_*` stored
 > procedures any more: every generic-store read goes through the structured data
 > query engine ([data-query-engine.md](./data-query-engine.md)). The requested
-> language's cell wins and a missing one falls back to language 1 (the procedure
-> returned the larger text when both existed). The procedures remain in the
-> database until a cleanup migration removes them (proposed finding). The text
-> below describes the procedure for historical context only.
+> language's cell wins and a missing one falls back to the language-independent
+> cell, then the CMS default (the procedure returned the larger text when both
+> existed). The procedures remain in the database until a cleanup migration
+> removes them (proposed finding). The text below describes the procedure for
+> historical context only.
 
 The stored procedure `get_data_table_filtered` (renamed from `get_dataTable_with_filter` as part of the lowercase_snake_case normalization in the canonical baseline migration) supports language filtering and timezone conversion:
 

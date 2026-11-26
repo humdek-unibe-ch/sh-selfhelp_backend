@@ -1163,7 +1163,7 @@ The BaseApiController provides several helper methods for consistent response fo
 
 ## Language Management API (2025-06-10)
 
-The Language Management API provides endpoints for managing system languages. It includes public routes for listing languages (excluding the default language) and admin routes for CRUD operations on languages.
+The Language Management API provides endpoints for managing system languages. It includes public routes for listing real languages (excluding the language-independent row) and admin routes for CRUD operations on languages.
 
 ### Key Components
 
@@ -1175,7 +1175,7 @@ The Language Management API provides endpoints for managing system languages. It
 #### Service Layer
 
 - **LanguageService**: Encapsulates business logic for language CRUD operations.
-  - Prevents deletion or update of the default language (ID = 1).
+  - Prevents deletion or update of the language-independent row (ID = 1).
   - Uses `EntityUtil::convertEntityToArray` for consistent entity-to-array conversion.
   - Throws appropriate HTTP exceptions for error handling.
 
@@ -1233,7 +1233,7 @@ Comprehensive tests have been implemented for the language management functional
 - **LanguageServiceTest**: Unit tests for the LanguageService.
 - **LanguageControllerTest**: Functional tests for both public and admin language API endpoints.
 
-Tests cover successful operations, validation errors, and security restrictions (e.g., preventing deletion of the default language).
+Tests cover successful operations, validation errors, and security restrictions (e.g., preventing deletion of the language-independent row).
 
 ### API Response Schema Standardization (2025-06-11)
 
@@ -1534,7 +1534,7 @@ The API returns data in the following format:
 - The `getPageWithFields` API response is validated against a JSON schema defined in `config/schemas/api/v1/responses/admin/get_page_fields.json`
 - The schema extends the common response envelope and defines the structure for page data and fields array
 - Fields are categorized as either content fields (`display=1`) or property fields (`display=0`)
-- Content fields support multiple language translations, while property fields have a single property value with `language_id=1`
+- Content fields support multiple language translations, while property fields have a single language-independent value (`Language::INDEPENDENT_ID`)
 - The schema validation is performed by the `JsonSchemaValidationService` in the test environment
 
 ```php

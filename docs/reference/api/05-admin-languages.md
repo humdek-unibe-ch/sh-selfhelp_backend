@@ -19,7 +19,7 @@ The Admin Languages APIs provide comprehensive language management functionality
 
 ## Get All Languages
 
-Retrieve a list of all non-internal languages available in the system.
+Retrieve a list of all real languages available in the system (excludes the language-independent row).
 
 **Endpoint:** `GET /cms-api/v1/admin/languages`
 
