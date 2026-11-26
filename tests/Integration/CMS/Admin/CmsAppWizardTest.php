@@ -17,6 +17,7 @@ use App\Service\CMS\DataQuery\DataQuery;
 use App\Service\CMS\DataQuery\DataQueryEngine;
 use App\Service\CMS\FormFieldKeyResolver;
 use App\Service\Core\LookupService;
+use App\Tests\Support\SavesCmsDefaultLanguageAsAdmin;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -37,6 +38,14 @@ use Symfony\Component\HttpFoundation\Response;
 #[Group('golden')]
 final class CmsAppWizardTest extends QaWebTestCase
 {
+    use SavesCmsDefaultLanguageAsAdmin;
+
+    protected function tearDown(): void
+    {
+        $this->forgetCmsDefaultLanguageCaches();
+        parent::tearDown();
+    }
+
     private const BASE = 'qa-team-wizard';
     private const MULTI_BASE = 'qa-team-wizard-multi';
 
@@ -1223,9 +1232,8 @@ final class CmsAppWizardTest extends QaWebTestCase
             self::assertStringContainsString('Hello', self::jsonEncodeMessage($en));
             self::assertStringNotContainsString('Hallo', self::jsonEncodeMessage($en));
 
-            // F190 observation (do not fix): a second record with only German has no
-            // English cell and no language-id-1 cell. English resolve falls back to
-            // language id 1 (property row) and therefore shows an empty title.
+            // F190: German-only record falls back L → independent → CMS default (2).
+            $this->saveCmsDefaultLanguageAsAdmin(2, $admin);
             $onlyDe = $this->assertEnvelopeSuccess($this->jsonRequest(
                 'POST',
                 '/cms-api/v1/forms/submit',
@@ -1245,7 +1253,30 @@ final class CmsAppWizardTest extends QaWebTestCase
                 'GET',
                 '/cms-api/v1/pages/resolve?path=' . rawurlencode('/' . $base . '/' . $onlyDeId) . '&language_id=3',
             ));
-            self::assertStringNotContainsString('NurDeutsch', self::jsonEncodeMessage($enMissing));
+            self::assertStringContainsString('NurDeutsch', self::jsonEncodeMessage($enMissing));
+
+            $withIndependent = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'POST',
+                '/cms-api/v1/forms/submit',
+                [
+                    'page_id' => $byRole['cms_list'],
+                    'section_id' => $formId,
+                    'form_data' => [
+                        'title' => [
+                            ['language_id' => 1, 'value' => 'AllLangTitle'],
+                            ['language_id' => 2, 'value' => 'NurDeutsch2'],
+                        ],
+                    ],
+                ],
+                $admin,
+            ));
+            $independentId = self::coerceInt($withIndependent['record_id'] ?? null);
+            $enIndependent = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/' . $base . '/' . $independentId) . '&language_id=3',
+            ));
+            self::assertStringContainsString('AllLangTitle', self::jsonEncodeMessage($enIndependent));
+            self::assertStringNotContainsString('NurDeutsch2', self::jsonEncodeMessage($enIndependent));
         } finally {
             $this->cleanupApp($admin, $appId, $pageIds);
         }

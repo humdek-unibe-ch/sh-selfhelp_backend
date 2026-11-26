@@ -46,6 +46,8 @@ final class QueryPlan
     public function __construct(
         public readonly int $languageId,
         public readonly string $timezone,
+        /** CMS default language for L → independent → D fallback; null when unset. */
+        public readonly ?int $cmsDefaultLanguageId = null,
     ) {
     }
 

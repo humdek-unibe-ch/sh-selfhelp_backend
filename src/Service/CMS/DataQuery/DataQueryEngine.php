@@ -9,7 +9,9 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\DataQuery;
 
+use App\Entity\Language;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use Doctrine\DBAL\ArrayParameterType;
@@ -33,8 +35,10 @@ use Doctrine\ORM\EntityManagerInterface;
  *
  * Semantics (frozen, tested in FormListQueryTest):
  *  - Language: a cell in the requested language wins; a missing one falls back
- *    to the default language (id 1). The legacy procedures returned the larger
- *    of the two texts when both existed; that is corrected here.
+ *    to the language-independent cell ({@see Language::INDEPENDENT_ID}), then
+ *    to the CMS default language when that is set and differs. The legacy
+ *    procedures returned the larger of the two texts when both existed; that
+ *    is corrected here.
  *  - Types: comparisons and sorting read the text of a cell as the column's
  *    declared type (text, number, date, datetime, boolean). A value that cannot
  *    be read as that type is treated like a missing one and sorts last.
@@ -46,15 +50,14 @@ use Doctrine\ORM\EntityManagerInterface;
  *    the query keeps them.
  *
  * Results are cached per table: any write to the table bumps the table scope,
- * so a cached page never outlives a change of its data. Queries that depend on
- * group grants are not cached.
+ * so a cached page never outlives a change of its data. The CMS default
+ * language id is part of every cache key, so a preference change cannot serve
+ * a stale fallback. Queries that depend on group grants are not cached.
  */
 class DataQueryEngine extends BaseService
 {
     /** Part of every cache key; raise it when the shape of a cached result changes. */
-    private const ENGINE_VERSION = 2; // 2: strict dates and times, instants with a zone are compared in UTC
-
-    private const DEFAULT_LANGUAGE = 1;
+    private const ENGINE_VERSION = 3; // 3: L → independent → CMS-default cell fallback
 
     /** Row fields a filter or sort may name besides the table's columns. */
     private const ROW_FIELDS = [
@@ -73,6 +76,7 @@ class DataQueryEngine extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly LookupService $lookupService,
         private readonly CacheService $cache,
+        private readonly CmsPreferenceService $cmsPreferenceService,
     ) {
     }
 
@@ -85,7 +89,7 @@ class DataQueryEngine extends BaseService
             return $this->execute($query);
         }
 
-        $key = 'dq_' . self::ENGINE_VERSION . '_' . sha1(serialize($query));
+        $key = 'dq_' . self::ENGINE_VERSION . '_' . sha1(serialize($query) . $this->cacheKeyDefaultSuffix());
         /** @var array{rows: list<array<string, mixed>>, total: int|null} $cached */
         $cached = $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
@@ -122,7 +126,7 @@ class DataQueryEngine extends BaseService
     public function facet(DataQuery $query, string $column, int $limit = 50): array
     {
         $limit = max(1, min($limit, DataQueryLimits::MAX_LIST_VALUES));
-        $key = 'dqf_' . self::ENGINE_VERSION . '_' . sha1(serialize([$query, $column, $limit]));
+        $key = 'dqf_' . self::ENGINE_VERSION . '_' . sha1(serialize([$query, $column, $limit]) . $this->cacheKeyDefaultSuffix());
         $compute = function () use ($query, $column, $limit): array {
             $columns = $this->columnsFor($query);
             if (!isset($columns[$column])) {
@@ -350,7 +354,7 @@ class DataQueryEngine extends BaseService
     {
         $this->assertBounds($query);
 
-        $plan = new QueryPlan($this->effectiveLanguage($query), $query->timezone);
+        $plan = new QueryPlan($this->effectiveLanguage($query), $query->timezone, $this->cmsDefaultLanguageId());
         $plan->where[] = 'r.id_data_tables = ' . $plan->bind($query->tableId, ParameterType::INTEGER);
 
         $this->addOwnerScope($plan, $query);
@@ -393,7 +397,29 @@ class DataQueryEngine extends BaseService
 
     private function effectiveLanguage(DataQuery $query): int
     {
-        return $query->languageId > 0 ? $query->languageId : self::DEFAULT_LANGUAGE;
+        return $query->languageId > 0 ? $query->languageId : Language::INDEPENDENT_ID;
+    }
+
+    /**
+     * CMS default language for the L → independent → D fallback. Null when unset
+     * or when it would equal the language-independent row.
+     */
+    private function cmsDefaultLanguageId(): ?int
+    {
+        $default = $this->cmsPreferenceService->getDefaultLanguageId();
+        if ($default === null || $default === Language::INDEPENDENT_ID) {
+            return null;
+        }
+
+        return $default;
+    }
+
+    /** Suffix so a cached result is never reused after the CMS default language changes. */
+    private function cacheKeyDefaultSuffix(): string
+    {
+        $default = $this->cmsDefaultLanguageId();
+
+        return '|d:' . ($default ?? 'none');
     }
 
     private function addOwnerScope(QueryPlan $plan, DataQuery $query): void
@@ -611,7 +637,8 @@ class DataQueryEngine extends BaseService
 
     /**
      * The text of a column for each row: the cell of the requested language, else
-     * the cell of the default language. Each cell is one primary-key lookup.
+     * the language-independent cell, else the CMS default language. Each cell is
+     * one primary-key lookup.
      */
     private function cellText(QueryPlan $plan, int $columnId): string
     {
@@ -624,15 +651,26 @@ class DataQueryEngine extends BaseService
         $plan->joins[] = ' LEFT JOIN data_cells ' . $requested . ' ON ' . $requested . '.id_data_rows = r.id AND '
             . $requested . '.id_data_cols = ' . $columnId . ' AND ' . $requested . '.id_languages = ' . $plan->languageId;
 
-        if ($plan->languageId === self::DEFAULT_LANGUAGE) {
+        if ($plan->languageId === Language::INDEPENDENT_ID) {
             return $plan->cellExpressions[$columnId] = $requested . '.value';
         }
 
-        $fallback = 'd' . $index;
-        $plan->joins[] = ' LEFT JOIN data_cells ' . $fallback . ' ON ' . $fallback . '.id_data_rows = r.id AND '
-            . $fallback . '.id_data_cols = ' . $columnId . ' AND ' . $fallback . '.id_languages = ' . self::DEFAULT_LANGUAGE;
+        $independent = 'i' . $index;
+        $plan->joins[] = ' LEFT JOIN data_cells ' . $independent . ' ON ' . $independent . '.id_data_rows = r.id AND '
+            . $independent . '.id_data_cols = ' . $columnId . ' AND ' . $independent . '.id_languages = ' . Language::INDEPENDENT_ID;
 
-        return $plan->cellExpressions[$columnId] = 'IF(' . $requested . '.id_data_rows IS NOT NULL, ' . $requested . '.value, ' . $fallback . '.value)';
+        $cmsDefault = $plan->cmsDefaultLanguageId;
+        if ($cmsDefault === null || $cmsDefault === $plan->languageId) {
+            return $plan->cellExpressions[$columnId] = 'IF(' . $requested . '.id_data_rows IS NOT NULL, '
+                . $requested . '.value, ' . $independent . '.value)';
+        }
+
+        $default = 'c' . $index;
+        $plan->joins[] = ' LEFT JOIN data_cells ' . $default . ' ON ' . $default . '.id_data_rows = r.id AND '
+            . $default . '.id_data_cols = ' . $columnId . ' AND ' . $default . '.id_languages = ' . $cmsDefault;
+
+        return $plan->cellExpressions[$columnId] = 'IF(' . $requested . '.id_data_rows IS NOT NULL, ' . $requested . '.value, '
+            . 'IF(' . $independent . '.id_data_rows IS NOT NULL, ' . $independent . '.value, ' . $default . '.value))';
     }
 
     private function assertKnownType(string $type): void
@@ -767,7 +805,8 @@ class DataQueryEngine extends BaseService
 
         $values = [];
         if ($columnIds !== []) {
-            $languages = $language === self::DEFAULT_LANGUAGE ? [self::DEFAULT_LANGUAGE] : [$language, self::DEFAULT_LANGUAGE];
+            $cmsDefault = $this->cmsDefaultLanguageId();
+            $languages = $this->fallbackLanguageIds($language, $cmsDefault);
             $cells = $this->connection()->fetchAllAssociative(
                 'SELECT c.id_data_rows AS rid, c.id_data_cols AS cid, c.id_languages AS lid, c.`value` AS cell_value'
                 . ' FROM data_cells c WHERE c.id_data_rows IN (:ids) AND c.id_data_cols IN (:cols) AND c.id_languages IN (:langs)',
@@ -778,9 +817,10 @@ class DataQueryEngine extends BaseService
                 $rid = $this->asInt($cell['rid']);
                 $key = $columnIds[$this->asInt($cell['cid'])];
                 $lid = $this->asInt($cell['lid']);
-                // The requested language wins over the default language.
-                if (!isset($values[$rid][$key]) || $lid === $language) {
-                    $values[$rid][$key] = ['value' => $cell['cell_value'], 'language' => $lid];
+                $priority = $this->languageFallbackPriority($lid, $language, $cmsDefault);
+                $existing = $values[$rid][$key]['priority'] ?? 0;
+                if ($priority > $existing) {
+                    $values[$rid][$key] = ['value' => $cell['cell_value'], 'priority' => $priority];
                 }
             }
         }
@@ -887,6 +927,43 @@ class DataQueryEngine extends BaseService
         }
 
         return $meta;
+    }
+
+    /**
+     * Language ids to load for a visitor read: requested, then independent, then CMS default.
+     *
+     * @return list<int>
+     */
+    private function fallbackLanguageIds(int $language, ?int $cmsDefault): array
+    {
+        if ($language === Language::INDEPENDENT_ID) {
+            return [Language::INDEPENDENT_ID];
+        }
+
+        $languages = [$language, Language::INDEPENDENT_ID];
+        if ($cmsDefault !== null && $cmsDefault !== $language) {
+            $languages[] = $cmsDefault;
+        }
+
+        return $languages;
+    }
+
+    /**
+     * Higher wins when several cells exist for one column: requested > independent > CMS default.
+     */
+    private function languageFallbackPriority(int $languageId, int $requested, ?int $cmsDefault): int
+    {
+        if ($languageId === $requested) {
+            return 3;
+        }
+        if ($languageId === Language::INDEPENDENT_ID) {
+            return 2;
+        }
+        if ($cmsDefault !== null && $languageId === $cmsDefault) {
+            return 1;
+        }
+
+        return 0;
     }
 
     private function connection(): Connection
