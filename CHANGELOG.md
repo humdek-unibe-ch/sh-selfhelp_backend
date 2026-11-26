@@ -1,3 +1,24 @@
+# v0.1.51
+
+## Language-independent row (id 1): one meaning, one constant
+
+- `Language::INDEPENDENT_ID` / `INDEPENDENT_LOCALE` name the seeded row that
+  holds values the same in every language. It is not a language and is no
+  longer used as the CMS default.
+- Data reads fall back visitor language → independent → CMS default language
+  (`DataQueryEngine`, F190). The CMS default id is part of the query cache key.
+- `PageService::determineLanguageId` never returns id 1 or a hard-coded 2: it
+  uses the lowest real language when nothing else is set.
+- Writes that set a user's language or the CMS default to id 1 answer 400.
+- "Default language" has one resolution, `CmsPreferenceService::getEffectiveDefaultLanguageId()`:
+  the CMS setting, else the lowest real language. Navigation, search, conditions,
+  option labels and action translations no longer fall back to id 1.
+- Action emails for a recipient without a language use that resolution too
+  (global values and subject/body translations), not id 1.
+- Admin data reads and deletes without a `language_id`, and property
+  translations in page exports, name the row by `Language::INDEPENDENT_ID`.
+- Index `idx_data_rows_id_users` for user cleanup (F91).
+
 # v0.1.50
 
 ## Live sync follow-ups: idle lock end, lock for delete and publish
