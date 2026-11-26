@@ -8,18 +8,22 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\Field;
+use App\Entity\Language;
 use App\Entity\Page;
 use App\Entity\PageTypeField;
 use App\Entity\PagesFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\NavigationAssignmentService;
 use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Service for handling page field operations
@@ -170,11 +174,11 @@ class PageFieldService extends BaseService
                     }
                 }
             } else {
-                // Property field (display=0) - use language_id = 1 only
-                $propertyTranslation = $translationsMap[$fieldId][1] ?? null;
+                // Property field (display=0) - language-independent row only
+                $propertyTranslation = $translationsMap[$fieldId][Language::INDEPENDENT_ID] ?? null;
                 if ($propertyTranslation) {
                     $fieldData['translations'][] = [
-                        'language_id' => 1,
+                        'language_id' => Language::INDEPENDENT_ID,
                         'language_code' => 'property',  // This is a property, not actually language-specific
                         'content' => $propertyTranslation->getContent()
                     ];
@@ -247,11 +251,12 @@ class PageFieldService extends BaseService
         if (!$pageType) {
             throw new ServiceException(
                 sprintf("Page %s does not have a page type assigned", $page->getKeyword()),
-                \Symfony\Component\HttpFoundation\Response::HTTP_BAD_REQUEST
+                Response::HTTP_BAD_REQUEST
             );
         }
 
         $this->validatePageTypeFields($fieldIds, (int) $pageType->getId(), $this->entityManager);
+        $this->assertCmsDefaultLanguageNotIndependent($page, $fields);
 
         // Update field translations using trait method
         $this->updatePageFieldTranslations((int) $page->getId(), $fields, $this->entityManager);
@@ -264,5 +269,32 @@ class PageFieldService extends BaseService
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->invalidateAllListsInCategory();
         $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
+    }
+
+    /**
+     * The CMS default language must be a real language, never the language-independent row.
+     *
+     * @param list<array<string, mixed>> $fields
+     */
+    private function assertCmsDefaultLanguageNotIndependent(Page $page, array $fields): void
+    {
+        if ($page->getKeyword() !== CmsPreferenceService::SH_CMS_PREFERENCES_KEYWORD) {
+            return;
+        }
+
+        foreach ($fields as $fieldData) {
+            $fieldId = $this->asInt($fieldData['fieldId'] ?? null);
+            $field = $this->entityManager->getRepository(Field::class)->find($fieldId);
+            if ($field === null || $field->getName() !== 'default_language_id') {
+                continue;
+            }
+            $content = trim($this->asString($fieldData['content'] ?? ''));
+            if ($content !== '' && (int) $content === Language::INDEPENDENT_ID) {
+                throw new ServiceException(
+                    'Cannot set the CMS default language to the language-independent row',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+        }
     }
 }

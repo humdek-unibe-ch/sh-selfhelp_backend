@@ -11,6 +11,7 @@ namespace App\Service\Auth;
 use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Entity\User;
+use App\Repository\LanguageRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\UserPermissionService;
@@ -34,6 +35,7 @@ class UserDataService
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly LookupService $lookupService,
         private readonly AclStampService $aclStamp,
+        private readonly LanguageRepository $languageRepository,
     ) {
     }
 
@@ -104,46 +106,28 @@ class UserDataService
         $userLanguageName = null;
 
         if ($user->getLanguage()) {
-            // User has a language set
-            $userLanguageId = $user->getLanguage()->getId();
-            $userLanguageLocale = $user->getLanguage()->getLocale();
-            $userLanguageName = $user->getLanguage()->getLanguage();
-        } else {
-            // User doesn't have language set, use CMS default
-            try {
-                $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
-                if ($defaultLanguageId) {
-                    $defaultLanguage = $this->entityManager->getRepository(Language::class)->find($defaultLanguageId);
-                    if ($defaultLanguage) {
-                        $userLanguageId = $defaultLanguage->getId();
-                        $userLanguageLocale = $defaultLanguage->getLocale();
-                        $userLanguageName = $defaultLanguage->getLanguage();
-                    }
-                }
-                if (!$defaultLanguageId) {
-                    // No CMS default language set, use fallback
-                    $userLanguageId = 2;
-                    $fallbackLanguage = $this->entityManager->getRepository(Language::class)->find(2);
-                    if ($fallbackLanguage) {
-                        $userLanguageLocale = $fallbackLanguage->getLocale();
-                        $userLanguageName = $fallbackLanguage->getLanguage();
-                    }
-                }
-            } catch (\Exception $e) {
-                // If there's an error getting the default language, use fallback
-                $userLanguageId = 2;
-                $fallbackLanguage = $this->entityManager->getRepository(Language::class)->find(2);
-                if ($fallbackLanguage) {
-                    $userLanguageLocale = $fallbackLanguage->getLocale();
-                    $userLanguageName = $fallbackLanguage->getLanguage();
-                }
+            $language = $user->getLanguage();
+            if ((int) $language->getId() !== Language::INDEPENDENT_ID) {
+                return [
+                    'id' => $language->getId(),
+                    'locale' => $language->getLocale(),
+                    'name' => $language->getLanguage(),
+                ];
             }
+        }
+
+        // No real user language: the CMS default (or the lowest real language).
+        $fallback = $this->languageRepository->find($this->cmsPreferenceService->getEffectiveDefaultLanguageId());
+        if ($fallback) {
+            $userLanguageId = $fallback->getId();
+            $userLanguageLocale = $fallback->getLocale();
+            $userLanguageName = $fallback->getLanguage();
         }
 
         return [
             'id' => $userLanguageId,
             'locale' => $userLanguageLocale,
-            'name' => $userLanguageName
+            'name' => $userLanguageName,
         ];
     }
 
@@ -262,6 +246,10 @@ class UserDataService
             $user = $this->entityManager->find(User::class, $user->getId());
             if (!$user) {
                 throw new \InvalidArgumentException('User not found');
+            }
+
+            if ($languageId === Language::INDEPENDENT_ID) {
+                throw new \InvalidArgumentException('Cannot set a user language to the language-independent row');
             }
 
             // Validate that the language exists

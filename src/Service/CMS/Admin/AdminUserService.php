@@ -1641,7 +1641,14 @@ class AdminUserService extends BaseService
     private function setUserRelatedEntities(User $user, array $userData): void
     {
         if (isset($userData['id_languages'])) {
-            $language = $this->entityManager->getRepository(Language::class)->find($userData['id_languages']);
+            $languageId = $this->asInt($userData['id_languages']);
+            if ($languageId === Language::INDEPENDENT_ID) {
+                throw new ServiceException(
+                    'Cannot set a user language to the language-independent row',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+            $language = $this->entityManager->getRepository(Language::class)->find($languageId);
             $user->setLanguage($language);
         }
 

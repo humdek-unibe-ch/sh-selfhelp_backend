@@ -436,6 +436,40 @@ class AdminUserControllerTest extends BaseControllerTest
     /**
      * @group user-management
      */
+    public function testUpdateUserLanguageIndependentIdIsRejected(): void
+    {
+        $created = $this->createTestUser('langindep');
+        $userId = $this->asInt($created['id']);
+        $before = $this->entityManager->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $before);
+        $previousLanguageId = $before->getLanguage()?->getId();
+
+        $this->client->request(
+            'PUT',
+            '/cms-api/v1/admin/users/' . $userId,
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
+                'CONTENT_TYPE' => 'application/json',
+            ],
+            (string) json_encode(['id_languages' => 1])
+        );
+
+        $response = $this->client->getResponse();
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $content = $this->decodeArray();
+        $this->assertStringContainsString('language-independent', $this->asString($content['error'] ?? ''));
+
+        $this->entityManager->clear();
+        $after = $this->entityManager->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $after);
+        $this->assertSame($previousLanguageId, $after->getLanguage()?->getId());
+    }
+
+    /**
+     * @group user-management
+     */
     public function testToggleUserBlockSuccess(): void
     {
         $created = $this->createTestUser('block');
