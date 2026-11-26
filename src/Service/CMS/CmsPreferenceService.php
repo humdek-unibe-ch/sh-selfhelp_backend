@@ -8,8 +8,10 @@
 
 namespace App\Service\CMS;
 
+use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Entity\Page;
+use App\Repository\LanguageRepository;
 use App\Repository\PageRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\BaseService;
@@ -34,7 +36,8 @@ class CmsPreferenceService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly PageRepository $pageRepository,
         private readonly CacheService $cache,
-        private readonly LookupService $lookupService
+        private readonly LookupService $lookupService,
+        private readonly LanguageRepository $languageRepository,
     ) {
     }
 
@@ -78,6 +81,21 @@ class CmsPreferenceService extends BaseService
         $preferences = $this->getCmsPreferences();
         $languageId = $preferences['default_language_id'] ?? null;
         return $languageId ? $this->asInt($languageId) : null;
+    }
+
+    /**
+     * The default language as a real language: the CMS setting when it is set
+     * and not the language-independent row, else the real language with the
+     * lowest id. Never {@see Language::INDEPENDENT_ID}.
+     */
+    public function getEffectiveDefaultLanguageId(): int
+    {
+        $languageId = $this->getDefaultLanguageId();
+        if ($languageId !== null && $languageId > Language::INDEPENDENT_ID) {
+            return $languageId;
+        }
+
+        return $this->languageRepository->findLowestRealLanguageId();
     }
 
     /**

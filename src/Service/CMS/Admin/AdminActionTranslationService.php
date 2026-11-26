@@ -213,7 +213,7 @@ class AdminActionTranslationService extends BaseService
             }
         }
 
-        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        $defaultLanguageId = $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
         if ($defaultLanguageId !== $userLanguageId) {
             $translation = $this->actionTranslationRepository->findByActionKeyAndLanguage(
                 $actionId,
@@ -246,7 +246,7 @@ class AdminActionTranslationService extends BaseService
      */
     public function resolveTranslationForDefaultLanguage(int $actionId, string $translationKey): string
     {
-        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        $defaultLanguageId = $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
         return $this->resolveTranslation($actionId, $translationKey, $defaultLanguageId);
     }
 

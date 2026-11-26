@@ -9,6 +9,7 @@ namespace App\Service\Action;
 
 use App\Entity\Action;
 use App\Entity\DataTable;
+use App\Entity\Language;
 use App\Entity\ScheduledJob;
 use App\Entity\User;
 use App\Repository\ActionTranslationRepository;
@@ -81,8 +82,10 @@ class ActionSchedulerService extends BaseService
      */
     private function resolveSystemScope(User $recipient): array
     {
-        $languageId = $recipient->getLanguage()?->getId() ?? $this->cmsPreferenceService->getDefaultLanguageId();
-        $languageId = (is_int($languageId) && $languageId > 0) ? $languageId : 1;
+        $languageId = $recipient->getLanguage()?->getId();
+        if (!is_int($languageId) || $languageId <= Language::INDEPENDENT_ID) {
+            $languageId = $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
+        }
 
         return $this->variableResolverService->getAllVariables(null, $languageId, true);
     }
@@ -108,7 +111,7 @@ class ActionSchedulerService extends BaseService
         }
 
         $languageIds = [];
-        foreach ([$recipient->getLanguage()?->getId(), $this->cmsPreferenceService->getDefaultLanguageId()] as $languageId) {
+        foreach ([$recipient->getLanguage()?->getId(), $this->cmsPreferenceService->getEffectiveDefaultLanguageId()] as $languageId) {
             if (is_int($languageId) && $languageId > 0 && !in_array($languageId, $languageIds, true)) {
                 $languageIds[] = $languageId;
             }

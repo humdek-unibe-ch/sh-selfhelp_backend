@@ -52,7 +52,7 @@ final class OptionLabelHydratorTest extends TestCase
             ]);
 
         $preferences = $this->createStub(CmsPreferenceService::class);
-        $preferences->method('getDefaultLanguageId')->willReturn(2);
+        $preferences->method('getEffectiveDefaultLanguageId')->willReturn(2);
         $fieldKeys = $this->createStub(FormFieldKeyResolver::class);
         $fieldKeys->method('getNameToFieldKey')->willReturn([]);
         $hydrator = new OptionLabelHydrator($connection, $preferences, $fieldKeys);

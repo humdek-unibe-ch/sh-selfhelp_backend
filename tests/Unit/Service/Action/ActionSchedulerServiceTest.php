@@ -11,11 +11,19 @@ namespace App\Tests\Unit\Service\Action;
 
 use App\Entity\DataRow;
 use App\Entity\DataTable;
+use App\Entity\Language;
 use App\Entity\ScheduledJob;
 use App\Entity\User;
 use App\Repository\ActionTranslationRepository;
 use App\Repository\DataTableRepository;
+use App\Repository\LanguageRepository;
+use App\Repository\LookupRepository;
+use App\Repository\PageRepository;
 use App\Repository\UserRepository;
+use App\Plugin\Lookup\LookupPolicyRegistry;
+use App\Service\Cache\Core\CacheService;
+use Doctrine\ORM\EntityManagerInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use App\Service\Action\ActionConditionEvaluatorService;
 use App\Service\CMS\Admin\AdminActionTranslationService;
 use App\Service\Action\ActionConfig;
@@ -692,5 +700,138 @@ final class ActionSchedulerServiceTest extends TestCase
             $emailConfig['body'] ?? null,
             'recipient.*, record.<field_key> and system.* must all resolve in the action email body.',
         );
+    }
+
+    /**
+     * A recipient without a language on an instance without a CMS default
+     * language gets the action email in the lowest real language: global values
+     * (`system.*`) and the translated subject/body are both read in that
+     * language, never in the language-independent row (id 1).
+     */
+    public function testRecipientWithoutLanguageAndNoCmsDefaultGetsLowestRealLanguage(): void
+    {
+        $executionDate = new \DateTimeImmutable('2026-01-01 10:00:00', new \DateTimeZone('UTC'));
+        $lowestRealLanguageId = 3;
+
+        $job = [
+            ActionConfig::JOB_NAME => 'qa_email_job',
+            ActionConfig::NOTIFICATION => [
+                ActionConfig::NOTIFICATION_TYPES => LookupService::NOTIFICATION_TYPES_EMAIL,
+                ActionConfig::SUBJECT => 'block_0.job_0.notification.subject',
+                ActionConfig::BODY => 'Welcome to {{system.project_name}}.',
+                ActionConfig::RECIPIENT => '{{recipient.email}}',
+            ],
+        ];
+        $block = [ActionConfig::JOBS => [$job]];
+        $runtimeConfig = [ActionConfig::BLOCKS => [$block]];
+
+        $context = new ActionTriggerContext(
+            $this->createStub(DataTable::class),
+            $this->createStub(DataRow::class),
+            [],
+            LookupService::ACTION_TRIGGER_TYPES_FINISHED,
+            42,
+            LookupService::TRANSACTION_BY_BY_SYSTEM,
+        );
+        $action = $this->createStub(\App\Entity\Action::class);
+        $action->method('getId')->willReturn(7);
+        $action->method('getName')->willReturn('qa_action');
+
+        $conditionEvaluator = $this->createStub(ActionConditionEvaluatorService::class);
+        $conditionEvaluator->method('passes')->willReturn(true);
+
+        $scheduleCalculator = $this->createStub(ActionScheduleCalculatorService::class);
+        $scheduleCalculator->method('calculateDates')->willReturn([$executionDate]);
+
+        $configRuntime = $this->createStub(ActionConfigRuntimeService::class);
+        $configRuntime->method('getIterationCount')->willReturn(1);
+        $configRuntime->method('selectBlocksForIteration')->willReturn([$block]);
+
+        // The recipient has no language of their own.
+        $user = $this->createStub(User::class);
+        $user->method('getId')->willReturn(42);
+        $user->method('getEmail')->willReturn('qa.recipient@selfhelp.test');
+        $user->method('getLanguage')->willReturn(null);
+        $user->method('getValidationCodes')->willReturn(new ArrayCollection());
+
+        $userRepository = $this->createStub(UserRepository::class);
+        $userRepository->method('find')->willReturn($user);
+
+        // No CMS default language is set; the real effective-default resolution
+        // runs and falls back to the lowest real language of the repository.
+        $languageRepository = $this->createStub(LanguageRepository::class);
+        $languageRepository->method('findLowestRealLanguageId')->willReturn($lowestRealLanguageId);
+        $cmsPreferences = $this->getMockBuilder(CmsPreferenceService::class)
+            ->setConstructorArgs([
+                $this->createStub(EntityManagerInterface::class),
+                $this->createStub(PageRepository::class),
+                $this->createStub(CacheService::class),
+                new LookupService(
+                    $this->createStub(LookupRepository::class),
+                    $this->createStub(CacheService::class),
+                    $this->createStub(EventDispatcherInterface::class),
+                    new LookupPolicyRegistry(),
+                ),
+                $languageRepository,
+            ])
+            ->onlyMethods(['getDefaultLanguageId', 'getDefaultTimezoneCode'])
+            ->getMock();
+        $cmsPreferences->expects(self::atLeastOnce())->method('getDefaultLanguageId')->willReturn(null);
+        $cmsPreferences->method('getDefaultTimezoneCode')->willReturn('UTC');
+
+        $variableLanguageIds = [];
+        $variableResolver = $this->createStub(VariableResolverService::class);
+        $variableResolver->method('getAllVariables')->willReturnCallback(
+            static function (?int $userId, int $languageId) use (&$variableLanguageIds, $lowestRealLanguageId): array {
+                $variableLanguageIds[] = $languageId;
+
+                return ['project_name' => $languageId === $lowestRealLanguageId ? 'QA Clinic' : 'QA wrong language ' . $languageId];
+            }
+        );
+
+        $translationLanguageIds = [];
+        $translationRepo = $this->createStub(ActionTranslationRepository::class);
+        $translationRepo->method('findByActionKeyAndLanguage')->willReturnCallback(
+            static function (int $actionId, string $key, int $languageId) use (&$translationLanguageIds, $lowestRealLanguageId): ?\App\Entity\ActionTranslation {
+                $translationLanguageIds[] = $languageId;
+                if ($key === 'block_0.job_0.notification.subject' && $languageId === $lowestRealLanguageId) {
+                    return (new \App\Entity\ActionTranslation())->setContent('Your reminder');
+                }
+
+                return null;
+            }
+        );
+
+        $captured = [];
+        $jobScheduler = $this->createMock(JobSchedulerService::class);
+        $jobScheduler->method('scheduleJob')
+            ->with(self::callback(function (array $jobData) use (&$captured): bool {
+                $captured = self::asArray($jobData['email_config'] ?? []);
+
+                return true;
+            }))
+            ->willReturn($this->createStub(ScheduledJob::class));
+
+        $scheduler = new ActionSchedulerService(
+            $conditionEvaluator,
+            $scheduleCalculator,
+            $configRuntime,
+            $jobScheduler,
+            $userRepository,
+            $this->createStub(DataTableRepository::class),
+            new ActionTemplateContextBuilder(new InterpolationService()),
+            $cmsPreferences,
+            $this->createStub(MailTemplateService::class),
+            $translationRepo,
+            $variableResolver,
+        );
+
+        $scheduler->schedule($action, $runtimeConfig, $context, [42]);
+
+        $emailConfig = self::asArray($captured);
+        self::assertSame('Welcome to QA Clinic.', $emailConfig['body'] ?? null, 'system.* must resolve in the lowest real language.');
+        self::assertSame('Your reminder', $emailConfig['subject'] ?? null, 'The subject translation must be read in the lowest real language.');
+        self::assertSame([$lowestRealLanguageId], array_values(array_unique($variableLanguageIds)));
+        self::assertNotContains(Language::INDEPENDENT_ID, $translationLanguageIds);
     }
 }

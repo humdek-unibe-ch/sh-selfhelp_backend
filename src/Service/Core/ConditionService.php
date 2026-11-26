@@ -7,6 +7,7 @@
 
 namespace App\Service\Core;
 
+use App\Entity\Language;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\VariableResolverService;
 use App\Service\Core\UserContextAwareService;
@@ -64,10 +65,10 @@ class ConditionService
     public function evaluateCondition(array|string|null $condition, ?int $userId = null, string $section = 'system', ?int $languageId = null): array
     {
         // Non-page contexts (actions, scheduled jobs, CLI) don't carry a
-        // request language — fall back to the CMS preference, then to 1
-        // (the seeded "English" id) if no preference exists yet.
+        // request language — use the CMS default language (or the lowest
+        // real language when none is set).
         if ($languageId === null) {
-            $languageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+            $languageId = $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
         }
         // No condition means it passes
         if (!$condition) {
@@ -336,7 +337,7 @@ class ConditionService
      * @param int $languageId Language of the current request; used for the `language` system variable.
      * @return array<string, mixed> Associative array of variable names to values
      */
-    private function getConditionVariables(?int $userId, int $languageId = 1): array
+    private function getConditionVariables(?int $userId, int $languageId = Language::INDEPENDENT_ID): array
     {
         // VariableResolverService handles userId === null by returning anonymous-safe defaults.
         // Pass $languageId so conditions that compare against `language` evaluate

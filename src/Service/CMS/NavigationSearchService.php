@@ -36,7 +36,7 @@ class NavigationSearchService extends BaseService
             return [];
         }
 
-        $languageId = $languageId ?? $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        $languageId = $languageId ?? $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
         $navigation = $this->navigationMenuService->getPublicNavigationPayload($mode, $languageId);
         $searchConfig = $this->searchConfigFromNavigation($navigation);
         $minChars = $searchConfig['min_chars'];
@@ -305,7 +305,7 @@ class NavigationSearchService extends BaseService
         if ($query === '') {
             return [];
         }
-        $languageId = $languageId ?? $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        $languageId = $languageId ?? $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
         $navigation = $this->navigationMenuService->getPublicNavigationPayload($mode, $languageId);
         $searchConfig = $this->searchConfigFromNavigation($navigation);
         $minChars = $searchConfig['min_chars'];

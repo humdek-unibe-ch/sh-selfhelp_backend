@@ -266,11 +266,7 @@ SQL,
 
     private function resolveFallbackLanguageId(): int
     {
-        try {
-            return $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
-        } catch (\Throwable) {
-            return 1;
-        }
+        return $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
     }
 
     /**

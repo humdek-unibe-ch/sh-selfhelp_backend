@@ -12,10 +12,12 @@ namespace App\Tests\Integration\CMS;
 use App\Entity\NavigationMenu;
 use App\Entity\NavigationMenuItem;
 use App\Entity\Page;
+use App\Repository\LanguageRepository;
 use App\Repository\NavigationMenuRepository;
 use App\Repository\PageRepository;
 use App\Service\CMS\NavigationMenuService;
 use App\Service\Core\LookupService;
+use App\Tests\Support\SavesCmsDefaultLanguageAsAdmin;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -24,10 +26,13 @@ use Symfony\Component\HttpFoundation\Response;
 #[Group('integration')]
 final class NavigationMenuItemPresentationTest extends QaWebTestCase
 {
+    use SavesCmsDefaultLanguageAsAdmin;
+
     private const PAGE_KEYWORD = 'qa_nav_page_icons';
 
     protected function tearDown(): void
     {
+        $this->forgetCmsDefaultLanguageCaches();
         $admin = $this->loginAsQaAdmin();
         /** @var PageRepository $pageRepo */
         $pageRepo = self::getContainer()->get(PageRepository::class);
@@ -189,6 +194,69 @@ final class NavigationMenuItemPresentationTest extends QaWebTestCase
         $groupDe = $this->findItemById($this->footerItems($payloadDe), $groupItemId);
         self::assertNotNull($groupDe);
         self::assertSame('QA Rechtliches', $groupDe['label']);
+
+        $this->jsonRequest('DELETE', '/cms-api/v1/admin/navigation/items/' . $groupItemId, null, $admin);
+        $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $pageId, null, $admin);
+    }
+
+    /**
+     * With no CMS default language, a read without a language uses the real
+     * language with the lowest id, never the language-independent row (fix-1).
+     */
+    public function testPublicPayloadWithoutCmsDefaultUsesLowestRealLanguage(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $this->saveCmsDefaultLanguageAsAdmin(null, $admin);
+
+        $languages = self::getContainer()->get(LanguageRepository::class);
+        self::assertInstanceOf(LanguageRepository::class, $languages);
+        $lowest = $languages->findLowestRealLanguageId();
+        self::assertGreaterThan(1, $lowest);
+
+        $createGroup = $this->jsonRequest(
+            'POST',
+            '/cms-api/v1/admin/navigation/menus/' . LookupService::NAVIGATION_MENU_KEY_WEB_FOOTER . '/items',
+            [
+                'item_type' => 'group',
+                'translations' => [
+                    ['language_id' => 1, 'label' => 'QA Independent label'],
+                    ['language_id' => $lowest, 'label' => 'QA Real label'],
+                ],
+            ],
+            $admin,
+        );
+        $groupData = $this->assertEnvelopeSuccess($createGroup, Response::HTTP_CREATED);
+        /** @var array<string, mixed> $itemPayload */
+        $itemPayload = $groupData['item'];
+        $groupItemId = $itemPayload['id'] ?? null;
+        self::assertIsInt($groupItemId);
+
+        $createPage = $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
+            'keyword' => 'qa_nav_group_child_lang',
+            'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_WEB,
+            'headless' => false,
+            'openAccess' => true,
+            'url' => '/qa_nav_group_child_lang',
+        ], $admin);
+        $pageData = $this->assertEnvelopeSuccess($createPage, Response::HTTP_CREATED);
+        $pageId = $pageData['id'] ?? null;
+        self::assertIsInt($pageId);
+
+        $this->assertEnvelopeSuccess($this->jsonRequest(
+            'POST',
+            '/cms-api/v1/admin/navigation/menus/' . LookupService::NAVIGATION_MENU_KEY_WEB_FOOTER . '/items',
+            ['item_type' => 'page', 'page_id' => $pageId, 'parent_item_id' => $groupItemId],
+            $admin,
+        ), Response::HTTP_CREATED);
+
+        /** @var NavigationMenuService $navigationMenuService */
+        $navigationMenuService = self::getContainer()->get(NavigationMenuService::class);
+        $navigationMenuService->invalidateNavigationCaches();
+
+        $payload = $navigationMenuService->getPublicNavigationPayload(LookupService::PAGE_ACCESS_TYPES_WEB);
+        $group = $this->findItemById($this->footerItems($payload), $groupItemId);
+        self::assertNotNull($group);
+        self::assertSame('QA Real label', $group['label'], 'No CMS default: the lowest real language, not id 1');
 
         $this->jsonRequest('DELETE', '/cms-api/v1/admin/navigation/items/' . $groupItemId, null, $admin);
         $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $pageId, null, $admin);
