@@ -7,6 +7,7 @@
 
 namespace App\Service\CMS\Frontend;
 
+use App\Entity\Language;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
@@ -40,9 +41,6 @@ class PageService extends BaseService
      * take over: the visitor and the site, the route and the position of the record in the page.
      */
     private const ROW_TEMPLATE_RESERVED_SCOPES = ['system', 'globals', 'route', 'route_requirements', '_index'];
-
-    // Default values for language
-    private const PROPERTY_LANGUAGE_ID = 1; // Language ID 1 is for properties, not a real language
 
     /**
      * Page behaviour property field (display=0) projected onto the single-page
@@ -1228,7 +1226,7 @@ class PageService extends BaseService
 
                 $entryTableProperties = $this->translationRepository->fetchTranslationsForSections(
                     $entryHolderSectionIds,
-                    self::PROPERTY_LANGUAGE_ID
+                    Language::INDEPENDENT_ID
                 );
 
                 foreach ($entryTableProperties as $holderId => $fields) {
@@ -1365,7 +1363,7 @@ class PageService extends BaseService
             // Fetch property translations (language ID 1) for fields of type 1
             $propertyTranslations = $this->translationRepository->fetchTranslationsForSections(
                 $sectionIds,
-                self::PROPERTY_LANGUAGE_ID
+                Language::INDEPENDENT_ID
             );
 
             // Apply translations to the sections recursively
@@ -1493,36 +1491,25 @@ class PageService extends BaseService
     }
 
     /**
-     * Determine which language ID to use for translations
-     * 
-     * @param int|null $language_id Explicitly provided language ID
-     * @return int The language ID to use
+     * Real language for translations: explicit, else the user's, else the CMS
+     * default, else the lowest real language id. Never the language-independent row.
      */
     public function determineLanguageId(?int $language_id = null): int
     {
-        // If language_id is explicitly provided, use it
-        if ($language_id !== null) {
+        if ($language_id !== null && $language_id !== Language::INDEPENDENT_ID) {
             return $language_id;
         }
 
-        // If user is logged in, use their preferred language
         $user = $this->userContextAwareService->getCurrentUser();
         $userLanguage = $user?->getLanguage();
         if ($userLanguage !== null) {
-            return (int) $userLanguage->getId();
+            $id = (int) $userLanguage->getId();
+            if ($id !== Language::INDEPENDENT_ID) {
+                return $id;
+            }
         }
 
-        // Otherwise use default language from CMS preferences
-        try {
-            return (int) $this->cache
-                ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
-                ->getItem("cms_preferences_default_language_id", fn() => $this->cmsPreferenceService->getDefaultLanguageId());
-        } catch (\Exception $e) {
-            // If there's an error getting the default language, use fallback
-        }
-
-        // Fallback to language ID 2 if no default language is configured
-        return 2;
+        return $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
     }
 
     /**
@@ -1541,7 +1528,7 @@ class PageService extends BaseService
      * @param int $languageId Language ID for data retrieval
      * @return list<array<string, mixed>> Processed sections that pass conditions
      */
-    private function processSectionsRecursively(array $sections, array $parentData = [], ?int $userId = null, int $languageId = 1, bool $rowTemplate = false, int $pageId = 0): array
+    private function processSectionsRecursively(array $sections, array $parentData = [], ?int $userId = null, int $languageId = Language::INDEPENDENT_ID, bool $rowTemplate = false, int $pageId = 0): array
     {
         $processedSections = [];
 
@@ -2625,7 +2612,7 @@ class PageService extends BaseService
      *                        sections of a record template only (the condition of any other section is left as it is)
      * @return array{passes: bool, debug?: array<string, mixed>} Result with 'passes' boolean and optional 'debug' info
      */
-    private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = 1, ?array $tokenData = null): array
+    private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = Language::INDEPENDENT_ID, ?array $tokenData = null): array
     {
         if (!isset($section['condition']) || empty($section['condition'])) {
             return ['passes' => true];
