@@ -46,6 +46,19 @@
                                     "additionalProperties": false
                                 }
                             },
+                            "jsonLogicOperations": {
+                                "type": "array",
+                                "description": "The JSON Logic operations the plugin declares (`<namespace>.<operation>`). The web condition builder lists them as functions (C16). The host registers a declared operation only when the plugin ships its implementation.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": { "type": "string" },
+                                        "description": { "type": "string" }
+                                    },
+                                    "required": ["name"],
+                                    "additionalProperties": false
+                                }
+                            },
                             "compatibility": {
                                 "type": "object",
                                 "description": "Echo of the plugin manifest compatibility ranges the host/manager preflight consumes. `mobile` is the mobile-renderer axis gated against the selected mobile-preview image's mobileRendererVersion.",

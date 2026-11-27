@@ -8,6 +8,7 @@
 namespace App\Service\Core;
 
 use App\Entity\Language;
+use App\Plugin\Logic\JsonLogicOperationRegistrar;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\VariableResolverService;
 use App\Service\Core\UserContextAwareService;
@@ -41,6 +42,7 @@ class ConditionService
         private readonly UserContextAwareService $userContextAwareService,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly ClockBoundaries $clockBoundaries,
+        private readonly JsonLogicOperationRegistrar $pluginOperations,
     ) {
     }
 
@@ -136,6 +138,12 @@ class ConditionService
             $fixedCondition = $this->fixOperatorParameters($condition);
 
             $variables = $this->getConditionVariables($userId, $languageId);
+
+            // Operations that enabled plugins declare (C16) are handed to the engine
+            // just before it runs a condition that uses one. Every condition of the
+            // product is evaluated here (sections, actions, reminders, jobs), and the
+            // clock boundaries below run after this call, so one registration covers all.
+            $this->pluginOperations->registerFor($fixedCondition);
 
             // Apply JsonLogic with the fixed condition and loaded variables
             $logicResult = \JWadhams\JsonLogic::apply($fixedCondition, $variables);

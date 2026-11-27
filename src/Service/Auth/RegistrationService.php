@@ -14,6 +14,8 @@ use App\Entity\Section;
 use App\Entity\User;
 use App\Entity\ValidationCode;
 use App\Entity\ValidationCodeGroup;
+use App\Plugin\Event\Domain\PluginDomainEventDispatcher;
+use App\Plugin\Event\Domain\UserCreatedEvent;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
@@ -56,6 +58,7 @@ class RegistrationService extends BaseService
         private readonly LookupService $lookupService,
         private readonly CacheService $cache,
         private readonly RegistrationCodeService $registrationCodeService,
+        private readonly PluginDomainEventDispatcher $pluginEvents,
     ) {
     }
 
@@ -184,6 +187,11 @@ class RegistrationService extends BaseService
             );
 
             $this->invalidateCaches();
+
+            // Plugin listeners hear about the new user once this transaction has
+            // committed, and never when it rolls back (C24). The account is still
+            // invited; validating the address later creates no second user.
+            $this->pluginEvents->dispatchAfterCommit(new UserCreatedEvent((int) $user->getId()));
 
             return is_numeric($validationResult['job_id']) ? (int) $validationResult['job_id'] : 0;
         });

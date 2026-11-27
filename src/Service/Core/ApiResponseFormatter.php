@@ -9,6 +9,7 @@ namespace App\Service\Core;
 
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
+use App\Plugin\RateLimit\PluginRateLimitedException;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -106,9 +107,10 @@ class ApiResponseFormatter
      * @param int $status The HTTP status code
      * @param mixed $data Additional error data
      * @param array<array-key, mixed>|null $validationErrors Optional validation errors
+     * @param array<string, mixed> $meta Extra members of `meta` next to `version` and `timestamp` (those two cannot be replaced), for example `retry_after` of a 429
      * @return JsonResponse The formatted response
      */
-    public function formatError(string $error, int $status = Response::HTTP_BAD_REQUEST, $data = null, ?array $validationErrors = null): JsonResponse
+    public function formatError(string $error, int $status = Response::HTTP_BAD_REQUEST, $data = null, ?array $validationErrors = null, array $meta = []): JsonResponse
     {
         $isLoggedIn = $this->security->getUser() !== null;
         
@@ -120,7 +122,7 @@ class ApiResponseFormatter
             'meta' => [
                 'version' => 'v1',
                 'timestamp' => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM)
-            ],
+            ] + $meta,
             'data' => $data
         ];
         
@@ -188,12 +190,36 @@ class ApiResponseFormatter
      */
     public function formatException(ServiceException $exception): JsonResponse
     {
+        if ($exception instanceof PluginRateLimitedException) {
+            return $this->formatRateLimited($exception);
+        }
+
         // The logged_in status will be determined by formatError using $this->security->getUser()
         return $this->formatError(
             $exception->getMessage(),
             $exception->getCode(),
             $exception->getData()
         );
+    }
+
+    /**
+     * The answer to a spent plugin rate limit (contract C15): `429`, the error
+     * `rate_limited`, and the seconds to wait in `meta.retry_after` and in the
+     * `Retry-After` header.
+     */
+    public function formatRateLimited(PluginRateLimitedException $exception): JsonResponse
+    {
+        $retryAfter = $exception->getRetryAfterSeconds();
+        $response = $this->formatError(
+            $exception->getMessage(),
+            Response::HTTP_TOO_MANY_REQUESTS,
+            null,
+            null,
+            ['retry_after' => $retryAfter],
+        );
+        $response->headers->set('Retry-After', (string) $retryAfter);
+
+        return $response;
     }
 
     public const GENERIC_UNEXPECTED_ERROR = 'Something went wrong, please try again.';
@@ -209,6 +235,10 @@ class ApiResponseFormatter
      */
     public function formatThrowable(\Throwable $exception, ?string $routeName = null): JsonResponse
     {
+        if ($exception instanceof PluginRateLimitedException) {
+            return $this->formatRateLimited($exception);
+        }
+
         if ($exception instanceof ServiceException) {
             $code = $exception->getCode();
             $status = ($code >= 100 && $code <= 599)

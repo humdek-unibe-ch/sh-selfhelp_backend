@@ -25,8 +25,9 @@ use Symfony\Component\HttpFoundation\Response;
  *   - Admin UI for live manifest viewing.
  *
  * The endpoint is public read-only: it returns only the fields the
- * frontend `PluginRuntime` consumes from `IPluginManifestEntry`. It
- * deliberately does NOT include:
+ * frontend `PluginRuntime` consumes from `IPluginManifestEntry`, plus the
+ * declared `jsonLogicOperations` (name, description) that the admin
+ * condition builder lists as functions. It deliberately does NOT include:
  *   - the raw `manifest` blob (would leak `security.signing.acceptedKeyIds`,
  *     `security.externalHosts`, `backend.composer.repository` URLs +
  *     credentials hints),
@@ -105,7 +106,8 @@ final class PluginManifestController extends AbstractController
                     'trustLevel' => $plugin->getTrustLevel(),
                     'enabled' => $plugin->isEnabled(),
                     'capabilities' => $capabilities,
-                    'featureFlags' => $featureFlagDefaults,
+                    // An empty map must stay a JSON object (`{}`, schema `type: object`), never `[]`.
+                    'featureFlags' => $featureFlagDefaults === [] ? new \stdClass() : $featureFlagDefaults,
                     'frontendRuntimeUrl' => $this->versionedAssetUrl($plugin->getFrontendRuntimeUrl(), $plugin),
                     'frontendRuntimeStylesheetUrl' => $this->versionedAssetUrl($plugin->getFrontendRuntimeStylesheetUrl(), $plugin),
                     'frontendRuntimeIntegrity' => $plugin->getFrontendRuntimeIntegrity(),
@@ -116,6 +118,8 @@ final class PluginManifestController extends AbstractController
                     // that opens it, so the frontend server guard can check
                     // it when the page is requested.
                     'adminPages' => $this->adminPages($manifestArray),
+                    // C16: the web condition builder lists these as functions.
+                    'jsonLogicOperations' => $this->jsonLogicOperations($manifestArray),
                 ];
                 // Only emit `compatibility` when non-empty: an empty PHP array
                 // would JSON-encode as `[]` and fail the schema's `type: object`.
@@ -132,7 +136,11 @@ final class PluginManifestController extends AbstractController
                     'plugins' => $plugins,
                     'safeMode' => $this->pluginAdminService->isSafeModeOn(),
                 ],
-                'responses/frontend/plugin_manifest'
+                'responses/frontend/plugin_manifest',
+                Response::HTTP_OK,
+                false,
+                // Skip the serializer round trip: it would decode the empty `featureFlags` object back to `[]`.
+                true,
             );
         } catch (\Throwable $e) {
             $status = $e->getCode();
@@ -182,6 +190,43 @@ final class PluginManifestController extends AbstractController
         }
 
         return $pages;
+    }
+
+    /**
+     * Public projection of `jsonLogicOperations` (C16): the name and the
+     * optional description of every operation the plugin declares, so the web
+     * condition builder can list them as functions. Only enabled plugins reach
+     * this method. A declared name is listed whether or not the plugin ships
+     * the implementation: the host registers the ones that have one.
+     *
+     * @param array<string,mixed> $manifestArray
+     * @return list<array{name: string, description?: string}>
+     */
+    private function jsonLogicOperations(array $manifestArray): array
+    {
+        $raw = $manifestArray['jsonLogicOperations'] ?? null;
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $operations = [];
+        foreach ($raw as $operation) {
+            if (!is_array($operation)) {
+                continue;
+            }
+            $name = $operation['name'] ?? null;
+            if (!is_string($name) || $name === '') {
+                continue;
+            }
+            $item = ['name' => $name];
+            $description = $operation['description'] ?? null;
+            if (is_string($description) && $description !== '') {
+                $item['description'] = $description;
+            }
+            $operations[] = $item;
+        }
+
+        return $operations;
     }
 
     private function versionedAssetUrl(?string $url, \App\Entity\Plugin\Plugin $plugin): ?string

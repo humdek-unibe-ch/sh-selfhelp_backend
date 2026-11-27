@@ -1,0 +1,37 @@
+# Test-only wiring of the users part of the plugin contracts (loaded only when
+# APP_ENV=test): managed users and writes for them (C20), plugin rate limits
+# (C15), plugin JSON Logic operations (C16).
+#
+# Nothing in the host injects the three interfaces yet (a plugin does), so the
+# compiled container drops them unless they are public; tests fetch them by id.
+# The aliases name the implementations; config/services.yaml registers those.
+services:
+    App\Plugin\Users\PluginUserScopeInterface:
+        alias: App\Plugin\Users\PluginUserScope
+        public: true
+
+    App\Plugin\Users\PluginRecordWriterInterface:
+        alias: App\Plugin\Users\PluginRecordWriter
+        public: true
+
+    App\Plugin\RateLimit\PluginRateLimiterInterface:
+        alias: App\Plugin\RateLimit\PluginRateLimiter
+        public: true
+
+    # C16: the QA operations of the QA users plugin. autoconfigure applies the
+    # `selfhelp.plugin.json_logic_operation` tag (declared on the interface), so they
+    # are collected into the real JsonLogicOperationRegistrar. Whether the engine
+    # knows one depends on an enabled plugin's manifest declaring it.
+    App\Tests\Support\Plugin\QaDoubleJsonLogicOperation:
+        autowire: true
+        autoconfigure: true
+
+    App\Tests\Support\Plugin\QaFailingJsonLogicOperation:
+        autowire: true
+        autoconfigure: true
+
+    # C15: the controller of the QA route in config/routes/test/plugin_users_routes.yaml.
+    App\Tests\Support\Plugin\QaRateLimitedController:
+        autowire: true
+        autoconfigure: true
+        public: true

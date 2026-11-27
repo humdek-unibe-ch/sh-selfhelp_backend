@@ -9,6 +9,7 @@ namespace App\EventListener;
 
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
+use App\Plugin\RateLimit\PluginRateLimitedException;
 use App\Service\Core\ApiRequestLoggerService;
 use App\Service\Core\ApiResponseFormatter;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -70,6 +71,13 @@ class ApiExceptionListener
                 Response::HTTP_BAD_REQUEST
             );
             $event->setResponse($response);
+            return;
+        }
+
+        // A spent plugin rate limit (C15): 429 `rate_limited` with `meta.retry_after` and
+        // the `Retry-After` header. Before the generic service exceptions it extends.
+        if ($exception instanceof PluginRateLimitedException) {
+            $event->setResponse($this->apiResponseFormatter->formatRateLimited($exception));
             return;
         }
 

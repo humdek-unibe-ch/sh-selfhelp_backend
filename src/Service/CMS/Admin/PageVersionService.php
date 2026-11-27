@@ -11,6 +11,8 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Page;
 use App\Entity\PageVersion;
 use App\Entity\User;
+use App\Plugin\Event\Domain\PagePublishedEvent;
+use App\Plugin\Event\Domain\PluginDomainEventDispatcher;
 use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\PageVersionRepository;
 use App\Repository\SectionRepository;
@@ -63,6 +65,7 @@ class PageVersionService extends BaseService
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly ChangeNoticeService $notices,
+        private readonly PluginDomainEventDispatcher $pluginEvents,
     ) {
     }
 
@@ -199,6 +202,13 @@ class PageVersionService extends BaseService
 
             $this->entityManager->commit();
             $this->invalidatePublishedSettingsCaches($pageId);
+
+            // Plugin listeners hear about the published page once it is committed
+            // and the caches are fresh, never when a surrounding transaction rolls
+            // back (C24). This is the only door that publishes a version, so the
+            // dispatch is not repeated in createAndPublishVersion(); unpublishing
+            // sends nothing.
+            $this->pluginEvents->dispatchAfterCommit(new PagePublishedEvent($pageId, $version->getVersionNumber()));
 
             return $version;
         } catch (\Exception $e) {

@@ -83,6 +83,7 @@ final class LookupService
     public const DATA_REVISION_SOURCES_JOB = 'job';
     public const DATA_REVISION_SOURCES_IMPORT = 'import';
     public const DATA_REVISION_SOURCES_SYSTEM = 'system';
+    public const DATA_REVISION_SOURCES_PLUGIN = 'plugin';
 
     // actionScheduleTypes
     public const ACTION_SCHEDULE_TYPES_IMMEDIATELY = 'immediately';

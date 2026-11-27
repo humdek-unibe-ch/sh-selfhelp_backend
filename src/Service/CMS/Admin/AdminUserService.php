@@ -26,6 +26,9 @@ use App\Exception\ServiceException;
 use App\Service\Auth\JWTService;
 use App\Service\Core\UserDataCleanerService;
 use App\Service\Mercure\MercureTopicResolver;
+use App\Plugin\Event\Domain\PluginDomainEventDispatcher;
+use App\Plugin\Event\Domain\UserCreatedEvent;
+use App\Plugin\Event\Domain\UserDeletedEvent;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Psr\Log\LoggerInterface;
@@ -92,6 +95,7 @@ class AdminUserService extends BaseService
         private readonly MercureTopicResolver $mercureTopics,
         private readonly LoggerInterface $logger,
         private readonly UserDataCleanerService $userDataCleaner,
+        private readonly PluginDomainEventDispatcher $pluginEvents,
     ) {
     }
 
@@ -837,6 +841,11 @@ class AdminUserService extends BaseService
             // Invalidate caches
             $this->invalidateUserCaches((int) $user->getId());
 
+            // Plugin listeners hear about the new user once this transaction has
+            // committed, and never when it rolls back (C24). Single creates, bulk
+            // creates and the CSV import all pass through here.
+            $this->pluginEvents->dispatchAfterCommit(new UserCreatedEvent((int) $user->getId()));
+
             return [
                 'user' => $result,
                 'validation' => $validationResult,
@@ -968,6 +977,9 @@ class AdminUserService extends BaseService
         $this->userDataCleaner->finishAfterCommit($userId, $outcome['cleanup']);
         $this->invalidateUserCaches($userId);
         $this->invalidateUserGroupCaches($userId, $outcome['groupIds']);
+
+        // The user and their data are gone for good: plugin listeners may clean up (C24).
+        $this->pluginEvents->dispatchAfterCommit(new UserDeletedEvent($userId));
 
         return true;
     }
