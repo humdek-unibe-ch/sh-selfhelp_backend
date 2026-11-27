@@ -47,6 +47,7 @@
               }
             },
             "description": { "type": "string", "description": "Job description" },
+            "record_ref": { "type": ["string", "null"], "description": "Version reference of the record that triggered the job (record:<id>@v<n>), null when none" },
             "date_create": { "type": "string", "description": "Date when job was created (UTC)" },
             "date_to_be_executed": { "type": "string", "description": "Date when job should be executed (UTC)" },
             "date_executed": { "type": ["string", "null"], "description": "Date when job was actually executed (UTC)" },

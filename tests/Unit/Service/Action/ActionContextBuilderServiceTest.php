@@ -41,6 +41,25 @@ final class ActionContextBuilderServiceTest extends TestCase
         self::assertSame('finished', $context->triggerType);
         self::assertSame(42, $context->userId);
         self::assertSame('by_user', $context->transactionBy);
+        self::assertNull($context->recordRef);
+    }
+
+    public function testBuildPassesRecordRefThrough(): void
+    {
+        $dataRow = $this->createStub(DataRow::class);
+        $dataRow->method('getId')->willReturn(9);
+
+        $context = (new ActionContextBuilderService())->build(
+            $this->createStub(DataTable::class),
+            $dataRow,
+            [],
+            'finished',
+            1,
+            'by_user',
+            'record:9@v2',
+        );
+
+        self::assertSame('record:9@v2', $context->recordRef);
     }
 
     public function testBuildKeepsNullUserIdInNormalizedValues(): void

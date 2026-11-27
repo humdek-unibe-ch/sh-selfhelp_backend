@@ -21,6 +21,8 @@ class ActionContextBuilderService
     /**
      * @param array<string, mixed> $submittedValues
      *   The submitted or extracted values associated with the trigger event.
+     * @param string|null $recordRef
+     *   Which version of the record triggered this (`record:<id>@v<n>`, C26).
      *
      * @return ActionTriggerContext
      *   The normalized action trigger context used by the orchestrator.
@@ -31,7 +33,8 @@ class ActionContextBuilderService
         array $submittedValues,
         string $triggerType,
         ?int $userId,
-        string $transactionBy
+        string $transactionBy,
+        ?string $recordRef = null,
     ): ActionTriggerContext {
         $normalizedValues = $submittedValues;
         $normalizedValues['record_id'] = $dataRow->getId();
@@ -44,7 +47,8 @@ class ActionContextBuilderService
             $normalizedValues,
             $triggerType,
             $userId,
-            $transactionBy
+            $transactionBy,
+            $recordRef,
         );
     }
 }
