@@ -448,6 +448,7 @@ class AdminAssetService extends BaseService
     private function removeAssets(array $assets): void
     {
         $removed = [];
+        $revokedRoleIds = [];
 
         $this->entityManager->beginTransaction();
         try {
@@ -468,7 +469,9 @@ class AdminAssetService extends BaseService
                 // Live sync: named before the grants go (they are what tells who manages the asset).
                 // The notice leaves after the response, so a failed delete costs one extra refetch.
                 $this->notices->assetChanged((int) $asset->getId());
-                $this->accessService->releaseManagingRoles($asset);
+                foreach ($this->accessService->releaseManagingRoles($asset) as $roleId) {
+                    $revokedRoleIds[$roleId] = $roleId;
+                }
                 $this->entityManager->remove($asset);
             }
             $this->entityManager->flush();
@@ -478,6 +481,9 @@ class AdminAssetService extends BaseService
             $this->entityManager->rollback();
             throw $e;
         }
+
+        // Rights, access stamp and open clients of the roles that held a grant on an asset.
+        $this->accessService->invalidateRoles(array_values($revokedRoleIds));
 
         foreach ($removed as $id => $uuid) {
             $this->storage->delete($uuid);

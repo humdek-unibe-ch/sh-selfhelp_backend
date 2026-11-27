@@ -20,6 +20,7 @@ use App\Service\Cache\Core\CacheService;
 use App\Service\Security\CallerHoldingsService;
 use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Security\ResourceGrantService;
 use App\Service\Sync\ChangeNoticeService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -41,6 +42,7 @@ class AdminGroupService extends BaseService
         private readonly CreatorGrantService $creatorGrants,
         private readonly CallerHoldingsService $callerHoldings,
         private readonly ChangeNoticeService $notices,
+        private readonly ResourceGrantService $resourceGrants,
     ) {
     }
 
@@ -364,7 +366,15 @@ class AdminGroupService extends BaseService
             $this->entityManager->remove($group);
             $this->entityManager->flush();
 
+            // The grant rows have no foreign key to the group (F280): they go with it.
+            $revokedRoleIds = $this->resourceGrants->revokeAll(LookupService::RESOURCE_TYPES_GROUP, $groupId);
+
             $this->entityManager->commit();
+
+            // The roles that held a grant on the group: their rights, access stamp and open clients.
+            foreach ($revokedRoleIds as $roleId) {
+                $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
+            }
 
             // Invalidate entity-scoped cache for this specific group
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_GROUP, $groupId);

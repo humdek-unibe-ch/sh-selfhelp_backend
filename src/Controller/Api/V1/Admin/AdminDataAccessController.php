@@ -52,12 +52,14 @@ class AdminDataAccessController extends AbstractController
 
     /**
      * The resources of one plugin resource type (for example every survey),
-     * contributed by the plugin through DataAccessResourcesEvent.
+     * contributed by the plugin through DataAccessResourcesEvent. A caller who
+     * is not a superuser sees only the items they hold the view grant on, each
+     * with `can_assign` (contract C9, F232).
      */
     public function getPluginResources(string $typeCode): JsonResponse
     {
         return $this->responseFormatter->formatSuccess(
-            $this->pluginResourceTypes->listResources($typeCode),
+            $this->pluginResourceTypes->listResources($typeCode, $this->requireCallerId()),
             'responses/admin/data_access/plugin_resources'
         );
     }

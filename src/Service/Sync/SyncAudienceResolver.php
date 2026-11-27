@@ -41,7 +41,7 @@ final class SyncAudienceResolver
      * Roles with a grant on the resource, and the superuser roles: the people
      * who edit it.
      *
-     * @param string $resourceType a `LookupService::RESOURCE_TYPES_*` code
+     * @param string $resourceType a `LookupService::RESOURCE_TYPES_*` code, or the code of a registered plugin resource type
      * @return list<string>
      */
     public function editorTopics(string $resourceType, int $resourceId): array

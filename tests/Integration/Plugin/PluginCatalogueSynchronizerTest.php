@@ -10,7 +10,10 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Plugin;
 
 use App\Entity\Plugin\Plugin;
+use App\Entity\Plugin\PluginOperation;
+use App\Plugin\Lifecycle\PluginCatalogueOwnership;
 use App\Plugin\Lifecycle\PluginCatalogueSynchronizer;
+use App\Plugin\Lifecycle\PluginOperationRecorder;
 use App\Plugin\Lifecycle\PluginPurger;
 use App\Plugin\Manifest\PluginManifest;
 use App\Service\Core\LookupService;
@@ -20,6 +23,16 @@ use Doctrine\DBAL\Connection;
 /**
  * Rule 7.8 / F112: the installer writes a plugin's catalogue rows from
  * its manifest, tagged with the plugin id, and purge removes them.
+ *
+ * @phpstan-type CatalogueManifest array{
+ *     id: string,
+ *     styleGroups: list<array<string,mixed>>,
+ *     fieldTypes: list<array<string,mixed>>,
+ *     fields: list<array<string,mixed>>,
+ *     styles: list<array<string,mixed>>,
+ *     permissions: list<array<string,mixed>>,
+ *     lookups: array{extends: list<array{typeCode: string, ownership: string, entries: list<array<string,string>>}>}
+ * }
  */
 final class PluginCatalogueSynchronizerTest extends QaKernelTestCase
 {
@@ -176,21 +189,173 @@ final class PluginCatalogueSynchronizerTest extends QaKernelTestCase
         }
     }
 
+    /**
+     * F248: uninstall keeps the catalogue rows (the database clears `id_plugins`); installing the
+     * plugin again takes the same rows back, so section values, role permissions and resource
+     * grants that point at their ids still work.
+     */
+    public function testUninstallAndInstallAgainKeepTheSameCatalogueRowsAndGrants(): void
+    {
+        $manifest = $this->resourceManifest();
+        $this->synchronizer->sync($this->plugin, $manifest);
+
+        $tables = ['styles' => 'qa-catalogue-style', 'fields' => 'qa_catalogue_field', 'permissions' => 'qa.catalogue.manage'];
+        $ids = [];
+        foreach ($tables as $table => $name) {
+            $ids[$table] = $this->idOf($table, $name);
+            self::assertNotNull($ids[$table]);
+        }
+        $lookupId = $this->resourceTypeLookupId();
+        $roleId = $this->roleHoldingTheCatalogueRows($ids['permissions'] ?? 0, $lookupId);
+
+        $this->uninstall();
+
+        foreach ($tables as $table => $name) {
+            self::assertSame($ids[$table], $this->idOf($table, $name), $table . ' row stays after uninstall');
+            self::assertNull($this->owner($table, $name), $table . ' row has no owner after uninstall');
+        }
+        self::assertTrue($this->roleHoldsTheCatalogueRows($roleId, $lookupId), 'role permission and grant stay after uninstall');
+
+        $reinstalled = new Plugin(self::PLUGIN_ID, 'QA catalogue plugin', '1.0.0', '0.2.0');
+        $this->em->persist($reinstalled);
+        $this->em->flush();
+        $result = $this->synchronizer->sync($reinstalled, $manifest);
+
+        self::assertGreaterThan(0, $result['reclaimed'] ?? 0, 'the rows the plugin owned are given back');
+        foreach ($tables as $table => $name) {
+            self::assertSame($ids[$table], $this->idOf($table, $name), $table . ' keeps its id after install');
+            self::assertSame($reinstalled->getId(), $this->owner($table, $name), $table . ' belongs to the new plugin row again');
+        }
+        self::assertSame($lookupId, $this->resourceTypeLookupId(), 'the resource type keeps its id');
+        self::assertSame($reinstalled->getId(), $this->owner('lookups', 'qa_catalogue_item', 'lookup_code'), 'the resource type is the plugin\'s again');
+        self::assertTrue($this->roleHoldsTheCatalogueRows($roleId, $lookupId), 'role permission and grant survive install');
+    }
+
+    public function testARowAnotherPluginTookInTheMeantimeStaysRefused(): void
+    {
+        $manifest = $this->resourceManifest();
+        $this->synchronizer->sync($this->plugin, $manifest);
+        $this->uninstall();
+
+        $other = new Plugin('qa-other-plugin', 'QA other plugin', '1.0.0', '0.2.0');
+        $this->em->persist($other);
+        $this->em->flush();
+        $this->connection->update('styles', ['id_plugins' => $other->getId()], ['name' => 'qa-catalogue-style']);
+
+        $reinstalled = new Plugin(self::PLUGIN_ID, 'QA catalogue plugin', '1.0.0', '0.2.0');
+        $this->em->persist($reinstalled);
+        $this->em->flush();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('style "qa-catalogue-style", which already exists and belongs to another plugin');
+        $this->synchronizer->sync($reinstalled, $manifest);
+    }
+
+    public function testARowThePluginNeverOwnedStaysRefusedAfterAReinstall(): void
+    {
+        $manifest = $this->resourceManifest();
+        $this->synchronizer->sync($this->plugin, $manifest);
+        $this->uninstall();
+        // A style of core that the plugin's next release wants to take over.
+        $this->connection->insert('style_groups', ['name' => 'qa-catalogue-core-group', 'position' => 995]);
+        $groupId = $this->idOf('style_groups', 'qa-catalogue-core-group');
+        $this->connection->insert('styles', ['name' => 'qa-core-style', 'id_style_groups' => $groupId, 'can_have_children' => 0]);
+
+        $reinstalled = new Plugin(self::PLUGIN_ID, 'QA catalogue plugin', '1.1.0', '0.2.0');
+        $this->em->persist($reinstalled);
+        $this->em->flush();
+        $data = $this->resourceManifestData();
+        $data['styles'][] = ['name' => 'qa-core-style', 'description' => 'Not the plugin\'s', 'canHaveChildren' => false, 'group' => 'qa-catalogue-group'];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('style "qa-core-style", which already exists and belongs to core');
+        $this->synchronizer->sync($reinstalled, new PluginManifest($data));
+    }
+
+    /**
+     * What the uninstaller does to the catalogue: remember the plugin's rows in the uninstall
+     * operation, then remove the plugin row (the database sets `id_plugins` of its rows to NULL).
+     */
+    private function uninstall(): void
+    {
+        $recorder = $this->service(PluginOperationRecorder::class);
+        $operation = $recorder->start(self::PLUGIN_ID, PluginOperation::TYPE_UNINSTALL, Plugin::INSTALL_MODE_MANAGED, null, $this->plugin->getVersion());
+        $this->service(PluginCatalogueOwnership::class)->remember($operation, $this->plugin);
+        $recorder->succeed($operation, 'Uninstalled');
+
+        $this->em->remove($this->plugin);
+        $this->em->flush();
+    }
+
+    private function resourceTypeLookupId(): ?int
+    {
+        $value = $this->connection->fetchOne(
+            'SELECT id FROM lookups WHERE type_code = :type AND lookup_code = :code',
+            ['type' => LookupService::RESOURCE_TYPES, 'code' => 'qa_catalogue_item']
+        );
+
+        return is_numeric($value) ? (int) $value : null;
+    }
+
+    /**
+     * A role that holds the plugin permission and a grant on an item of the plugin's resource type.
+     */
+    private function roleHoldingTheCatalogueRows(int $permissionId, ?int $lookupId): int
+    {
+        $this->connection->insert('roles', ['name' => 'qa_catalogue_role', 'description' => 'QA role holding plugin rows']);
+        $roleId = (int) $this->connection->lastInsertId();
+        $this->connection->insert('rel_permissions_roles', ['id_permissions' => $permissionId, 'id_roles' => $roleId]);
+        $this->connection->insert('role_data_access', [
+            'id_roles' => $roleId,
+            'id_resource_types' => $lookupId,
+            'resource_id' => 5,
+            'crud_permissions' => 2,
+        ]);
+
+        return $roleId;
+    }
+
+    private function roleHoldsTheCatalogueRows(int $roleId, ?int $lookupId): bool
+    {
+        $permissions = $this->rowCount('SELECT COUNT(*) FROM rel_permissions_roles WHERE id_roles = :r', ['r' => $roleId]);
+        $grants = $this->rowCount(
+            'SELECT COUNT(*) FROM role_data_access WHERE id_roles = :r AND id_resource_types = :t AND resource_id = 5',
+            ['r' => $roleId, 't' => $lookupId]
+        );
+
+        return $permissions === 1 && $grants === 1;
+    }
+
+    private function resourceManifest(): PluginManifest
+    {
+        return new PluginManifest($this->resourceManifestData());
+    }
+
+    /**
+     * The catalogue manifest plus a resource type and a style that holds an item of it.
+     *
+     * @return CatalogueManifest
+     */
+    private function resourceManifestData(): array
+    {
+        $data = $this->manifestData();
+        $data['lookups']['extends'][] = [
+            'typeCode' => LookupService::RESOURCE_TYPES,
+            'ownership' => 'plugin_extendable',
+            'entries' => [['code' => 'qa_catalogue_item', 'value' => 'QA catalogue item']],
+        ];
+        $data['styles'][0]['resourceFields'] = ['qa_catalogue_field' => 'qa_catalogue_item'];
+
+        return $data;
+    }
+
     private function manifest(): PluginManifest
     {
         return new PluginManifest($this->manifestData());
     }
 
     /**
-     * @return array{
-     *     id: string,
-     *     styleGroups: list<array<string,mixed>>,
-     *     fieldTypes: list<array<string,mixed>>,
-     *     fields: list<array<string,mixed>>,
-     *     styles: list<array<string,mixed>>,
-     *     permissions: list<array<string,mixed>>,
-     *     lookups: array{extends: list<array{typeCode: string, ownership: string, entries: list<array<string,string>>}>}
-     * }
+     * @return CatalogueManifest
      */
     private function manifestData(): array
     {
@@ -230,9 +395,9 @@ final class PluginCatalogueSynchronizerTest extends QaKernelTestCase
         return (int) $value;
     }
 
-    private function owner(string $table, string $name): ?int
+    private function owner(string $table, string $name, string $nameColumn = 'name'): ?int
     {
-        $value = $this->connection->fetchOne(sprintf('SELECT id_plugins FROM %s WHERE name = :name', $table), ['name' => $name]);
+        $value = $this->connection->fetchOne(sprintf('SELECT id_plugins FROM %s WHERE %s = :name', $table, $nameColumn), ['name' => $name]);
         return is_numeric($value) ? (int) $value : null;
     }
 

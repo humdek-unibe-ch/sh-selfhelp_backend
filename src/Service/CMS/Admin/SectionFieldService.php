@@ -515,9 +515,13 @@ class SectionFieldService extends BaseService
      */
     public function updateSectionFields(Section $section, array $contentFields, array $propertyFields): void
     {
-        // F07: an editor may bind only tables their role can read, checked
-        // before anything is written.
-        $this->tableBindingGuard->assertPropertyFieldsBindable($propertyFields);
+        // F07: an editor may bind only tables their role can read, and (C8) only the
+        // plugin resources they hold the view grant on; checked before anything is written.
+        $this->tableBindingGuard->assertPropertyFieldsBindable(
+            $propertyFields,
+            (string) $section->getStyle()?->getName(),
+            $contentFields,
+        );
 
         // A list (entry-form-list, data-view) is checked against its table: a mistake is told to the
         // author now instead of showing as a broken list to the visitors.

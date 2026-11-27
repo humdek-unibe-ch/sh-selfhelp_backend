@@ -42,6 +42,13 @@ final class CallerHoldingsService implements ResetInterface
     /** @var array<int, Permission>|null */
     private ?array $permissionsById = null;
 
+    /**
+     * Permission name => row id of the plugin that owns it (permissions of core have no entry).
+     *
+     * @var array<string, int>
+     */
+    private array $pluginOwners = [];
+
     public function __construct(
         private readonly UserRepository $userRepository,
         private readonly UserPermissionService $userPermissionService,
@@ -62,6 +69,7 @@ final class CallerHoldingsService implements ResetInterface
         $this->byUser = [];
         $this->allPermissionNames = null;
         $this->permissionsById = null;
+        $this->pluginOwners = [];
     }
 
     public function isSuperuser(int $userId): bool
@@ -240,19 +248,31 @@ final class CallerHoldingsService implements ResetInterface
     }
 
     /**
-     * Implied read of a core admin permission (C2), or null.
+     * The `.read` permission another permission implies (rule 4.13), or null.
+     *
+     *   - Core: `admin.<area>.<action>` implies `admin.<area>.read` when that read exists (C2).
+     *   - Plugin: `<prefix>.<area>.<action>` implies `<prefix>.<area>.read` when that read
+     *     exists and the same plugin owns both rows. A name that only looks alike, owned by
+     *     core or by another plugin, implies nothing.
      */
     public function impliedReadOf(string $permissionName): ?string
     {
         $parts = explode('.', $permissionName);
-        if (count($parts) !== 3 || $parts[0] !== 'admin' || $parts[2] === 'read') {
+        if (count($parts) !== 3 || $parts[2] === 'read') {
             return null;
         }
 
         $readName = $parts[0] . '.' . $parts[1] . '.read';
-        $all = $this->allPermissionNameSet();
+        if ($parts[0] === 'admin') {
+            $all = $this->allPermissionNameSet();
 
-        return isset($all[$readName]) ? $readName : null;
+            return isset($all[$readName]) ? $readName : null;
+        }
+
+        $this->ensurePermissionMaps();
+        $owner = $this->pluginOwners[$permissionName] ?? null;
+
+        return $owner !== null && ($this->pluginOwners[$readName] ?? null) === $owner ? $readName : null;
     }
 
     public function findPermissionById(int $id): ?Permission
@@ -362,6 +382,7 @@ final class CallerHoldingsService implements ResetInterface
 
         $byId = [];
         $names = [];
+        $owners = [];
         foreach ($permissions as $permission) {
             $id = $permission->getId();
             if ($id === null) {
@@ -369,9 +390,14 @@ final class CallerHoldingsService implements ResetInterface
             }
             $byId[$id] = $permission;
             $names[$permission->getName()] = true;
+            $ownerId = $permission->getPlugin()?->getId();
+            if ($ownerId !== null) {
+                $owners[$permission->getName()] = $ownerId;
+            }
         }
 
         $this->permissionsById = $byId;
         $this->allPermissionNames = $names;
+        $this->pluginOwners = $owners;
     }
 }

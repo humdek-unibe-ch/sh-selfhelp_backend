@@ -33,6 +33,7 @@ use App\Service\Core\UserContextAwareService;
 use App\Service\Security\CallerHoldingsService;
 use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Security\ResourceGrantService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -72,6 +73,7 @@ class AdminPageService extends BaseService
         private readonly CmsAppService $cmsAppService,
         private readonly CreatorGrantService $creatorGrants,
         private readonly CallerHoldingsService $callerHoldings,
+        private readonly ResourceGrantService $resourceGrants,
     ) {
     }
 
@@ -691,6 +693,9 @@ class AdminPageService extends BaseService
             $this->entityManager->remove($page);
             $this->entityManager->flush();
 
+            // The grant rows have no foreign key to the page (F280): they go with it.
+            $revokedRoleIds = $this->resourceGrants->revokeAll(LookupService::RESOURCE_TYPES_PAGES, $pageIdForLog);
+
             if ($formerCmsApp !== null && $formerCmsApp->getId() !== null) {
                 $this->cmsAppService->onPageDeleted($formerCmsApp);
             }
@@ -707,6 +712,11 @@ class AdminPageService extends BaseService
             );
 
             $this->entityManager->commit();
+
+            // The roles that held a grant on the page: their rights, access stamp and open clients.
+            foreach ($revokedRoleIds as $roleId) {
+                $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
+            }
 
             // Invalidate entity-scoped cache for this specific page
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageIdForLog);

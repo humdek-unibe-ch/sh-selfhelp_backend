@@ -72,6 +72,7 @@ final class PluginUpdater
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
         private readonly PluginCacheInvalidator $cacheInvalidator,
+        private readonly PluginDependencyGuard $dependencyGuard,
     ) {
     }
 
@@ -126,6 +127,11 @@ final class PluginUpdater
                     ['compatibility' => $compat]
                 );
             }
+
+            // C21: the new version's required dependencies and conflicts.
+            $this->dependencyGuard->assertCanActivate($newManifest);
+            // ... and the enabled plugins that require this one must still be satisfied by the new version.
+            $this->dependencyGuard->assertUpdateKeepsDependents($pluginId, $newManifest->getVersion());
 
             $capabilities = $this->capabilityValidator->validate($newManifest, $resolved);
             $migrationScan = $this->migrationScanner->scan($newManifest);

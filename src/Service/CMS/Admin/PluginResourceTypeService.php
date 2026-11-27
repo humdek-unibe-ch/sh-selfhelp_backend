@@ -9,11 +9,11 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\Admin;
 
-use App\Entity\Lookup;
 use App\Plugin\Event\DataAccessResourcesEvent;
+use App\Plugin\Resource\RegisteredResourceTypes;
 use App\Service\Core\BaseService;
-use App\Service\Core\LookupService;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\Security\CallerHoldingsService;
+use App\Service\Security\DataAccessSecurityService;
 use Psr\EventDispatcher\EventDispatcherInterface;
 
 /**
@@ -23,12 +23,27 @@ use Psr\EventDispatcher\EventDispatcherInterface;
  * type as an entry of the `resourceTypes` lookup in its manifest (written by
  * the installer, tagged with the plugin) and lists its resources through
  * {@see DataAccessResourcesEvent}.
+ *
+ * The list of types is {@see RegisteredResourceTypes}: the one answer to "which
+ * resource types do enabled plugins register". This class adds nothing to it.
+ *
+ * The resource list is shaped for the caller (contract C9, F232): a
+ * non-superuser sees only the items they hold the view grant on, as with the
+ * pages list (rule 4.6d), and each item says whether the caller may hand it
+ * out (`can_assign`: they hold every bit of it, rule 4.6f).
  */
 class PluginResourceTypeService extends BaseService
 {
+    /** Every bit a grant can carry: create, read, update, delete. */
+    private const ALL_BITS = DataAccessSecurityService::PERMISSION_CREATE
+        | DataAccessSecurityService::PERMISSION_READ
+        | DataAccessSecurityService::PERMISSION_UPDATE
+        | DataAccessSecurityService::PERMISSION_DELETE;
+
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly RegisteredResourceTypes $registeredTypes,
+        private readonly CallerHoldingsService $callerHoldings,
     ) {
     }
 
@@ -37,50 +52,33 @@ class PluginResourceTypeService extends BaseService
      */
     public function listTypes(): array
     {
-        /** @var list<Lookup> $lookups */
-        $lookups = $this->entityManager->createQueryBuilder()
-            ->select('l', 'p')
-            ->from(Lookup::class, 'l')
-            ->innerJoin('l.plugin', 'p')
-            ->where('l.typeCode = :type')
-            ->andWhere('p.enabled = true')
-            ->setParameter('type', LookupService::RESOURCE_TYPES)
-            ->orderBy('l.lookupValue', 'ASC')
-            ->getQuery()
-            ->getResult();
-
-        $types = [];
-        foreach ($lookups as $lookup) {
-            $code = $lookup->getLookupCode();
-            $plugin = $lookup->getPlugin();
-            if ($code === null || $plugin === null) {
-                continue;
-            }
-            $types[] = [
-                'id' => (int) $lookup->getId(),
-                'code' => $code,
-                'label' => $lookup->getLookupValue() ?? $code,
-                'plugin_id' => $plugin->getPluginId(),
-            ];
-        }
-
-        return $types;
+        return $this->registeredTypes->all();
     }
 
     /**
-     * @return list<array{id: int, name: string, description: string|null}>
+     * @return list<array{id: int, name: string, description: string|null, can_assign: bool}>
      * @throws \App\Exception\ServiceException 404 when no enabled plugin declares the type
      */
-    public function listResources(string $typeCode): array
+    public function listResources(string $typeCode, int $callerId): array
     {
-        $declared = array_filter($this->listTypes(), static fn (array $type): bool => $type['code'] === $typeCode);
-        if ($declared === []) {
+        $typeId = $this->registeredTypes->lookupId($typeCode);
+        if ($typeId === null) {
             $this->throwNotFound('Unknown plugin resource type');
         }
 
         $event = new DataAccessResourcesEvent($typeCode);
         $this->eventDispatcher->dispatch($event);
 
-        return $event->getResources();
+        // The superuser holds every bit of everything (CallerHoldingsService::grantBits()).
+        $resources = [];
+        foreach ($event->getResources() as $resource) {
+            $held = $this->callerHoldings->grantBits($callerId, $typeId, $resource['id']);
+            if (($held & DataAccessSecurityService::PERMISSION_READ) === 0) {
+                continue;
+            }
+            $resources[] = $resource + ['can_assign' => ($held & self::ALL_BITS) === self::ALL_BITS];
+        }
+
+        return $resources;
     }
 }

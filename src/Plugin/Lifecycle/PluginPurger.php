@@ -83,6 +83,7 @@ final class PluginPurger
         private readonly EventDispatcherInterface $events,
         private readonly PluginCacheInvalidator $cacheInvalidator,
         private readonly MessageBusInterface $messageBus,
+        private readonly PluginDependencyGuard $dependencyGuard,
     ) {
     }
 
@@ -116,6 +117,9 @@ final class PluginPurger
             if (!$plugin instanceof Plugin) {
                 throw new ServiceException(sprintf('Plugin "%s" is not installed.', $pluginId), Response::HTTP_NOT_FOUND);
             }
+
+            // C21: an enabled plugin that requires this one blocks the purge.
+            $this->dependencyGuard->assertNoEnabledDependents($pluginId);
 
             $manifestData = $plugin->getManifestJson();
             // Validate owned tables up front (protected / unsafe names) so a
@@ -260,7 +264,10 @@ final class PluginPurger
             // lookups / api_routes is gone. Clear every cached list that
             // could still reference them so the admin shell, the page
             // editor, and the permission resolver stop returning stale
-            // entries without an operator having to flush Redis.
+            // entries without an operator having to flush Redis. The plugin's own
+            // cache categories (`cacheCategories`, C4) go first: after this the
+            // registry no longer knows them.
+            $this->cacheInvalidator->clearPluginCategories($pluginId, $manifestData);
             $this->cacheInvalidator->invalidateAllCaches();
             $this->bundlesWriter->regenerate();
             $this->lockFileWriter->removePlugin($pluginId, $operation->getInstallMode());

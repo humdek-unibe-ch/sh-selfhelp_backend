@@ -37,8 +37,38 @@ services:
         autoconfigure: true
         autowire: true
 
-    # H7: a plugin refusing a section field value that points at a resource
-    # the editor may not use, so SectionTableBindingTest drives the real event.
-    App\Tests\Support\Plugin\QaSectionFieldBindingSubscriber:
+    # The two services a plugin calls (contract C3 and C24). Nothing in the host injects
+    # them, so the compiled container drops them unless they are public; tests fetch them by id.
+    App\Plugin\Resource\PluginResourceServiceInterface:
+        alias: App\Plugin\Resource\PluginResourceService
+        public: true
+
+    App\Plugin\Event\Domain\PluginDomainEventDispatcher:
+        autowire: true
+        public: true
+
+    # C8: the public bind check. Only the section guard injects it today, so the compiled
+    # container inlines it; ResourceBindingGuardTest fetches it by id.
+    App\Plugin\Resource\ResourceBindingGuard:
+        autowire: true
+        public: true
+
+    # C24: a plugin listener that records every domain event it is handed, so
+    # PluginDomainEventDispatcherTest proves who gets which event and when.
+    App\Tests\Support\Plugin\QaDomainEventListener:
         autoconfigure: true
         autowire: true
+        public: true
+
+    # C24: a listener that always throws, to prove a failing plugin never breaks the write
+    # that raised the event, nor the other listeners.
+    App\Tests\Support\Plugin\QaThrowingDomainEventListener:
+        autoconfigure: true
+        autowire: true
+        public: true
+
+    # C6: QA style resolver for PluginStyleResolverTest (style qa-item-block of QaItemPluginFixture).
+    App\Tests\Support\Plugin\QaItemStyleResolver:
+        autoconfigure: true
+        autowire: true
+        public: true

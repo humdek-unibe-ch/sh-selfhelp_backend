@@ -75,6 +75,7 @@ final class PluginInstaller
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
         private readonly PluginCacheInvalidator $cacheInvalidator,
+        private readonly PluginDependencyGuard $dependencyGuard,
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
     }
@@ -104,6 +105,9 @@ final class PluginInstaller
                     ['compatibility' => $compatibility]
                 );
             }
+
+            // C21: required dependencies installed, enabled and in range; no enabled conflict.
+            $this->dependencyGuard->assertCanActivate($manifest);
 
             try {
                 $capabilities = $this->capabilityValidator->validate($manifest, $resolved);

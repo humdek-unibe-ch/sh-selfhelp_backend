@@ -7,6 +7,8 @@
 
 namespace App\Service\Cache\Core;
 
+use App\Plugin\Cache\PluginCacheCategories;
+use App\Plugin\Resource\RegisteredResourceTypes;
 use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Contracts\Cache\TagAwareCacheInterface;
 use Psr\Log\LoggerInterface;
@@ -121,10 +123,14 @@ class CacheService
     /**
      * @param TagAwareCacheInterface $cache Tag-aware cache interface for advanced cache operations
      * @param LoggerInterface|null $logger Optional logger for debugging and monitoring
+     * @param RegisteredResourceTypes|null $resourceTypes The types plugins register; without it no resource scope is allowed
+     * @param PluginCacheCategories|null $pluginCategories The categories plugins declare; without it there are none
      */
     public function __construct(
         private readonly TagAwareCacheInterface $cache,
-        private readonly ?LoggerInterface $logger = null
+        private readonly ?LoggerInterface $logger = null,
+        private readonly ?RegisteredResourceTypes $resourceTypes = null,
+        private readonly ?PluginCacheCategories $pluginCategories = null,
     ) {
     }
 
@@ -138,7 +144,9 @@ class CacheService
      * Uses immutable builder pattern - returns a new instance without modifying current one.
      * This allows for clean, chainable cache operations scoped to specific categories.
      * 
-     * @param string $category One of the CATEGORY_* constants (e.g., CATEGORY_USERS, CATEGORY_PAGES)
+     * @param string $category One of the CATEGORY_* constants (e.g., CATEGORY_USERS, CATEGORY_PAGES),
+     *                         or a plugin category `<plugin id>.<name>` that the plugin's manifest declares
+     *                         under `cacheCategories` (it then has the lifetime the manifest gives it)
      * @return self New service instance configured for the specified category
      * 
      * @example $cache->withCategory(ReworkedCacheService::CATEGORY_USERS)->getItem('user_123', $callback)
@@ -784,6 +792,87 @@ class CacheService
         return $this->entityScopes[$entityType] ?? null;
     }
 
+    /* =========================
+       Resource scope (plugin items, contract C4)
+       ========================= */
+
+    /** Prefix of the entity-scope name a plugin resource type gets (`res_<type>`). */
+    private const RESOURCE_SCOPE_PREFIX = 'res_';
+
+    /**
+     * Make cache entries depend on one item of a plugin resource type.
+     *
+     * Works like {@see withEntityScope()}: the key carries the item's own
+     * generation counter, so {@see invalidateResourceScope()} drops every entry
+     * that depends on the item and nothing else. Only types that an enabled
+     * plugin registers are accepted.
+     *
+     * @throws \InvalidArgumentException for an unregistered type or an id that is not positive
+     *
+     * @example $cache->withCategory('my-plugin.surveys')->withResourceScope('my_survey', $id)->getItem('definition', $load);
+     */
+    public function withResourceScope(string $type, int $id): self
+    {
+        $scope = $this->resourceScopeName($type, $id);
+        $clone = clone $this;
+        $clone->entityScopes[$scope] = $id;
+
+        return $clone;
+    }
+
+    /**
+     * Drop every cache entry that depends on the item (own counter, O(1)).
+     *
+     * @throws \InvalidArgumentException for an unregistered type or an id that is not positive
+     */
+    public function invalidateResourceScope(string $type, int $id): void
+    {
+        $scope = $this->resourceScopeName($type, $id);
+        $this->incr($this->entityScopeGenKey($scope, $id));
+
+        if ($this->logger) {
+            $this->logger->info('Resource scope invalidated', ['resource_type' => $type, 'resource_id' => $id]);
+        }
+    }
+
+    private function resourceScopeName(string $type, int $id): string
+    {
+        if ($this->resourceTypes === null || !$this->resourceTypes->isRegistered($type)) {
+            throw new \InvalidArgumentException(sprintf('"%s" is not a resource type of an enabled plugin.', $type));
+        }
+        if ($id <= 0) {
+            throw new \InvalidArgumentException("Resource id must be positive, got: {$id}");
+        }
+
+        return self::RESOURCE_SCOPE_PREFIX . $type;
+    }
+
+    /* =========================
+       Plugin categories (contract C4)
+       ========================= */
+
+    /**
+     * The cache categories that enabled plugins declare, named
+     * `<plugin id>.<name>`. They are valid for {@see withCategory()} and have the
+     * lifetime the plugin's manifest gives them.
+     *
+     * @return list<string>
+     */
+    public function pluginCategories(): array
+    {
+        return $this->pluginCategories?->names() ?? [];
+    }
+
+    /**
+     * Every category the statistics and the admin cache screen list: the core
+     * categories, then the plugin categories.
+     *
+     * @return list<string>
+     */
+    public function allCategories(): array
+    {
+        return array_merge(self::ALL_CATEGORIES, $this->pluginCategories());
+    }
 
     /* =========================
        TTL Configuration
@@ -800,6 +889,12 @@ class CacheService
      */
     public function getCategoryTTL(string $category): int
     {
+        // A plugin category lives as long as the plugin's manifest says.
+        $pluginLifetime = $this->pluginCategories?->lifetimeOf($category);
+        if ($pluginLifetime !== null) {
+            return $pluginLifetime;
+        }
+
         // Tweak per your needs
         return match ($category) {
             self::CATEGORY_LOOKUPS => 7200, // 2h

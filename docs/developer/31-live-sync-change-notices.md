@@ -34,8 +34,9 @@ A message carries names and ids only, never content. A client ignores tags it do
 | `table:<id>` | A record of a data table was saved, deleted, restored or changed by a quick action. |
 | `section:<id>` | A section was saved in the admin. |
 | `asset:<id>` | An asset changed. |
+| `res:<type>:<id>` | An item of a plugin resource type changed or was removed (`res:surveyjs_survey:7`). `<type>` is the code of a `resourceTypes` lookup entry that an **enabled** plugin registers: lowercase letters, digits and `_`, 2 to 64 characters, starting with a letter. `<id>` is a positive whole number. |
 
-`SyncTag::PATTERN` is the only allowed shape; the notifier drops anything else.
+`SyncTag::PATTERN` is the only allowed shape; the notifier drops anything else. `SyncTag::resource($type, $id)` builds a `res:` tag and refuses a malformed type or id; whether the type is registered is checked by `ChangeNoticeService::resourceChanged()` and `PluginResourceServiceInterface`, which every plugin item change goes through.
 
 ## Topics and audiences
 
@@ -55,6 +56,7 @@ Groups see, roles edit. `ChangeNoticeService` is the one place that decides who 
 | Global values saved | `global_values` | `public` |
 | Section saved in the admin | `section:<id>`, `page_draft:<page id>` (per page) | roles with a grant on the page; superuser roles |
 | Asset changed | `asset:<id>` | roles with a grant on the asset; superuser roles |
+| Plugin item changed (`resourceChanged($type, $id, $published)`) | `res:<type>:<id>` | roles with a grant on the item; superuser roles; the same roles of every page whose **draft** holds the item (a reference in a section field the plugin lists in `styles[].resourceFields`); with `$published`, also groups with `select` and `public` (open page) for every page whose **published** version holds it |
 
 A group or role change does not touch `users.acl_version` of its members. It raises `groups.acl_version` or `roles.acl_version` once and sends one message to the group or role topic. Per-user cache scopes are still cleared (that is a cache rule).
 
@@ -132,10 +134,19 @@ Acquire, release and take-over need `admin.page.update` and the update grant on 
 
 Every change of who holds the lock (acquire of a free lock, take-over, release, an ended lease noticed on access, deleting the page) sends `page_lock:<id>` to the roles with a grant on the page and the superuser role. A renewal by the holder sends nothing. Roles edit, so lock and draft notices go to roles, never to groups.
 
+## Plugin items: `res:` notices
+
+A plugin that keeps its own items (surveys, scripts, ...) registers a resource type in its manifest and calls the host after each change instead of choosing topics itself. `PluginResourceServiceInterface` (`App\Plugin\Resource`):
+
+- `changed($type, $id, $published)` after the plugin's own commit: clears the item's cache scope (`CacheService::withResourceScope()`) and calls `ChangeNoticeService::resourceChanged()`. Pass `true` for a change visitors can see, `false` for a draft-side change: no visitor hears about the latter.
+- `deleted($type, $id)` after the commit: sends the notice as a published change first (its audience is read from the grants), then removes every grant on the item, invalidates each affected role (`acl_version` and the `acl` notice, F250) and clears the cache scope.
+
+Which pages hold an item comes from `ResourceReadIndex` (`App\Service\Sync`): one cached item of the pages category, like `PageTableReadIndex`, invalidated at the same points (page published or draft change, section saved); a writer of action configs calls `ResourceReadIndex::invalidate()` as well. It lists, per resource type and id, the pages whose draft holds it, the pages whose published version holds it, and the actions whose job config holds it. A section holds an item through a style field the plugin lists in `styles[].resourceFields`; an action through `scheduledJobs[].resourceFields` of a job of that type (`plugin_config`). `PageResourceScanner` reads one page the way `PageTableScanner` reads tables.
+
 ## What does not update live
 
-Only data that goes through the generic data store (`DataService`) sends `table:` notices. **Data a plugin keeps outside the data store does not update live.** A plugin that needs it must keep its data in the data store, or accept that its screens update on the next fetch.
+Only data that goes through the generic data store (`DataService`) sends `table:` notices, and items that go through `PluginResourceServiceInterface` send `res:` notices. **Data a plugin keeps outside both does not update live.** A plugin that needs it must keep its data in the data store, register the item as a resource type, or accept that its screens update on the next fetch.
 
 ## Tests
 
-`MercureTestRecorder` records what would be sent; never poll. See `tests/Service/Sync/ChangeNotifierTest.php` (merge, flush once, rollback), `tests/Integration/Sync/SyncAudienceTest.php` (who gets what), `tests/Controller/Api/V1/Auth/AclStampHeaderTest.php`, `tests/Controller/Api/V1/Auth/AuthEventsControllerTest.php` and `tests/Service/CMS/Frontend/PageSyncBlockTest.php`; for the version and the lock `tests/Controller/Api/V1/Admin/PageDraftVersionTest.php`, `PageEditLockTest.php` (ClockMock, no sleeping) and `tests/Integration/Sync/PageDraftWriteRoutesTest.php`. `QaWebTestCase::jsonRequest()` adds the current `X-Page-Version` to a write to `/admin/pages/{id}/...`; pass `NO_PAGE_VERSION` to send none.
+`MercureTestRecorder` records what would be sent; never poll. See `tests/Service/Sync/ChangeNotifierTest.php` (merge, flush once, rollback), `tests/Integration/Sync/SyncAudienceTest.php` (who gets what), `tests/Integration/Sync/ResourceChangeNoticeTest.php` (plugin item notices and the item service), `tests/Controller/Api/V1/Auth/AclStampHeaderTest.php`, `tests/Controller/Api/V1/Auth/AuthEventsControllerTest.php` and `tests/Service/CMS/Frontend/PageSyncBlockTest.php`; for the version and the lock `tests/Controller/Api/V1/Admin/PageDraftVersionTest.php`, `PageEditLockTest.php` (ClockMock, no sleeping) and `tests/Integration/Sync/PageDraftWriteRoutesTest.php`. `QaWebTestCase::jsonRequest()` adds the current `X-Page-Version` to a write to `/admin/pages/{id}/...`; pass `NO_PAGE_VERSION` to send none.

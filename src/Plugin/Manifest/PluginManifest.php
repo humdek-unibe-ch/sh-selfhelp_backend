@@ -26,6 +26,9 @@ namespace App\Plugin\Manifest;
  */
 final class PluginManifest
 {
+    /** How long one run of a job may take when the manifest does not say (C22). */
+    public const DEFAULT_JOB_TIMEOUT_SECONDS = 120;
+
     /**
      * @param RawManifest $data
      */
@@ -430,6 +433,210 @@ final class PluginManifest
         /** @var array<int, array<string,mixed>> $list */
         $list = array_values($jobs);
         return $list;
+    }
+
+    /**
+     * Job types an action may plan: the `scheduledJobs` entries with
+     * `actionPlannable` set (C2, C12).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function getActionJobTypes(): array
+    {
+        $types = [];
+        foreach ($this->getScheduledJobs() as $job) {
+            if (($job['actionPlannable'] ?? false) === true) {
+                $types[] = $job;
+            }
+        }
+
+        return $types;
+    }
+
+    /**
+     * Seconds one run of the plugin's job type may take before the runner
+     * stops it (C22): `scheduledJobs[].timeoutSeconds`, 120 when not set.
+     */
+    public function getJobTimeoutSeconds(string $jobType): int
+    {
+        foreach ($this->getScheduledJobs() as $job) {
+            $timeout = $job['timeoutSeconds'] ?? null;
+            if (($job['type'] ?? null) === $jobType && is_int($timeout)) {
+                return $timeout;
+            }
+        }
+
+        return self::DEFAULT_JOB_TIMEOUT_SECONDS;
+    }
+
+    /**
+     * Resource fields of the plugin's styles (C2): style name => field name =>
+     * resource type code. Styles without `resourceFields` are left out.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public function getResourceFields(): array
+    {
+        $map = [];
+        foreach ($this->getStyles() as $style) {
+            $name = $style['name'] ?? null;
+            if (!is_string($name)) {
+                continue;
+            }
+            $fields = self::stringMap($style['resourceFields'] ?? null);
+            if ($fields !== []) {
+                $map[$name] = $fields;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Resource properties of the plugin's job types (C2): job type => config
+     * property => resource type code. Job types without `resourceFields` are
+     * left out.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public function getJobResourceFields(): array
+    {
+        $map = [];
+        foreach ($this->getScheduledJobs() as $job) {
+            $type = $job['type'] ?? null;
+            if (!is_string($type)) {
+                continue;
+            }
+            $fields = self::stringMap($job['resourceFields'] ?? null);
+            if ($fields !== []) {
+                $map[$type] = $fields;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Codes of the resource types this manifest registers: the entries of its
+     * `lookups.extends` block for the `resourceTypes` lookup type.
+     *
+     * @return list<string>
+     */
+    public function getResourceTypeCodes(): array
+    {
+        $codes = [];
+        foreach ($this->getLookupExtensions() as $extension) {
+            if (($extension['typeCode'] ?? null) !== 'resourceTypes') {
+                continue;
+            }
+            $entries = $extension['entries'] ?? [];
+            if (!is_array($entries)) {
+                continue;
+            }
+            foreach ($entries as $entry) {
+                $code = is_array($entry) ? ($entry['code'] ?? null) : null;
+                if (is_string($code) && $code !== '') {
+                    $codes[] = $code;
+                }
+            }
+        }
+
+        return $codes;
+    }
+
+    /**
+     * Cache categories the plugin owns (C2, C4); the category is
+     * `<plugin id>.<name>`.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function getCacheCategories(): array
+    {
+        return $this->listOrNull('cacheCategories') ?? [];
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function getSettings(): array
+    {
+        return $this->listOrNull('settings') ?? [];
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function getRateLimits(): array
+    {
+        return $this->listOrNull('rateLimits') ?? [];
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function getJsonLogicOperations(): array
+    {
+        return $this->listOrNull('jsonLogicOperations') ?? [];
+    }
+
+    /**
+     * Domain events the plugin's listeners ask for (C24): any of
+     * `record.saved`, `record.deleted`, `user.created`, `user.deleted`,
+     * `page.published`.
+     *
+     * @return list<string>
+     */
+    public function getListens(): array
+    {
+        return self::listensOf($this->data);
+    }
+
+    /**
+     * The `listens` of a decoded manifest; used where only the stored
+     * manifest array of an installed plugin is at hand.
+     *
+     * @param array<string, mixed> $manifest
+     * @return list<string>
+     */
+    public static function listensOf(array $manifest): array
+    {
+        $listens = $manifest['listens'] ?? [];
+        if (!is_array($listens)) {
+            return [];
+        }
+
+        $names = [];
+        foreach ($listens as $name) {
+            if (is_string($name) && $name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * Jobs the host keeps queued on a schedule (C25): `name`, `type`, `cron`
+     * and an optional `description`.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function getRecurringJobs(): array
+    {
+        return $this->listOrNull('recurringJobs') ?? [];
+    }
+
+    /**
+     * @return array<string, string> the string entries of a string-keyed map, or [] for anything else
+     */
+    private static function stringMap(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $map = [];
+        foreach ($value as $key => $entry) {
+            if (is_string($key) && is_string($entry)) {
+                $map[$key] = $entry;
+            }
+        }
+
+        return $map;
     }
 
     /** @return array<string, array<string>> */

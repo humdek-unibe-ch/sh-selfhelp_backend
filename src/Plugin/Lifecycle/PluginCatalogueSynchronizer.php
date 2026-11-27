@@ -26,7 +26,10 @@ use Doctrine\DBAL\Connection;
  *   - install / update → {@see sync()}, after the plugin's migrations
  *     and before {@see PluginApiRouteSynchronizer} (routes link to the
  *     permissions written here).
- *   - uninstall keeps the rows (sections keep their content);
+ *   - uninstall keeps the rows (sections keep their content) and
+ *     remembers which of them the plugin owned
+ *     ({@see PluginCatalogueOwnership}); the next install gets exactly
+ *     those rows back before it writes anything (F248);
  *     purge deletes every `id_plugins`-tagged row
  *     ({@see PluginPurger::deletePluginTaggedRows()}).
  *
@@ -52,6 +55,7 @@ final class PluginCatalogueSynchronizer
     public function __construct(
         private readonly Connection $connection,
         private readonly LookupPolicyRegistry $lookupPolicies,
+        private readonly PluginCatalogueOwnership $ownership,
     ) {
     }
 
@@ -69,7 +73,11 @@ final class PluginCatalogueSynchronizer
         $declared = $manifest->toArray();
 
         return $this->connection->transactional(function () use ($context, $manifest, $declared): array {
+            // F248: first give back the rows this plugin owned before its last uninstall.
+            $reclaimed = $this->ownership->reclaim($context->pluginId, $context->pluginRowId);
+
             return [
+                'reclaimed' => $reclaimed,
                 'style_groups' => $this->syncStyleGroups($context, $manifest->getStyleGroups()),
                 'field_types' => $this->syncFieldTypes($context, $manifest->getFieldTypes()),
                 'fields' => $this->syncFields($context, $manifest->getFields()),

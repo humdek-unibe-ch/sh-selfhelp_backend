@@ -45,7 +45,10 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * Plugin-owned tables stay in place and rows tagged with `id_plugins`
  * keep their FK NULL (ON DELETE SET NULL). Re-installing the plugin
  * reconnects the existing data via the manifest's
- * `dataAccess.ownedTables` declaration.
+ * `dataAccess.ownedTables` declaration, and gives the plugin its
+ * catalogue rows back (styles, fields, permissions, lookups, ...) with the
+ * same ids: {@see PluginCatalogueOwnership} writes down which rows were its
+ * own before the plugin row is deleted (F248).
  */
 final class PluginUninstaller
 {
@@ -63,6 +66,8 @@ final class PluginUninstaller
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
         private readonly PluginCacheInvalidator $cacheInvalidator,
+        private readonly PluginDependencyGuard $dependencyGuard,
+        private readonly PluginCatalogueOwnership $catalogueOwnership,
     ) {
     }
 
@@ -79,6 +84,9 @@ final class PluginUninstaller
             if (!$plugin instanceof Plugin) {
                 throw new ServiceException(sprintf('Plugin "%s" is not installed.', $pluginId), Response::HTTP_NOT_FOUND);
             }
+
+            // C21: an enabled plugin that requires this one blocks the uninstall.
+            $this->dependencyGuard->assertNoEnabledDependents($pluginId);
 
             $installMode = $this->installModeResolver->resolve();
             $operation = $this->recorder->start(
@@ -123,6 +131,12 @@ final class PluginUninstaller
 
             $this->recorder->markRunning($operation, 'Finalizing plugin uninstall');
             $pluginVersion = $plugin->getVersion();
+            $manifestAtUninstall = $plugin->getManifestJson();
+
+            // F248: the plugin row is about to go, and with it `id_plugins` of every
+            // catalogue row the plugin wrote. Remember which rows were its own, so
+            // a reinstall gets them back with the same ids.
+            $this->catalogueOwnership->remember($operation, $plugin);
 
             // Drop the plugin-owned `api_routes` rows BEFORE removing
             // the plugin entity. The `composer remove` step in the
@@ -159,6 +173,9 @@ final class PluginUninstaller
             // — otherwise admin sidebars, the page editor, and the
             // permission resolver keep serving the uninstalled
             // plugin's surface until Redis is flushed by hand.
+            // The plugin's own cache categories (`cacheCategories`, C4) first:
+            // after this the registry no longer knows them.
+            $this->cacheInvalidator->clearPluginCategories($pluginId, $manifestAtUninstall);
             $this->cacheInvalidator->invalidateAllCaches();
             $this->bundlesWriter->regenerate();
             $this->lockFileWriter->removePlugin($pluginId, $operation->getInstallMode());

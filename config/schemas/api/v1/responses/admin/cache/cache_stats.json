@@ -48,7 +48,7 @@
             "category_stats": {
               "type": "object",
               "patternProperties": {
-                "^[a-z_]+$": {
+                "^[a-z0-9_.-]+$": {
                   "type": "object",
                   "properties": {
                     "hits": {
@@ -82,14 +82,14 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^[a-z_]+$"
+            "pattern": "^[a-z0-9_.-]+$"
           },
           "description": "List of available cache categories"
         },
         "top_performing_categories": {
           "type": "object",
           "patternProperties": {
-            "^[a-z_]+$": {
+            "^[a-z0-9_.-]+$": {
               "type": "object",
               "properties": {
                 "hits": {

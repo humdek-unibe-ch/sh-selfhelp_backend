@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Service\Sync;
 
+use App\Plugin\Resource\RegisteredResourceTypes;
 use App\Service\Core\LookupService;
 use App\Service\Mercure\MercureTopicResolver;
 
@@ -31,6 +32,8 @@ final class ChangeNoticeService
         private readonly SyncAudienceResolver $audience,
         private readonly MercureTopicResolver $topics,
         private readonly PageTableReadIndex $tableReads,
+        private readonly ResourceReadIndex $resourceReads,
+        private readonly RegisteredResourceTypes $registeredTypes,
     ) {
     }
 
@@ -65,6 +68,7 @@ final class ChangeNoticeService
     public function pagePublishedChanged(int $pageId): void
     {
         $this->tableReads->invalidate();
+        $this->resourceReads->invalidate();
         $this->notifier->notify(
             array_merge(
                 $this->audience->pageViewerTopics($pageId),
@@ -78,6 +82,7 @@ final class ChangeNoticeService
     public function pageDraftChanged(int $pageId): void
     {
         $this->tableReads->invalidate();
+        $this->resourceReads->invalidate();
         $this->notifier->notify(
             $this->audience->editorTopics(LookupService::RESOURCE_TYPES_PAGES, $pageId),
             [SyncTag::pageDraft($pageId)],
@@ -93,6 +98,7 @@ final class ChangeNoticeService
     public function sectionSaved(int $sectionId, array $pageIds): void
     {
         $this->tableReads->invalidate();
+        $this->resourceReads->invalidate();
         // Per page, so an editor of one page never learns that another page's draft changed.
         foreach ($pageIds as $pageId) {
             $this->notifier->notify(
@@ -115,6 +121,41 @@ final class ChangeNoticeService
     public function tableChanged(int $tableId, ?int $ownerUserId): void
     {
         $this->notifier->notify($this->audience->tableTopics($tableId, $ownerUserId), [SyncTag::table($tableId)]);
+    }
+
+    /**
+     * An item of a plugin resource type was created, changed or removed (C5).
+     * The tag is `res:<type>:<id>`; the audience is
+     *
+     *   - the editors of the item (roles with a grant on it, and superuser roles),
+     *   - the editors of every page whose draft holds the item, and
+     *   - when `$published`, the viewers of every page whose published version
+     *     holds it (groups with `select`, and `public` for an open page).
+     *
+     * A change the visitors can see (published content, a deletion) passes
+     * `$published = true`; a draft-side change passes `false`, so no visitor
+     * hears about it. The notice never carries content (C1): clients reload
+     * what they show.
+     *
+     * @param string $type a registered resource type code of an enabled plugin
+     * @throws \InvalidArgumentException when no enabled plugin registers `$type` (a programming error)
+     */
+    public function resourceChanged(string $type, int $id, bool $published): void
+    {
+        $this->registeredTypes->assertRegistered($type);
+        $tag = SyncTag::resource($type, $id);
+
+        $topics = $this->audience->editorTopics($type, $id);
+        foreach ($this->resourceReads->draftPagesOf($type, $id) as $pageId) {
+            $topics = array_merge($topics, $this->audience->editorTopics(LookupService::RESOURCE_TYPES_PAGES, $pageId));
+        }
+        if ($published) {
+            foreach ($this->resourceReads->publishedPagesOf($type, $id) as $pageId) {
+                $topics = array_merge($topics, $this->audience->pageViewerTopics($pageId));
+            }
+        }
+
+        $this->notifier->notify(array_values(array_unique($topics)), [$tag]);
     }
 
     /** The navigation (menu) changed for everybody. */

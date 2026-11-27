@@ -763,8 +763,10 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * When removing an area's `.read`, also remove every other `admin.<area>.*`
-     * right currently on the role.
+     * When removing an area's `.read`, also remove every other right of the area
+     * the role holds, that is every permission whose implied read (rule 4.13) is
+     * the one being removed: `admin.<area>.*` for core, `<prefix>.<area>.*` of the
+     * same plugin for a plugin.
      *
      * @param list<int> $permissionIds
      * @return list<int>
@@ -776,22 +778,23 @@ class AdminRoleService extends BaseService
             $remove[$id] = true;
         }
 
-        $areasToClear = [];
+        $readsToClear = [];
         foreach ($permissionIds as $id) {
             $permission = $this->callerHoldings->findPermissionById($id);
             if (!$permission instanceof Permission) {
                 throw new ServiceException('Permission not found: ' . $id, Response::HTTP_NOT_FOUND);
             }
-            $parts = explode('.', $permission->getName());
-            if (count($parts) === 3 && $parts[0] === 'admin' && $parts[2] === 'read') {
-                $areasToClear[$parts[1]] = true;
+            $name = $permission->getName();
+            $parts = explode('.', $name);
+            if (count($parts) === 3 && $parts[2] === 'read') {
+                $readsToClear[$name] = true;
             }
         }
 
-        if ($areasToClear !== []) {
+        if ($readsToClear !== []) {
             foreach ($role->getPermissions() as $held) {
-                $parts = explode('.', $held->getName());
-                if (count($parts) === 3 && $parts[0] === 'admin' && isset($areasToClear[$parts[1]]) && $held->getId() !== null) {
+                $impliedRead = $this->callerHoldings->impliedReadOf($held->getName());
+                if ($impliedRead !== null && isset($readsToClear[$impliedRead]) && $held->getId() !== null) {
                     $remove[(int) $held->getId()] = true;
                 }
             }

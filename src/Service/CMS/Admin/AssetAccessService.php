@@ -19,6 +19,7 @@ use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Security\ResourceGrantService;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -50,6 +51,7 @@ class AssetAccessService extends BaseService
         private readonly UserRepository $userRepository,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
         private readonly LookupService $lookupService,
+        private readonly ResourceGrantService $resourceGrants,
     ) {
     }
 
@@ -306,19 +308,28 @@ class AssetAccessService extends BaseService
      * Drop every grant on an asset that is being deleted. This is clean-up,
      * not a change of any role's rights: nothing a role could do remains
      * afterwards, so rule 4.6f is not asked (the caller's delete right on the
-     * asset was checked before). Each removal is still logged and the roles'
-     * permission caches dropped.
+     * asset was checked before). Each removal is still logged
+     * ({@see ResourceGrantService::revokeAll()}). The caller drops the cached
+     * rights of the returned roles with {@see invalidateRoles()} once its
+     * transaction has committed.
+     *
+     * @return list<int> the roles that lost a grant
      */
-    public function releaseManagingRoles(Asset $asset): void
+    public function releaseManagingRoles(Asset $asset): array
     {
-        $callerId = $this->userId();
-        if ($callerId === null) {
-            $this->throwBadRequest('User not authenticated');
-        }
+        return $this->resourceGrants->revokeAll(LookupService::RESOURCE_TYPES_ASSET, (int) $asset->getId());
+    }
 
-        $rows = $this->roleDataAccessRepository->findBy(['idResourceTypes' => $this->resourceTypeId(), 'resourceId' => (int) $asset->getId()]);
-        foreach ($rows as $row) {
-            $this->dataAccess->deleteRolePermission($callerId, (int) $row->getRole()->getId(), (int) $row->getId(), false);
+    /**
+     * Drop the cached rights, the access stamp and the open clients' view of
+     * these roles (after the transaction that changed their grants committed).
+     *
+     * @param list<int> $roleIds
+     */
+    public function invalidateRoles(array $roleIds): void
+    {
+        foreach ($roleIds as $roleId) {
+            $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
         }
     }
 

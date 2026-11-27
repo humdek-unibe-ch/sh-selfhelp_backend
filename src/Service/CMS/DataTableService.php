@@ -24,6 +24,7 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Security\ResourceGrantService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -69,6 +70,7 @@ class DataTableService extends BaseService
         private readonly FormFieldKeyResolver $formFieldKeyResolver,
         private readonly DataRevisionErasureService $historyErasure,
         private readonly FormFileUploadService $formFileUploadService,
+        private readonly ResourceGrantService $resourceGrants,
     ) {
     }
 
@@ -353,7 +355,16 @@ class DataTableService extends BaseService
             // Doctrine will cascade delete all related rows, columns, and cells
             $this->entityManager->remove($dataTable);
             $this->entityManager->flush();
+
+            // The grant rows have no foreign key to the table (F280): they go with it.
+            $revokedRoleIds = $this->resourceGrants->revokeAll(LookupService::RESOURCE_TYPES_DATA_TABLE, (int) $deletedDataTableId);
+
             $this->entityManager->commit();
+
+            // The roles that held a grant on the table: their rights, access stamp and open clients.
+            foreach ($revokedRoleIds as $roleId) {
+                $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
+            }
 
             // A file cannot roll back, so it goes only once the data is gone for good.
             $this->formFileUploadService->deleteUnreferencedFiles($history->fileKeys);
