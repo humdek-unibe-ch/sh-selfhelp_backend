@@ -227,14 +227,15 @@ class NavigationExportImportService extends BaseService
         $importSettings = (bool) ($options['import_settings'] ?? false);
 
         $connection = $this->entityManager->getConnection();
-        $previousSavepoints = $connection->getNestTransactionsWithSavepoints();
-        $connection->setNestTransactionsWithSavepoints(true);
 
         $importedPages = [];
         $createdItems = 0;
         $skippedItems = 0;
         $importedMenus = [];
 
+        // The page and section services open their own transactions inside this one. Doctrine DBAL 4
+        // always backs a nested transaction with a savepoint (the old on/off switch is a deprecated no-op),
+        // so a failing menu import rolls back the pages it embedded.
         $this->entityManager->beginTransaction();
         try {
             $embeddedPages = $this->bundlePages($bundle);
@@ -299,8 +300,6 @@ class NavigationExportImportService extends BaseService
                 Response::HTTP_INTERNAL_SERVER_ERROR,
                 ['previous_exception' => $e->getMessage()],
             );
-        } finally {
-            $connection->setNestTransactionsWithSavepoints($previousSavepoints);
         }
 
         // Invalidate AFTER the commit. The nested createPage/addGroupAcl calls

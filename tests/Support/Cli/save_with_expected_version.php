@@ -24,6 +24,20 @@ use App\Service\CMS\DataRevision\RecordWriteContext;
 use App\Service\CMS\DataService;
 use App\Service\Core\LookupService;
 
+// Force the test environment BEFORE bootEnv (F266). PHPUnit only sets
+// $_SERVER['APP_ENV']=test, which proc_open children do not inherit; without
+// this, bootstrap loads .env.dev (dbname `test`) and Kernel('test') then
+// appends `_test{TOKEN}` → a non-existent `test_test…` database. Clearing
+// DATABASE_URL / Redis / Mercure lets .env.test.local apply (Dotenv does not
+// override vars already set). TEST_TOKEN is left alone so the dbname suffix matches.
+$_SERVER['APP_ENV'] = 'test';
+$_ENV['APP_ENV'] = 'test';
+putenv('APP_ENV=test');
+foreach (['DATABASE_URL', 'REDIS_URL', 'MERCURE_URL', 'MERCURE_PUBLIC_URL', 'MERCURE_JWT_SECRET', 'MAILER_DSN'] as $envKey) {
+    unset($_SERVER[$envKey], $_ENV[$envKey]);
+    putenv($envKey);
+}
+
 require dirname(__DIR__, 2) . '/bootstrap.php';
 
 /** @var list<string> $cliArgs */
@@ -32,8 +46,7 @@ $cliArgs = isset($_SERVER['argv']) && is_array($_SERVER['argv'])
     : [];
 [$table, $recordId, $expectedVersion, $field, $value] = array_map('strval', array_pad(array_slice($cliArgs, 1), 5, ''));
 
-$environment = $_SERVER['APP_ENV'] ?? 'test';
-$kernel = new Kernel(is_string($environment) ? $environment : 'test', filter_var($_SERVER['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN));
+$kernel = new Kernel('test', filter_var($_SERVER['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN));
 $kernel->boot();
 $container = $kernel->getContainer()->get('test.service_container');
 assert($container instanceof \Psr\Container\ContainerInterface);

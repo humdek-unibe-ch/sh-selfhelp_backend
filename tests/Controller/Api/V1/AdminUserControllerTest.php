@@ -436,6 +436,40 @@ class AdminUserControllerTest extends BaseControllerTest
     /**
      * @group user-management
      */
+    public function testUpdateUserLanguageIndependentIdIsRejected(): void
+    {
+        $created = $this->createTestUser('langindep');
+        $userId = $this->asInt($created['id']);
+        $before = $this->entityManager->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $before);
+        $previousLanguageId = $before->getLanguage()?->getId();
+
+        $this->client->request(
+            'PUT',
+            '/cms-api/v1/admin/users/' . $userId,
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
+                'CONTENT_TYPE' => 'application/json',
+            ],
+            (string) json_encode(['id_languages' => 1])
+        );
+
+        $response = $this->client->getResponse();
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $content = $this->decodeArray();
+        $this->assertStringContainsString('language-independent', $this->asString($content['error'] ?? ''));
+
+        $this->entityManager->clear();
+        $after = $this->entityManager->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $after);
+        $this->assertSame($previousLanguageId, $after->getLanguage()?->getId());
+    }
+
+    /**
+     * @group user-management
+     */
     public function testToggleUserBlockSuccess(): void
     {
         $created = $this->createTestUser('block');
@@ -722,9 +756,9 @@ class AdminUserControllerTest extends BaseControllerTest
     }
 
     /**
-     * The CMS protects "system" accounts (name in {admin, tpf}) from deletion.
+     * The CMS protects system accounts (`users.is_system`) from deletion.
      * The QA baseline contains no such account, so we promote a throwaway qa
-     * user to a protected name at the entity level (DAMA rolls the change back)
+     * user with the flag at the entity level (DAMA rolls the change back)
      * and assert the API refuses to delete it with 403.
      *
      * @group user-management
@@ -736,7 +770,7 @@ class AdminUserControllerTest extends BaseControllerTest
 
         $entity = $this->entityManager->getRepository(User::class)->find($userId);
         self::assertInstanceOf(User::class, $entity);
-        $entity->setName('admin'); // AdminUserService::SYSTEM_USERS guard trigger
+        $entity->setIsSystem(true);
         $this->entityManager->flush();
 
         $this->client->request(

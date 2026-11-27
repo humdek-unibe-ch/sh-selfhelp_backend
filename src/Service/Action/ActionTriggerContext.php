@@ -21,6 +21,8 @@ final class ActionTriggerContext
     /**
      * @param array<string, mixed> $submittedValues
      *   The normalized submitted/extracted values associated with the trigger.
+     * @param string|null $recordRef
+     *   Which version of the record triggered this (`record:<id>@v<n>`, C26); null when unknown.
      */
     public function __construct(
         public readonly DataTable $dataTable,
@@ -28,7 +30,8 @@ final class ActionTriggerContext
         public readonly array $submittedValues,
         public readonly string $triggerType,
         public readonly ?int $userId,
-        public readonly string $transactionBy
+        public readonly string $transactionBy,
+        public readonly ?string $recordRef = null,
     ) {
     }
 }

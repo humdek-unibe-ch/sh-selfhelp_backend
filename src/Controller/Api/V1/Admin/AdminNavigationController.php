@@ -8,6 +8,7 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Entity\Language;
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\AdminNavigationService;
@@ -58,7 +59,7 @@ class AdminNavigationController extends AbstractController
     public function previewMenu(string $menu_key, Request $request): JsonResponse
     {
         try {
-            $languageId = $request->query->getInt('language_id') ?: 1;
+            $languageId = $request->query->getInt('language_id') ?: Language::INDEPENDENT_ID;
 
             return $this->responseFormatter->formatSuccess(
                 $this->adminNavigationService->getMenuPreview($menu_key, $languageId),

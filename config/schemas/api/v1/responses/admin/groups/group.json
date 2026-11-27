@@ -30,12 +30,10 @@
         "properties": {
           "page_id": { "type": "integer", "description": "Page ID" },
           "page_keyword": { "type": "string", "description": "Page keyword" },
-          "acl_select": { "type": "boolean", "description": "Select permission" },
-          "acl_insert": { "type": "boolean", "description": "Insert permission" },
-          "acl_update": { "type": "boolean", "description": "Update permission" },
-          "acl_delete": { "type": "boolean", "description": "Delete permission" }
+          "page_url": { "type": ["string", "null"], "description": "Page URL" },
+          "acl_select": { "type": "boolean", "description": "Whether members may see this page" }
         },
-        "required": ["page_id", "page_keyword", "acl_select", "acl_insert", "acl_update", "acl_delete"],
+        "required": ["page_id", "page_keyword", "acl_select"],
         "additionalProperties": false
       }
     }
@@ -43,5 +41,3 @@
   "required": ["id", "name", "description", "requires_2fa", "add_to_new_pages", "users_count", "users", "acls"],
   "additionalProperties": false
 }
-
-

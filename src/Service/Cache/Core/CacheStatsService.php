@@ -8,6 +8,8 @@
 
 namespace App\Service\Cache\Core;
 
+use App\Plugin\Cache\PluginCacheCategories;
+use App\Plugin\Resource\RegisteredResourceTypes;
 use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Contracts\Cache\TagAwareCacheInterface;
 use Psr\Log\LoggerInterface;
@@ -30,9 +32,11 @@ class CacheStatsService extends CacheService
 
     public function __construct(
         private readonly TagAwareCacheInterface $cache,
-        ?LoggerInterface $logger = null
+        ?LoggerInterface $logger = null,
+        ?RegisteredResourceTypes $resourceTypes = null,
+        ?PluginCacheCategories $pluginCategories = null,
     ) {
-        parent::__construct($cache, $logger);
+        parent::__construct($cache, $logger, $resourceTypes, $pluginCategories);
     }
 
     /**
@@ -52,7 +56,7 @@ class CacheStatsService extends CacheService
 
         // Collect raw stats for all categories
         $categoryStats = [];
-        foreach (self::ALL_CATEGORIES as $cat) {
+        foreach ($this->allCategories() as $cat) {
             $rawStats = $this->readStatsBucket($cat);
             $categoryStats[$cat] = [
                 'hits' => $rawStats['hit'] ?? 0,
@@ -70,7 +74,7 @@ class CacheStatsService extends CacheService
                 'global_stats' => $globalStats,
                 'category_stats' => $categoryStats,
             ],
-            'cache_categories' => self::ALL_CATEGORIES,
+            'cache_categories' => $this->allCategories(),
             'timestamp' => date('c'),
         ];
     }
@@ -83,7 +87,7 @@ class CacheStatsService extends CacheService
     public function getRawCategoryStats(): array
     {
         $out = [];
-        foreach (self::ALL_CATEGORIES as $cat) {
+        foreach ($this->allCategories() as $cat) {
             $out[$cat] = $this->readStatsBucket($cat);
         }
         return $out;
@@ -114,7 +118,7 @@ class CacheStatsService extends CacheService
      */
     public function getCategoryStatistics(string $category): array
     {
-        if (!in_array($category, self::ALL_CATEGORIES)) {
+        if (!in_array($category, $this->allCategories(), true)) {
             throw new \InvalidArgumentException("Invalid cache category: {$category}");
         }
         
@@ -137,7 +141,7 @@ class CacheStatsService extends CacheService
      */
     public function resetStats(): void
     {
-        foreach (self::ALL_CATEGORIES as $category) {
+        foreach ($this->allCategories() as $category) {
             $this->resetCategoryStats($category);
         }
     }

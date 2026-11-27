@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-11-19.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 The application uses a database-driven routing system instead of traditional Symfony route configuration files. Routes are stored in the `api_routes` table and loaded during application bootstrap.
@@ -73,3 +73,20 @@ The `params` column defines expected request parameters and their properties:
 This specifies that:
 - The request should include a `keyword` parameter in the body, and it's required
 - The request should include a `page_access_type_id` parameter in the body, and it's required
+
+---
+
+### Generated files
+
+The route rows are the one home of the route rights (rule 1.5 of the workspace concepts). Two files are generated from them and committed:
+
+- [access/api-routes.json](access/api-routes.json): every core route (`id_plugins IS NULL`) with its methods, path, `is_public` flag and permissions, plus every core permission with its description. The frontend's route contract test reads it.
+- [permissions.md](permissions.md): the permission catalogue, one section per core permission with its routes and the admin screens that use it. The screens come from the frontend's generated `docs/reference/admin-screens.json`.
+
+After a migration that changes routes or permissions, regenerate both with the test database migrated:
+
+```bash
+php bin/console app:access:export --env=test
+```
+
+The command reads the frontend file from `SELFHELP_FRONTEND_DIR`, else the sibling checkout `../sh-selfhelp_frontend` (`--frontend-dir=<path>` overrides both). `--check` writes nothing and exits 1 when a file is stale, when the screens file is missing, or when a core permission guards no route and opens no screen. CI runs the same checks in `tests/Integration/Access/AccessCatalogueFreshnessTest.php` (group `security`, workflow `backend-tests`).

@@ -13,6 +13,10 @@ use App\Entity\DataCell;
 use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Exception\ServiceException;
+use App\Plugin\Event\Domain\PluginDomainEventDispatcher;
+use App\Plugin\Event\Domain\RecordDeletedEvent;
+use App\Plugin\Event\Domain\RecordSavedEvent;
+use App\Plugin\Resource\RegisteredResourceTypes;
 use App\Repository\DataTableRepository;
 use App\Service\Action\ActionContextBuilderService;
 use App\Service\Action\ActionOrchestratorService;
@@ -26,12 +30,15 @@ use App\Service\Core\UserContextAwareService;
 use App\Repository\SectionRepository;
 use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\CMS\DataQuery\DataQueryException;
+use App\Service\CMS\DataRevision\ContentRef;
 use App\Service\CMS\DataRevision\DataRestoreService;
 use App\Service\CMS\DataRevision\DataRevisionService;
 use App\Service\CMS\DataRevision\LockedRecord;
 use App\Service\CMS\DataRevision\RecordWriteContext;
 use App\Service\CMS\DataRevision\RestorePlan;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Sync\ChangeNoticeService;
+use App\Service\Versioning\VersionRef;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -69,6 +76,9 @@ class DataService extends BaseService
         private readonly DataRevisionService $dataRevisionService,
         private readonly DataRestoreService $dataRestoreService,
         private readonly DataTableService $dataTableService,
+        private readonly ChangeNoticeService $notices,
+        private readonly PluginDomainEventDispatcher $domainEvents,
+        private readonly RegisteredResourceTypes $resourceTypes,
     ) {
     }
 
@@ -86,11 +96,14 @@ class DataService extends BaseService
      * @param RecordWriteContext|null $context How the write was reached (history source) and the
      *   record version the caller based an update on. A stale version is refused with 409 before
      *   anything is written. Null: a person's form save when `$transactionBy` is `by_user`, else the platform.
+     *   Its content reference (C19) is stored on the record and on the revision.
      * @return int|false The record ID on success or false on failure
      * @throws ServiceException
+     * @throws \InvalidArgumentException when the context names a `res:` content reference of a type no enabled plugin registered (nothing is written)
      *
      * After the database transaction commits successfully, this method triggers the
-     * Symfony action runtime so jobs are scheduled from a stable post-commit state.
+     * Symfony action runtime so jobs are scheduled from a stable post-commit state, and
+     * tells the plugins that listen for `record.saved` (C24).
      */
     public function saveData(
         string $tableName,
@@ -102,6 +115,7 @@ class DataService extends BaseService
         ?RecordWriteContext $context = null
     ): int|false {
         $context ??= RecordWriteContext::forTransactionBy($transactionBy);
+        $this->assertContentRefAllowed($context);
         if ($context->interactive) {
             // A person's request is untrusted: it can neither set row metadata nor aim at a record by anything but its number.
             $this->assertInteractiveWrite($data, $updateBasedOn);
@@ -152,6 +166,7 @@ class DataService extends BaseService
             $actionPayload = $data;
             $actionTriggerType = $this->asString($data['trigger_type'] ?? LookupService::ACTION_TRIGGER_TYPES_FINISHED);
             $payloadUserId = $this->asIntOrNull($actionPayload['id_users'] ?? null);
+            $savedTriggerCode = $this->triggerCodeOf($data);
 
             // Check for existing record to update
             if ($updateBasedOn !== null) {
@@ -175,7 +190,9 @@ class DataService extends BaseService
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
-                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $dataRow->getIdUsers());
+                        $recordRef = VersionRef::record($updatedRecordId, $dataRow->getVersion());
+                        $this->announceRecordSaved($dataTable, $updatedRecordId, $dataRow->getIdUsers(), $savedTriggerCode, $context->contentRef, $recordRef);
 
                         $this->runActionOrchestration(
                             $dataTable,
@@ -183,7 +200,8 @@ class DataService extends BaseService
                             $actionPayload,
                             $actionTriggerType,
                             $currentUser ? $currentUser->getId() : $payloadUserId,
-                            $transactionBy
+                            $transactionBy,
+                            $recordRef,
                         );
 
                         return $updatedRecordId;
@@ -222,7 +240,9 @@ class DataService extends BaseService
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
-                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $existingRow->getIdUsers());
+                        $recordRef = VersionRef::record($recordId, $existingRow->getVersion());
+                        $this->announceRecordSaved($dataTable, $recordId, $existingRow->getIdUsers(), $savedTriggerCode, $context->contentRef, $recordRef);
 
                         $this->runActionOrchestration(
                             $dataTable,
@@ -230,7 +250,8 @@ class DataService extends BaseService
                             $actionPayload,
                             $actionTriggerType,
                             $currentUser ? $currentUser->getId() : $payloadUserId,
-                            $transactionBy
+                            $transactionBy,
+                            $recordRef,
                         );
 
                         return $recordId;
@@ -248,7 +269,10 @@ class DataService extends BaseService
             $this->entityManager->commit();
 
             // Invalidate data table cache after creating new record
-            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $this->asIntOrNull($data['id_users'] ?? null));
+            $createdRow = $this->entityManager->find(DataRow::class, $recordId);
+            $recordRef = VersionRef::record($recordId, $createdRow instanceof DataRow ? $createdRow->getVersion() : 1);
+            $this->announceRecordSaved($dataTable, $recordId, $this->asIntOrNull($data['id_users'] ?? null), $savedTriggerCode, $context->contentRef, $recordRef);
 
             $this->runActionOrchestration(
                 $dataTable,
@@ -256,7 +280,8 @@ class DataService extends BaseService
                 $actionPayload,
                 $actionTriggerType,
                 $currentUser ? $currentUser->getId() : $payloadUserId,
-                $transactionBy
+                $transactionBy,
+                $recordRef,
             );
 
             return $recordId;
@@ -363,15 +388,18 @@ class DataService extends BaseService
      * @param RecordWriteContext|null $context History source and the record version the delete was based on (a stale version is refused with 409)
      * @return bool Success status
      * @throws ServiceException
+     * @throws \InvalidArgumentException when the context names a `res:` content reference of a type no enabled plugin registered (nothing is written)
      *
      * Queued action jobs linked to the deleted record are cleaned up after commit
      * through the same action orchestration pipeline used for save/update events.
      * The record is only marked deleted and its history is kept, so the uploaded
-     * files stay too; explicit user-data erasure removes both.
+     * files stay too; explicit user-data erasure removes both. The plugins that
+     * listen for `record.deleted` are told after the commit (C24).
      */
     public function deleteData(int $dataTableId, int $recordId, bool $ownEntriesOnly = true, ?RecordWriteContext $context = null): bool
     {
         $context ??= RecordWriteContext::forTransactionBy(LookupService::TRANSACTION_BY_BY_USER);
+        $this->assertContentRefAllowed($context);
         $this->entityManager->beginTransaction();
         $currentUser = $this->userContextService->getCurrentUser();
 
@@ -401,6 +429,7 @@ class DataService extends BaseService
             // uploaded files stay: they are removed only by explicit erasure.
             $deletedTriggerType = $this->lookupService->getLookupIdByValue('actionTriggerTypes', LookupService::ACTION_TRIGGER_TYPES_DELETED);
             $dataRow->setIdActionTriggerTypes($deletedTriggerType);
+            $this->stampContentRef($dataRow, $context->contentRef);
             $deletedValues = $this->extractRecordValues($dataRow);
 
             // Log transaction
@@ -426,7 +455,9 @@ class DataService extends BaseService
             $this->entityManager->commit();
 
             // Invalidate data table cache after deleting record
-            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $dataRow->getIdUsers());
+            $recordRef = VersionRef::record((int) $dataRow->getId(), $dataRow->getVersion());
+            $this->announce(new RecordDeletedEvent((int) $dataTable->getId(), (int) $dataRow->getId(), $dataRow->getIdUsers(), $recordRef));
 
             $this->runActionOrchestration(
                 $dataTable,
@@ -434,7 +465,8 @@ class DataService extends BaseService
                 $deletedValues,
                 LookupService::ACTION_TRIGGER_TYPES_DELETED,
                 $currentUser ? $currentUser->getId() : $dataRow->getIdUsers(),
-                LookupService::TRANSACTION_BY_BY_USER
+                LookupService::TRANSACTION_BY_BY_USER,
+                $recordRef,
             );
 
             return true;
@@ -488,6 +520,10 @@ class DataService extends BaseService
      * blockers; the caller may then restore an explicit subset (`$fieldKeys`).
      * Restoring what the record already holds writes nothing and creates no revision.
      *
+     * The restore carries the content reference (C19) the restored revision was written
+     * with (a reference the caller's context holds is replaced), and the plugins that listen
+     * for `record.saved` are told after the commit (C24).
+     *
      * @param list<string>|null $fieldKeys restore only these fields; null: every field that differs
      * @return int the record's version after the restore (unchanged when nothing differed)
      * @throws ServiceException 400 without expected version, 404 unknown record/version, 409 stale, 422 blocked
@@ -507,7 +543,9 @@ class DataService extends BaseService
                 ['reason' => 'expected_version_required', 'record_id' => $recordId],
             );
         }
-        $context = $context->restoringFrom($fromVersion);
+        // Bringing an earlier state back carries the content reference that state was written with (C19);
+        // it is not checked against the registered types: the plugin may be gone, the history is not.
+        $context = $context->restoringFrom($fromVersion, $this->dataRevisionService->contentRefOf($recordId, $fromVersion));
 
         $this->entityManager->beginTransaction();
         $currentUser = $this->userContextService->getCurrentUser();
@@ -552,6 +590,7 @@ class DataService extends BaseService
             // The owner is not touched: a restore changes what the record says, not whose it is.
             $dataRow->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
             $dataRow->setIdActionTriggerTypes($this->getTriggerTypeId(['trigger_type' => LookupService::ACTION_TRIGGER_TYPES_UPDATED]));
+            $this->stampContentRef($dataRow, $context->contentRef);
 
             $transaction = $this->transactionService->logTransaction(
                 'update',
@@ -575,12 +614,14 @@ class DataService extends BaseService
             $dataRow->setVersion($newVersion ?? $currentVersion);
             $this->entityManager->commit();
 
-            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null, $dataRow->getIdUsers());
+            $recordRef = VersionRef::record($recordId, $dataRow->getVersion());
+            $this->announceRecordSaved($dataTable, $recordId, $dataRow->getIdUsers(), LookupService::ACTION_TRIGGER_TYPES_UPDATED, $context->contentRef, $recordRef);
 
             // Actions see the record as it is after the restore, like after any update.
             $values = ['record_id' => $recordId, 'id_users' => $dataRow->getIdUsers()];
             foreach ($stateAfter as $field) {
-                if ($field->languageId === 1) {
+                if ($field->languageId === Language::INDEPENDENT_ID) {
                     $values[$field->key] = $field->value;
                     continue;
                 }
@@ -593,7 +634,8 @@ class DataService extends BaseService
                 $values,
                 LookupService::ACTION_TRIGGER_TYPES_UPDATED,
                 $currentUser ? $currentUser->getId() : $dataRow->getIdUsers(),
-                LookupService::TRANSACTION_BY_BY_USER
+                LookupService::TRANSACTION_BY_BY_USER,
+                $recordRef,
             );
 
             return $newVersion ?? $currentVersion;
@@ -743,7 +785,7 @@ class DataService extends BaseService
             $fieldName = $this->asString($dataCell->getDataCol()?->getFieldKey());
             $language = $dataCell->getLanguage()?->getId();
 
-            if ($language && $language !== 1) {
+            if ($language && $language !== Language::INDEPENDENT_ID) {
                 if (!isset($values[$fieldName]) || !is_array($values[$fieldName])) {
                     $values[$fieldName] = [];
                 }
@@ -773,7 +815,8 @@ class DataService extends BaseService
         array $submittedValues,
         string $triggerType,
         ?int $userId,
-        string $transactionBy
+        string $transactionBy,
+        ?string $recordRef = null,
     ): void {
         try {
             $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
@@ -787,7 +830,8 @@ class DataService extends BaseService
                 $submittedValues,
                 $triggerType,
                 $userId ? (int) $userId : null,
-                $transactionBy
+                $transactionBy,
+                $recordRef,
             );
             $this->actionOrchestratorService->handle($context);
         } catch (\Throwable $e) {
@@ -883,6 +927,7 @@ class DataService extends BaseService
 
         $triggerTypeId = $this->getTriggerTypeId($data);
         $dataRow->setIdActionTriggerTypes($triggerTypeId);
+        $this->stampContentRef($dataRow, $context->contentRef);
 
         // Strip reserved/row-metadata keys (id_users, trigger_type, ...) so they
         // never become dynamic data columns, then resolve columns by immutable key.
@@ -916,10 +961,10 @@ class DataService extends BaseService
                     }
                 }
             } else {
-                // Single language field (default language 1)
-                $defaultLanguage = $this->entityManager->getRepository(Language::class)->find(1);
+                // Single language field (language-independent row)
+                $defaultLanguage = $this->entityManager->getRepository(Language::class)->find(Language::INDEPENDENT_ID);
                 if ($defaultLanguage) {
-                    // Find existing cell or create new one for default language
+                    // Find existing cell or create new one for the language-independent row
                     $dataCell = $this->entityManager->getRepository(DataCell::class)
                         ->findOneBy(['dataRow' => $dataRow, 'dataCol' => $column, 'language' => $defaultLanguage]);
 
@@ -988,6 +1033,7 @@ class DataService extends BaseService
 
         $triggerTypeId = $this->getTriggerTypeId($data);
         $dataRow->setIdActionTriggerTypes($triggerTypeId);
+        $dataRow->setContentRef($context->contentRef);
 
         $this->entityManager->persist($dataRow);
         $this->entityManager->flush(); // Flush to get the ID
@@ -1018,8 +1064,8 @@ class DataService extends BaseService
                     }
                 }
             } else {
-                // Single language field (default language 1)
-                $defaultLanguage = $this->entityManager->getRepository(Language::class)->find(1);
+                // Single language field (language-independent row)
+                $defaultLanguage = $this->entityManager->getRepository(Language::class)->find(Language::INDEPENDENT_ID);
                 if ($defaultLanguage) {
                     $dataCell = new DataCell();
                     $dataCell->setDataRow($dataRow);
@@ -1066,6 +1112,16 @@ class DataService extends BaseService
      */
     private function getTriggerTypeId(array $data): int
     {
+        return $this->asInt($this->lookupService->getLookupIdByValue('actionTriggerTypes', $this->triggerCodeOf($data)));
+    }
+
+    /**
+     * The trigger type code a save stores: the one the caller named when it is a real one, else `finished`.
+     *
+     * @param array<string, mixed> $data Form data
+     */
+    private function triggerCodeOf(array $data): string
+    {
         $triggerType = $this->asString($data['trigger_type'] ?? LookupService::ACTION_TRIGGER_TYPES_FINISHED);
 
         $validTriggerTypes = [
@@ -1075,11 +1131,63 @@ class DataService extends BaseService
             LookupService::ACTION_TRIGGER_TYPES_FINISHED
         ];
 
-        if (!in_array($triggerType, $validTriggerTypes, true)) {
-            $triggerType = LookupService::ACTION_TRIGGER_TYPES_FINISHED;
+        return in_array($triggerType, $validTriggerTypes, true) ? $triggerType : LookupService::ACTION_TRIGGER_TYPES_FINISHED;
+    }
+
+    /**
+     * Refuse, before anything is written, a content reference that cannot be stored (contract C19): a malformed one,
+     * or a `res:` reference of a type no enabled plugin registered. Both are programming errors of the caller.
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function assertContentRefAllowed(RecordWriteContext $context): void
+    {
+        if ($context->contentRef === null) {
+            return;
         }
 
-        return $this->asInt($this->lookupService->getLookupIdByValue('actionTriggerTypes', $triggerType));
+        ContentRef::assertWellFormed($context->contentRef);
+        $resource = ContentRef::resource($context->contentRef);
+        if ($resource !== null) {
+            $this->resourceTypes->assertRegistered($resource['type']);
+        }
+    }
+
+    /**
+     * The record now carries the reference of its latest write that named one. A write that names none
+     * (a job, an import) never clears it, so a record keeps the content version it was begun on.
+     */
+    private function stampContentRef(DataRow $dataRow, ?string $contentRef): void
+    {
+        if ($contentRef !== null) {
+            $dataRow->setContentRef($contentRef);
+        }
+    }
+
+    /**
+     * Tell the plugins that listen that a record was saved (domain event `record.saved`, contract C24).
+     *
+     * @param string|null $recordRef which version of the record this event belongs to (`record:<id>@v<n>`, C26)
+     */
+    private function announceRecordSaved(DataTable $dataTable, int $recordId, ?int $ownerUserId, string $triggerCode, ?string $contentRef, ?string $recordRef = null): void
+    {
+        $this->announce(new RecordSavedEvent((int) $dataTable->getId(), $recordId, $ownerUserId, $triggerCode, $contentRef, $recordRef));
+    }
+
+    /**
+     * Hand a domain event to the dispatcher, which delivers it when the outermost transaction commits and never when it
+     * rolls back. The change is already stored here, so whatever goes wrong with the delivery is logged and never fails the write.
+     */
+    private function announce(object $event): void
+    {
+        try {
+            $this->domainEvents->dispatchAfterCommit($event);
+        } catch (\Throwable $e) {
+            $this->logger->error('A plugin domain event could not be dispatched; the stored change is not affected.', [
+                'event' => $event::class,
+                'exception' => $e,
+            ]);
+        }
     }
 
     /**
@@ -1403,7 +1511,7 @@ class DataService extends BaseService
         ?int $userId = null,
         bool $dbFirst = false,
         bool $excludeDeleted = true,
-        int $languageId = 1,
+        int $languageId = Language::INDEPENDENT_ID,
         string $selectedColumns = '',
     ): array {
         try {
@@ -1486,7 +1594,7 @@ class DataService extends BaseService
         int $currentUserId,
         string $filter = '',
         bool $excludeDeleted = true,
-        int $languageId = 1
+        int $languageId = Language::INDEPENDENT_ID
     ): array {
         try {
             $rawFilter = $filter;
@@ -1541,7 +1649,7 @@ class DataService extends BaseService
         int $dataTableId,
         ?int $userId = null,
         bool $excludeDeleted = true,
-        int $languageId = 1,
+        int $languageId = Language::INDEPENDENT_ID,
         int $batchSize = 500,
     ): \Generator {
         try {
@@ -1609,7 +1717,7 @@ class DataService extends BaseService
         int $dataTableId,
         int $currentUserId,
         bool $excludeDeleted = true,
-        int $languageId = 1,
+        int $languageId = Language::INDEPENDENT_ID,
         int $batchSize = 500,
     ): \Generator {
         try {
@@ -1717,11 +1825,10 @@ class DataService extends BaseService
      *
      * @param DataTable $dataTable The data table entity
      * @param int|null $userId The user ID (null for guest users)
+     * @param int|null $ownerId The owner of the record that changed (live-sync notice), defaults to the acting user
      */
-    private function invalidateDataTableCache(DataTable $dataTable, ?int $userId): void
+    private function invalidateDataTableCache(DataTable $dataTable, ?int $userId, ?int $ownerId = null): void
     {
-        $config = $this->getDataTableCurrentUserConfig((int) $dataTable->getId());
-
         // Always invalidate data table lists (this affects data table metadata)
         $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
@@ -1730,23 +1837,22 @@ class DataService extends BaseService
         // Always invalidate the data-table entity scope. Every read in
         // DataTableRepository scopes its cache by the data_table id, so
         // bumping that scope's generation counter is the only reliable
-        // way to invalidate plugin-owned data tables (no section
-        // references them via data_config, which would otherwise drive
-        // the has_global_config / has_current_user_config flags below).
+        // way to invalidate plugin-owned data tables (and every per-user
+        // form_record / page read that carries the same table scope).
+        // Do not also bump the writer's user scope (F269): that only rebuilt
+        // their profile, groups and ACL entries; the table scope already
+        // covers the current_user reads.
         $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
 
-        // If the data table has user-specific configs (current_user: true) and we have a user,
-        // invalidate the user-specific scope for this user
-        if ($config['has_current_user_config'] && $userId) {
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
-        }
-
         // Additionally invalidate form-record cache for this data table and user
         $this->invalidateFormRecordCache($dataTable, $userId);
+
+        // Live sync: write, cache clear and notice belong together. The notice names the
+        // table only; the owner, the editors of the table and the viewers of pages that
+        // show it to everybody learn of it (own records stay with their owner).
+        $this->notices->tableChanged((int) $dataTable->getId(), $ownerId ?? $userId);
     }
 
     /**

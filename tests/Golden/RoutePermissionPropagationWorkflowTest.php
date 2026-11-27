@@ -27,14 +27,14 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *   the role-permission API -> the SAME member session now succeeds on
  *   /admin/pages while staying 403 on /admin/users -> admin removes the
  *   permission -> /admin/pages is 403 again -> /auth/user-data reflects the
- *   permission set and a rotated acl_version at each step.
+ *   permission set and a changed acl_stamp at each step.
  *
  * This proves the live propagation chain end to end (plan §16, §26, §27):
- * AdminRoleService write -> permission/user cache invalidation + acl_version
- * bump -> ApiSecurityListener recomputing the caller's permissions from the DB
+ * AdminRoleService write -> permission/user cache invalidation + roles.acl_version
+ * bump (F250; it moves the holders' acl_stamp) -> ApiSecurityListener recomputing the caller's permissions from the DB
  * (NOT from the stale JWT) -> /auth/user-data exposing the new contract. The
  * member's JWT is issued once and reused throughout, so this also asserts that
- * an acl_version rotation does not invalidate an in-flight session token. All
+ * an acl_stamp change does not invalidate an in-flight session token. All
  * data is qa_-prefixed and rolled back by the DAMA transaction.
  */
 #[TestGroup('golden')]
@@ -85,8 +85,10 @@ final class RoutePermissionPropagationWorkflowTest extends QaWebTestCase
         $this->assertForbidden($this->jsonRequest('GET', '/cms-api/v1/admin/users', null, $userToken));
 
         $baseline = $this->userData($userToken);
-        $aclVersionInitial = $this->asString($baseline['acl_version'] ?? null);
-        self::assertNotSame('', $aclVersionInitial, 'acl_version must be a non-empty token.');
+        // Since F250 a role grant moves roles.acl_version, not users.acl_version, so the access
+        // change shows in the stamp (a fingerprint over the user's own, group and role versions).
+        $aclStampInitial = $this->asString($baseline['acl_stamp'] ?? null);
+        self::assertNotSame('', $aclStampInitial, 'acl_stamp must be a non-empty token.');
         self::assertNotContains(self::PAGE_READ, $this->permissionNames($baseline), 'Baseline must not carry admin.page.read.');
 
         // 3. Grant ONLY admin.page.read to the role through the admin API.
@@ -108,8 +110,8 @@ final class RoutePermissionPropagationWorkflowTest extends QaWebTestCase
         );
 
         $afterGrant = $this->userData($userToken);
-        $aclVersionAfterGrant = $this->asString($afterGrant['acl_version'] ?? null);
-        self::assertNotSame($aclVersionInitial, $aclVersionAfterGrant, 'Granting a permission must rotate acl_version.');
+        $aclStampAfterGrant = $this->asString($afterGrant['acl_stamp'] ?? null);
+        self::assertNotSame($aclStampInitial, $aclStampAfterGrant, 'Granting a permission must move acl_stamp.');
         self::assertContains(self::PAGE_READ, $this->permissionNames($afterGrant), 'Identity contract must now expose admin.page.read.');
 
         // 5. Remove the permission again.
@@ -123,15 +125,15 @@ final class RoutePermissionPropagationWorkflowTest extends QaWebTestCase
         );
 
         // 6. Access is revoked for the live session and the contract reflects it
-        //    with another acl_version rotation.
+        //    with another acl_stamp change.
         $this->assertForbidden(
             $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $userToken),
             'Removing the permission must revoke /admin/pages for the live session.'
         );
 
         $afterRevoke = $this->userData($userToken);
-        $aclVersionAfterRevoke = $this->asString($afterRevoke['acl_version'] ?? null);
-        self::assertNotSame($aclVersionAfterGrant, $aclVersionAfterRevoke, 'Removing a permission must rotate acl_version again.');
+        $aclStampAfterRevoke = $this->asString($afterRevoke['acl_stamp'] ?? null);
+        self::assertNotSame($aclStampAfterGrant, $aclStampAfterRevoke, 'Removing a permission must move acl_stamp again.');
         self::assertNotContains(self::PAGE_READ, $this->permissionNames($afterRevoke), 'admin.page.read must be gone from the contract.');
     }
 

@@ -115,6 +115,25 @@ composer test:release     # before pushing
 
 `QaWebTestCase::setUp()` asserts the baseline is loaded (via `InteractsWithQaBaseline`) before any test runs.
 
+### Restricted access personas (least-privilege walk, F239)
+
+Besides the four personas above, `QaBaselineFixture` seeds restricted ones for the least-privilege Playwright walk and for permission tests. They are created through `AdminRoleService` as `qa.admin` (the same path as the Roles screen, never raw SQL), have no group, no two-factor login, and the shared `QaBaselineFixture::QA_PASSWORD`.
+
+**Naming rule.** For every core permission named `admin.<area>.read` there is one role and one user:
+
+| Permission | Role | User |
+| --- | --- | --- |
+| `admin.page_version.read` | `qa_read_page_version` | `qa.read.page-version@selfhelp.test` |
+| `admin.language.read` | `qa_read_language` | `qa.read.language@selfhelp.test` |
+
+The role holds exactly `admin.access` and that read right. The area keeps its underscores in the role name and uses `-` in the email (`QaBaselineFixture::readPersonaRole()` and `::readPersonaEmail()` build both). A new core `admin.<area>.read` permission gets its persona automatically on the next `composer test:reset-db`; the walk derives its persona list from the frontend screen registry by the same rule, so nobody keeps a list.
+
+**Read/update persona.** `qa.readupdate@selfhelp.test` holds role `qa_read_update`: `admin.access`, every core `admin.*.read` and every core `admin.*.update`. On the QA items it has the **view bit only** (`QaAccessPersonaFixture`, group `qa`): the `qa-feedback` page, the `qa_events_table` data table and the `qa_access_group` group. No QA fixture creates an asset, so no asset grant is seeded. So it proves that item controls follow the server's per-item flags (`rights.can_update`, `can_update`, `can_delete`) and not the route rights (rule 4.11, F234).
+
+**Role-update persona.** `qa.roleupdate@selfhelp.test` holds role `qa_role_update`: exactly `admin.access`, `admin.role.read` and `admin.role.update`, and no grants. It is a role editor without the permission catalogue right (`admin.permission.read`), so it proves that the role form reads names through `GET /admin/permissions` on `admin.role.update` (F224) and that role items carry `fully_held` (F219).
+
+`QA_FIXTURE_VERSION` is `2026_11_20_001` with these personas. `tests/Smoke/QaAccessPersonaSmokeTest.php` proves they exist and sign in.
+
 ### QA frontend golden fixture (`qa-feedback`)
 
 `QaFrontendGoldenFixture` (also group `qa`, loaded alongside the baseline by
@@ -321,7 +340,10 @@ Implemented state:
 ### Deterministic time (ClockMock)
 
 `phpunit.dist.xml` registers the Symfony PHPUnit bridge clock mock for the
-`App` namespace (`clock-mock-namespaces` parameter). Scope, verified empirically:
+namespaces that use unqualified `time()` / `date()` (`clock-mock-namespaces`:
+`App`, `App\Service\Sync`, `App\Service\CMS\Admin`, `App\Service\CMS\Frontend`,
+`App\Service\Core`, `App\Service\Auth`). The bridge registers each listed
+namespace only (not recursively). Scope, verified empirically:
 
 - **It intercepts** the *unqualified* time functions (`time()`, `microtime()`,
   `date()`, `sleep()`, …) called inside `App\…` classes. Freeze with

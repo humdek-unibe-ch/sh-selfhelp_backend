@@ -17,8 +17,10 @@ use App\Service\CMS\DataQuery\DataQuery;
 use App\Service\CMS\DataQuery\DataQueryEngine;
 use App\Service\CMS\FormFieldKeyResolver;
 use App\Service\Core\LookupService;
+use App\Tests\Support\SavesCmsDefaultLanguageAsAdmin;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
@@ -36,6 +38,14 @@ use Symfony\Component\HttpFoundation\Response;
 #[Group('golden')]
 final class CmsAppWizardTest extends QaWebTestCase
 {
+    use SavesCmsDefaultLanguageAsAdmin;
+
+    protected function tearDown(): void
+    {
+        $this->forgetCmsDefaultLanguageCaches();
+        parent::tearDown();
+    }
+
     private const BASE = 'qa-team-wizard';
     private const MULTI_BASE = 'qa-team-wizard-multi';
 
@@ -1019,6 +1029,254 @@ final class CmsAppWizardTest extends QaWebTestCase
             self::assertArrayHasKey('id_cms_list_page', $afterDelete);
             self::assertNull($afterDelete['id_cms_list_page']);
             self::assertNull($afterDelete['id_form_section'] ?? null);
+        } finally {
+            $this->cleanupApp($admin, $appId, $pageIds);
+        }
+    }
+
+    /**
+     * P1-A1 / P1-A4: text-input and textarea may be marked translatable; other styles
+     * stay unmarked. An omitted `translatable` key behaves as before.
+     */
+    public function testScaffoldSetsTranslatableOnTextAndTextareaOnly(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $base = 'qa-admpol-i18n';
+        [$appId, , $byRole, $pageIds] = $this->createAppAndScaffold($admin, [
+            'base_name' => $base,
+            'create_form' => true,
+            'create_public' => true,
+            'create_admin' => true,
+            'with_status' => false,
+            'form_fields' => [
+                ['name' => 'title', 'style' => 'text-input', 'translatable' => true],
+                ['name' => 'body', 'style' => 'textarea', 'translatable' => true],
+                ['name' => 'price', 'style' => 'number-input'],
+            ],
+        ], 'qa-admpol-i18n-app');
+
+        try {
+            $cmsList = $byRole['cms_list'];
+            $titleId = $this->sectionIdByNameContains($cmsList, $base . '-form-title', $admin);
+            $bodyId = $this->sectionIdByNameContains($cmsList, $base . '-form-body', $admin);
+            $priceId = $this->sectionIdByNameContains($cmsList, $base . '-form-price', $admin);
+            self::assertGreaterThan(0, $titleId);
+            self::assertGreaterThan(0, $bodyId);
+            self::assertGreaterThan(0, $priceId);
+
+            self::assertSame('1', $this->fieldContentOf($cmsList, $titleId, 'translatable', $admin));
+            self::assertSame('1', $this->fieldContentOf($cmsList, $bodyId, 'translatable', $admin));
+            self::assertNull(
+                $this->fieldContentOf($cmsList, $priceId, 'translatable', $admin),
+                'A non-translatable field must not get a translatable property row.'
+            );
+        } finally {
+            $this->cleanupApp($admin, $appId, $pageIds);
+        }
+    }
+
+    /**
+     * P1-A2: `translatable: true` is refused for non-text styles; nothing is created.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public static function nonTextTranslatableStyles(): array
+    {
+        return [
+            ['select', 'qa-admpol-bad-select'],
+            ['image', 'qa-admpol-bad-image'],
+            ['number-input', 'qa-admpol-bad-number'],
+        ];
+    }
+
+    #[DataProvider('nonTextTranslatableStyles')]
+    public function testScaffoldRefusesTranslatableOnNonTextStyles(string $style, string $slug): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $this->service(CacheService::class)
+            ->withCategory(CacheService::CATEGORY_STYLES)
+            ->invalidateAllListsInCategory();
+
+        $createdApp = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', '/cms-api/v1/admin/cms-apps', [
+                'name' => $slug,
+                'slug' => $slug,
+            ], $admin),
+            201
+        );
+        $appId = self::coerceInt($createdApp['id'] ?? null);
+        self::assertGreaterThan(0, $appId);
+
+        $pagesBefore = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $admin)
+        );
+        $pageCountBefore = count(is_array($pagesBefore['pages'] ?? null) ? $pagesBefore['pages'] : $pagesBefore);
+
+        $response = $this->jsonRequest(
+            'POST',
+            sprintf('/cms-api/v1/admin/cms-apps/%d/scaffold', $appId),
+            [
+                'base_name' => $slug,
+                'create_form' => true,
+                'create_public' => true,
+                'create_admin' => true,
+                'with_status' => false,
+                'form_fields' => [
+                    ['name' => 'title', 'style' => 'text-input'],
+                    ['name' => 'bad', 'style' => $style, 'translatable' => true],
+                ],
+            ],
+            $admin
+        );
+
+        try {
+            self::assertSame(400, $response['status'] ?? 0, self::jsonEncodeMessage($response));
+            $this->assertEnvelope400($response);
+            $expected = sprintf('Form field "bad" of type "%s" cannot be translatable.', $style);
+            $haystack = self::coerceString($response['message'] ?? '') . ' ' . self::coerceString($response['error'] ?? '');
+            self::assertStringContainsString($expected, $haystack);
+
+            $pagesAfter = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $admin)
+            );
+            $pageCountAfter = count(is_array($pagesAfter['pages'] ?? null) ? $pagesAfter['pages'] : $pagesAfter);
+            self::assertSame($pageCountBefore, $pageCountAfter, 'A refused scaffold must create no pages.');
+
+            $detail = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin)
+            );
+            self::assertNull($detail['id_cms_list_page'] ?? null);
+            self::assertNull($detail['id_form_section'] ?? null);
+            self::assertNull($detail['id_public_list_page'] ?? null);
+            self::assertNull($detail['id_public_detail_page'] ?? null);
+        } finally {
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin);
+        }
+    }
+
+    /**
+     * P1-A3: a translatable wizard field stores one cell per language; the public
+     * detail shows the value of the visitor's language.
+     */
+    public function testTranslatableWizardFieldRoundTripsPerLanguage(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $base = 'qa-admpol-rt';
+        [$appId, , $byRole, $pageIds] = $this->createAppAndScaffold($admin, [
+            'base_name' => $base,
+            'create_form' => true,
+            'create_public' => true,
+            'create_admin' => true,
+            'with_status' => false,
+            'form_fields' => [
+                ['name' => 'title', 'style' => 'text-input', 'label' => 'Title', 'translatable' => true],
+            ],
+        ], 'qa-admpol-rt-app');
+
+        try {
+            $em = $this->service(EntityManagerInterface::class);
+            $detailPage = $em->find(Page::class, $byRole['public_detail']);
+            self::assertInstanceOf(Page::class, $detailPage);
+            $detailPage->setIsOpenAccess(true);
+            $em->flush();
+
+            $formId = $this->firstSectionIdByStyle($byRole['cms_list'], 'entry-form-list', $admin);
+            $created = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'POST',
+                '/cms-api/v1/forms/submit',
+                [
+                    'page_id' => $byRole['cms_list'],
+                    'section_id' => $formId,
+                    'form_data' => [
+                        'title' => [
+                            ['language_id' => 2, 'value' => 'Hallo'],
+                            ['language_id' => 3, 'value' => 'Hello'],
+                        ],
+                    ],
+                ],
+                $admin,
+            ));
+            $recordId = self::coerceInt($created['record_id'] ?? null);
+            self::assertGreaterThan(0, $recordId);
+
+            $cells = $em->getConnection()->fetchAllAssociative(
+                'SELECT c.id_languages, c.value FROM data_cells c
+                 JOIN data_cols col ON col.id = c.id_data_cols
+                 WHERE c.id_data_rows = :id AND col.field_key LIKE :key
+                 ORDER BY c.id_languages',
+                ['id' => $recordId, 'key' => 'section_%'],
+            );
+            self::assertCount(2, $cells, 'One cell per language in the same row.');
+            self::assertSame(
+                [['id_languages' => 2, 'value' => 'Hallo'], ['id_languages' => 3, 'value' => 'Hello']],
+                array_map(
+                    static fn (array $row): array => [
+                        'id_languages' => self::coerceInt($row['id_languages'] ?? null),
+                        'value' => self::coerceString($row['value'] ?? null),
+                    ],
+                    $cells,
+                ),
+            );
+
+            $path = '/' . $base . '/' . $recordId;
+            $de = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode($path) . '&language_id=2',
+            ));
+            $en = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode($path) . '&language_id=3',
+            ));
+            self::assertStringContainsString('Hallo', self::jsonEncodeMessage($de));
+            self::assertStringNotContainsString('Hello', self::jsonEncodeMessage($de));
+            self::assertStringContainsString('Hello', self::jsonEncodeMessage($en));
+            self::assertStringNotContainsString('Hallo', self::jsonEncodeMessage($en));
+
+            // F190: German-only record falls back L → independent → CMS default (2).
+            $this->saveCmsDefaultLanguageAsAdmin(2, $admin);
+            $onlyDe = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'POST',
+                '/cms-api/v1/forms/submit',
+                [
+                    'page_id' => $byRole['cms_list'],
+                    'section_id' => $formId,
+                    'form_data' => [
+                        'title' => [
+                            ['language_id' => 2, 'value' => 'NurDeutsch'],
+                        ],
+                    ],
+                ],
+                $admin,
+            ));
+            $onlyDeId = self::coerceInt($onlyDe['record_id'] ?? null);
+            $enMissing = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/' . $base . '/' . $onlyDeId) . '&language_id=3',
+            ));
+            self::assertStringContainsString('NurDeutsch', self::jsonEncodeMessage($enMissing));
+
+            $withIndependent = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'POST',
+                '/cms-api/v1/forms/submit',
+                [
+                    'page_id' => $byRole['cms_list'],
+                    'section_id' => $formId,
+                    'form_data' => [
+                        'title' => [
+                            ['language_id' => 1, 'value' => 'AllLangTitle'],
+                            ['language_id' => 2, 'value' => 'NurDeutsch2'],
+                        ],
+                    ],
+                ],
+                $admin,
+            ));
+            $independentId = self::coerceInt($withIndependent['record_id'] ?? null);
+            $enIndependent = $this->assertEnvelopeSuccess($this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/' . $base . '/' . $independentId) . '&language_id=3',
+            ));
+            self::assertStringContainsString('AllLangTitle', self::jsonEncodeMessage($enIndependent));
+            self::assertStringNotContainsString('NurDeutsch2', self::jsonEncodeMessage($enIndependent));
         } finally {
             $this->cleanupApp($admin, $appId, $pageIds);
         }

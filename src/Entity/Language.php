@@ -15,6 +15,16 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'uq_languages_locale', columns: ['locale'])]
 class Language
 {
+    /**
+     * Seeded row id for values that are the same in every language (page/section
+     * properties, plain form cells, bundle `all` entries). It is not a language:
+     * it cannot be chosen as a user's language or as the CMS default.
+     */
+    public const INDEPENDENT_ID = 1;
+
+    /** Locale of the language-independent row (`languages.locale`). */
+    public const INDEPENDENT_LOCALE = 'all';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column(name: 'id', type: 'integer')]

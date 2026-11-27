@@ -151,6 +151,8 @@ until the next focus event or 30 s stale window.
 
 ### Real-time ACL push (Mercure)
 
+> Live sync (change notices for pages, data, navigation, assets; the access stamp; the page `sync` block) is documented in [31-live-sync-change-notices.md](31-live-sync-change-notices.md). The `acl-changed` event below stays as it is.
+
 The transport from "version bumped" to "browser sees the change" is a
 [Mercure](https://mercure.rocks) hub (Caddy + the Mercure module). PHP
 never holds a long-lived connection — it only does cheap fire-and-forget
@@ -370,15 +372,17 @@ INSERT INTO `permissions` (`name`, `description`) VALUES
 ('admin.page.create', 'Can create new pages'),
 ('admin.page.update', 'Can edit existing pages'),
 ('admin.page.delete', 'Can delete pages'),
-('admin.page.insert', 'Can insert content into pages'),
 ('admin.page.export', 'Can export sections from pages'),
-('admin.settings', 'Full access to CMS settings'),
+('admin.language.read', 'Can read CMS languages'),
+('admin.language.update', 'Can create, update and delete CMS languages'),
+('admin.section.read', 'Can read unused sections'),
+('admin.audit.read', 'Read audit logs and security monitoring data'),
+('admin.mobile_preview.read', 'Can open the full-screen CMS mobile/web live preview'),
 ('admin.user.read', 'Can read existing users'),
 ('admin.user.create', 'Can create new users'),
 ('admin.user.update', 'Can edit existing users'),
 ('admin.user.delete', 'Can delete users'),
 ('admin.user.block', 'Can block users'),
-('admin.user.unblock', 'Can unblock users'),
 ('admin.user.impersonate', 'Can impersonate users');
 ```
 
@@ -430,6 +434,20 @@ AND ar.route_name IN ('admin_pages_delete');
 3. **Controller Execution**: If authorized, controller method executes
 4. **ACL Check** (if applicable): Additional page-level ACL check for specific pages
 
+### Role editors and the permission catalogue (F224)
+
+`GET /admin/permissions` (route `admin_permissions_get_all`) passes for `admin.permission.read` **or** `admin.role.update` (migration `Version20261120083532`). A role editor who does not hold the catalogue right still needs the permission names and, per permission, `can_assign` (the caller holds it, so may hand it out) and `implied_read`. A caller who may only create roles or change a role's permission list (`admin.role.create`, `admin.role.permissions`) does not get the catalogue through this route.
+
+### Per-caller role flags (rules 4.6f, 4.11; F219)
+
+`GET /admin/roles` (each item) and `GET /admin/roles/{roleId}` carry per-caller flags, added after the shared cache read by `AdminRoleService::withCallerRoleFlags`:
+
+| Flag | Meaning |
+| --- | --- |
+| `can_update` | `fully_held` and the caller holds `admin.role.update` |
+| `can_delete` | `fully_held`, not the superuser role, no users, and the caller holds `admin.role.delete` |
+| `fully_held` | The caller holds every permission and every data-access grant bit of the role (`CallerHoldingsService::fullyHoldsRole`). A superuser caller: `true` for every role. A caller who is not superuser: `false` for the superuser role. No route permission is implied: pickers that hand a role out (the managing roles of an asset) use it to disable what the server would refuse |
+
 ## Frontend User ACL Database Schema
 
 ### ACL Tables Structure
@@ -440,9 +458,6 @@ CREATE TABLE `page_acl_groups` (
   `id_groups` int NOT NULL,
   `id_pages` int NOT NULL,
   `acl_select` tinyint(1) NOT NULL DEFAULT '1',
-  `acl_insert` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_update` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id_groups`,`id_pages`),
   KEY `idx_page_acl_groups_id_groups` (`id_groups`),
   KEY `idx_page_acl_groups_id_pages`  (`id_pages`),
@@ -475,13 +490,10 @@ class PageAclGroup
     #[ORM\Column(name: 'acl_select', type: 'boolean', options: ['default' => 1])]
     private bool $aclSelect = true;
 
-    #[ORM\Column(name: 'acl_insert', type: 'boolean', options: ['default' => 0])]
     private bool $aclInsert = false;
 
-    #[ORM\Column(name: 'acl_update', type: 'boolean', options: ['default' => 0])]
     private bool $aclUpdate = false;
 
-    #[ORM\Column(name: 'acl_delete', type: 'boolean', options: ['default' => 0])]
     private bool $aclDelete = false;
 
     // Getters and setters...
@@ -499,9 +511,6 @@ CREATE PROCEDURE get_user_acl(IN userId INT, IN pageId INT)
 BEGIN
     SELECT
         MAX(ag.acl_select) as acl_select,
-        MAX(ag.acl_insert) as acl_insert,
-        MAX(ag.acl_update) as acl_update,
-        MAX(ag.acl_delete) as acl_delete
     FROM users u
     LEFT JOIN rel_groups_users ug ON u.id = ug.id_users
     LEFT JOIN page_acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId
@@ -616,9 +625,6 @@ class ACLService
             
             return [
                 'select' => (bool)($result['acl_select'] ?? 0),
-                'insert' => (bool)($result['acl_insert'] ?? 0),
-                'update' => (bool)($result['acl_update'] ?? 0),
-                'delete' => (bool)($result['acl_delete'] ?? 0)
             ];
             
         } catch (\Exception $e) {
@@ -707,9 +713,6 @@ class ACLService
             }
             
             $aclGroup->setAclSelect($select);
-            $aclGroup->setAclInsert($insert);
-            $aclGroup->setAclUpdate($update);
-            $aclGroup->setAclDelete($delete);
             
             $this->entityManager->persist($aclGroup);
             $this->entityManager->flush();
@@ -1025,9 +1028,6 @@ Page: welcome-page (ID: 10)
 
 Group ACL (editors -> welcome-page):
 - acl_select: 1
-- acl_insert: 0
-- acl_update: 1
-- acl_delete: 0
 
 Result: User inherits group permissions
 - SELECT: ✅ (from group)
@@ -1043,10 +1043,10 @@ Groups: editors (ID: 5), moderators (ID: 6)
 Page: content-page (ID: 30)
 
 Group ACL (editors -> content-page):
-- acl_select: 1, acl_insert: 1, acl_update: 0, acl_delete: 0
+- acl_select: 1
 
 Group ACL (moderators -> content-page):
-- acl_select: 1, acl_insert: 0, acl_update: 1, acl_delete: 1
+- acl_select: 1
 
 Result: Maximum permissions from all groups
 - SELECT: ✅ (both groups)

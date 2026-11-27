@@ -16,6 +16,7 @@ use App\Repository\UserRepository;
 use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
+use App\Service\Security\CallerHoldingsService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -27,24 +28,57 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AdminDataAccessService extends BaseService
 {
+    private const MSG_GIVE_RIGHTS = 'You can only give a role rights you hold yourself: ';
+    private const MSG_CHANGE_OR_DELETE = 'You can only change or delete a role whose rights you all hold.';
+
     public function __construct(
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
         private readonly UserRepository $userRepository,
         private readonly TransactionService $transactionService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly CallerHoldingsService $callerHoldings,
         private readonly EntityManagerInterface $entityManager
     ) {
     }
 
     /**
-     * Add or update a custom permission to a role (upsert operation)
+     * Add or update a custom permission to a role (upsert operation).
+     *
+     * @param bool $enforceHoldings When false, skips rule 4.6f (F14 creator grant
+     *        on a brand-new resource the caller cannot yet hold). Admin UI paths
+     *        and {@see setRolePermissions()} always enforce.
+     * @param list<array{resource_type_id: int, resource_id: int}> $heldResources Resources the
+     *        caller counts as holding in full for this write (an asset the caller uploads or
+     *        manages). Unlike `$enforceHoldings = false`, the target role is still checked
+     *        (rule 4.6f): only the bits on those resources are never missing.
      */
-    public function addRolePermission(int $roleId, \stdClass $permissionData): RoleDataAccess
-    {
-        return $this->executeInTransaction(function () use ($roleId, $permissionData) {
+    public function addRolePermission(
+        int $callerId,
+        int $roleId,
+        \stdClass $permissionData,
+        bool $enforceHoldings = true,
+        array $heldResources = []
+    ): RoleDataAccess {
+        return $this->executeInTransaction(function () use ($callerId, $roleId, $permissionData, $enforceHoldings, $heldResources) {
+            $role = $this->requireRole($roleId);
+            if ($enforceHoldings) {
+                $this->assertMayMutateRole($callerId, $role, $heldResources);
+            }
+
             $resourceTypeId = $this->asInt($permissionData->resource_type_id);
             $resourceId = $this->asInt($permissionData->resource_id);
             $crudPermissions = $this->asInt($permissionData->crud_permissions);
+
+            if ($enforceHoldings) {
+                $afterGrants = $this->mergeGrantIntoSnapshots(
+                    $this->callerHoldings->roleGrantSnapshots($roleId),
+                    $resourceTypeId,
+                    $resourceId,
+                    $crudPermissions
+                );
+                $this->assertMayGiveGrants($callerId, $afterGrants, $heldResources);
+                $this->assertMayGiveRolePermissions($callerId, $role);
+            }
 
             // Check if permission already exists
             $existingPermission = $this->roleDataAccessRepository->findPermission(
@@ -85,8 +119,6 @@ class AdminDataAccessService extends BaseService
             $permission = new RoleDataAccess();
 
             // Get Role and Lookup entities
-            $role = $this->entityManager->getReference(Role::class, $roleId);
-            assert($role instanceof Role);
             $resourceTypeLookup = $this->entityManager->getReference(Lookup::class, $resourceTypeId);
             assert($resourceTypeLookup instanceof Lookup);
 
@@ -125,13 +157,23 @@ class AdminDataAccessService extends BaseService
      *
      * @param array<string, mixed> $permissionData
      */
-    public function updateRolePermission(int $roleId, int $permissionId, array $permissionData): RoleDataAccess
-    {
-        return $this->executeInTransaction(function () use ($roleId, $permissionId, $permissionData) {
+    public function updateRolePermission(
+        int $callerId,
+        int $roleId,
+        int $permissionId,
+        array $permissionData,
+        bool $enforceHoldings = true
+    ): RoleDataAccess {
+        return $this->executeInTransaction(function () use ($callerId, $roleId, $permissionId, $permissionData, $enforceHoldings) {
+            $role = $this->requireRole($roleId);
+            if ($enforceHoldings) {
+                $this->assertMayMutateRole($callerId, $role);
+            }
+
             // Find permission
             $permission = $this->roleDataAccessRepository->find($permissionId);
 
-            if (!$permission || $permission->getIdRoles() !== $roleId) {
+            if (!$permission || $permission->getRole()->getId() !== $roleId) {
                 throw new ServiceException(
                     'Permission not found or does not belong to this role',
                     Response::HTTP_NOT_FOUND
@@ -139,6 +181,17 @@ class AdminDataAccessService extends BaseService
             }
 
             $crudPermissions = $this->asInt($permissionData['crud_permissions'] ?? 0);
+            if ($enforceHoldings) {
+                $snapshot = $this->callerHoldings->snapshotFromEntity($permission);
+                $afterGrants = $this->mergeGrantIntoSnapshots(
+                    $this->callerHoldings->roleGrantSnapshots($roleId),
+                    $snapshot['resource_type_id'],
+                    $snapshot['resource_id'],
+                    $crudPermissions
+                );
+                $this->assertMayGiveGrants($callerId, $afterGrants);
+                $this->assertMayGiveRolePermissions($callerId, $role);
+            }
 
             // Update permission
             $permission->setCrudPermissions($crudPermissions);
@@ -169,18 +222,44 @@ class AdminDataAccessService extends BaseService
 
     /**
      * Remove a permission from a role
+     *
+     * @param list<array{resource_type_id: int, resource_id: int}> $heldResources see {@see addRolePermission()}
      */
-    public function deleteRolePermission(int $roleId, int $permissionId): void
-    {
-        $this->executeInTransaction(function () use ($roleId, $permissionId) {
+    public function deleteRolePermission(
+        int $callerId,
+        int $roleId,
+        int $permissionId,
+        bool $enforceHoldings = true,
+        array $heldResources = []
+    ): void {
+        $this->executeInTransaction(function () use ($callerId, $roleId, $permissionId, $enforceHoldings, $heldResources) {
+            $role = $this->requireRole($roleId);
+            if ($enforceHoldings) {
+                $this->assertMayMutateRole($callerId, $role, $heldResources);
+            }
+
             // Find permission
             $permission = $this->roleDataAccessRepository->find($permissionId);
 
-            if (!$permission || $permission->getIdRoles() !== $roleId) {
+            if (!$permission || $permission->getRole()->getId() !== $roleId) {
                 throw new ServiceException(
                     'Permission not found or does not belong to this role',
                     Response::HTTP_NOT_FOUND
                 );
+            }
+
+            if ($enforceHoldings) {
+                $afterGrants = [];
+                foreach ($this->callerHoldings->roleGrantSnapshots($roleId) as $grant) {
+                    if ($grant['resource_type_id'] === (int) $permission->getResourceType()->getId()
+                        && $grant['resource_id'] === $permission->getResourceId()
+                    ) {
+                        continue;
+                    }
+                    $afterGrants[] = $grant;
+                }
+                $this->assertMayGiveGrants($callerId, $afterGrants, $heldResources);
+                $this->assertMayGiveRolePermissions($callerId, $role);
             }
 
             $this->entityManager->remove($permission);
@@ -210,9 +289,31 @@ class AdminDataAccessService extends BaseService
      * @param list<\stdClass> $permissions
      * @return array<string, int>
      */
-    public function setRolePermissions(int $roleId, array $permissions): array
+    public function setRolePermissions(int $callerId, int $roleId, array $permissions): array
     {
-        return $this->executeInTransaction(function () use ($roleId, $permissions) {
+        return $this->executeInTransaction(function () use ($callerId, $roleId, $permissions) {
+            $role = $this->requireRole($roleId);
+            $this->assertMayMutateRole($callerId, $role);
+
+            $afterGrants = [];
+            foreach ($permissions as $permissionData) {
+                $resourceTypeId = $this->asInt($permissionData->resource_type_id);
+                $resourceId = $this->asInt($permissionData->resource_id);
+                $crudPermissions = $this->asInt($permissionData->crud_permissions);
+                $resourceType = $this->entityManager->getRepository(Lookup::class)->find($resourceTypeId);
+                if (!$resourceType instanceof Lookup) {
+                    throw new ServiceException('Resource type not found: ' . $resourceTypeId, Response::HTTP_NOT_FOUND);
+                }
+                $afterGrants[] = [
+                    'resource_type_id' => $resourceTypeId,
+                    'resource_type_name' => (string) $resourceType->getLookupValue(),
+                    'resource_id' => $resourceId,
+                    'crud_permissions' => $crudPermissions,
+                ];
+            }
+            $this->assertMayGiveGrants($callerId, $afterGrants);
+            $this->assertMayGiveRolePermissions($callerId, $role);
+
             // Get existing permissions for this role
             $existingPermissions = $this->roleDataAccessRepository->getRolePermissions($roleId);
 
@@ -367,9 +468,6 @@ class AdminDataAccessService extends BaseService
     }
 
     /**
-     * Execute operation within a database transaction
-     */
-    /**
      * @template T
      * @param callable(): T $operation
      * @return T
@@ -386,5 +484,105 @@ class AdminDataAccessService extends BaseService
             $this->entityManager->rollback();
             throw $e;
         }
+    }
+
+    private function requireRole(int $roleId): Role
+    {
+        $role = $this->entityManager->getRepository(Role::class)->find($roleId);
+        if (!$role instanceof Role) {
+            throw new ServiceException('Role not found', Response::HTTP_NOT_FOUND);
+        }
+
+        return $role;
+    }
+
+    /**
+     * @param list<array{resource_type_id: int, resource_id: int}> $heldResources
+     */
+    private function assertMayMutateRole(int $callerId, Role $role, array $heldResources = []): void
+    {
+        if ($this->callerHoldings->isSuperuser($callerId)) {
+            return;
+        }
+
+        if ($role->isSuperuser() || !$this->callerHoldings->fullyHoldsRole($callerId, $role, $heldResources)) {
+            throw new ServiceException(self::MSG_CHANGE_OR_DELETE, Response::HTTP_FORBIDDEN);
+        }
+    }
+
+    private function assertMayGiveRolePermissions(int $callerId, Role $role): void
+    {
+        $names = [];
+        foreach ($role->getPermissions() as $permission) {
+            $names[] = $permission->getName();
+        }
+        $missing = $this->callerHoldings->missingPermissions($callerId, $names);
+        if ($missing === []) {
+            return;
+        }
+
+        throw new ServiceException(
+            self::MSG_GIVE_RIGHTS . implode(', ', $missing),
+            Response::HTTP_FORBIDDEN
+        );
+    }
+
+    /**
+     * @param list<array{resource_type_id: int, resource_type_name: string, resource_id: int, crud_permissions: int}> $grants
+     * @param list<array{resource_type_id: int, resource_id: int}> $heldResources
+     */
+    private function assertMayGiveGrants(int $callerId, array $grants, array $heldResources = []): void
+    {
+        $missing = $this->callerHoldings->missingGrantLabels($callerId, $grants, $heldResources);
+        if ($missing === []) {
+            return;
+        }
+
+        throw new ServiceException(
+            self::MSG_GIVE_RIGHTS . implode(', ', $missing),
+            Response::HTTP_FORBIDDEN
+        );
+    }
+
+    /**
+     * @param list<array{resource_type_id: int, resource_type_name: string, resource_id: int, crud_permissions: int}> $grants
+     * @return list<array{resource_type_id: int, resource_type_name: string, resource_id: int, crud_permissions: int}>
+     */
+    private function mergeGrantIntoSnapshots(
+        array $grants,
+        int $resourceTypeId,
+        int $resourceId,
+        int $crudPermissions
+    ): array {
+        $resourceType = $this->entityManager->getRepository(Lookup::class)->find($resourceTypeId);
+        $typeName = $resourceType instanceof Lookup
+            ? (string) $resourceType->getLookupValue()
+            : (string) $resourceTypeId;
+
+        $replaced = false;
+        $result = [];
+        foreach ($grants as $grant) {
+            if ($grant['resource_type_id'] === $resourceTypeId && $grant['resource_id'] === $resourceId) {
+                $result[] = [
+                    'resource_type_id' => $resourceTypeId,
+                    'resource_type_name' => $typeName,
+                    'resource_id' => $resourceId,
+                    'crud_permissions' => $crudPermissions,
+                ];
+                $replaced = true;
+                continue;
+            }
+            $result[] = $grant;
+        }
+        if (!$replaced) {
+            $result[] = [
+                'resource_type_id' => $resourceTypeId,
+                'resource_type_name' => $typeName,
+                'resource_id' => $resourceId,
+                'crud_permissions' => $crudPermissions,
+            ];
+        }
+
+        return $result;
     }
 }

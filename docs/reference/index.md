@@ -3,13 +3,15 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-11-12.
+Last verified: 2026-11-19.
 Source of truth: Controllers, JSON schemas, and `api_routes` migrations in this repository.
 
 Exact contracts and lookups for the backend.
 
 - [api/index.md](api/index.md) - Endpoint-by-endpoint usage reference for the public and admin API.
 - [api-routes-table.md](api-routes-table.md) - The `api_routes` table columns and dynamic route loading.
+- [access/api-routes.json](access/api-routes.json) - Generated: every core route with its methods, public flag and permissions, and every core permission with its description. The frontend's route contract test compares against it.
+- [permissions.md](permissions.md) - Generated permission catalogue: each core permission with its description, routes and the admin screens it opens.
 - [database-inventory.md](database-inventory.md) - Every table, stored routine, lookup type and environment leftover, and what uses it.
 - [styles/index.md](styles/index.md) - Catalog of every CMS style with per-style field/behaviour reference pages.
 - [email-styles.md](email-styles.md) - Email style presets and the mail-body rendering contract (`MailHtmlRenderer`).

@@ -19,7 +19,7 @@ The Admin Languages APIs provide comprehensive language management functionality
 
 ## Get All Languages
 
-Retrieve a list of all non-internal languages available in the system.
+Retrieve a list of all real languages available in the system (excludes the language-independent row).
 
 **Endpoint:** `GET /cms-api/v1/admin/languages`
 
@@ -57,7 +57,7 @@ Retrieve a list of all non-internal languages available in the system.
 }
 ```
 
-**Permissions:** `admin.settings`
+**Permissions:** `admin.language.read`
 
 ## Get Single Language
 
@@ -92,7 +92,7 @@ Retrieve detailed information about a specific language.
 }
 ```
 
-**Permissions:** `admin.settings`
+**Permissions:** `admin.language.read`
 
 ## Create Language
 
@@ -138,7 +138,7 @@ Add a new language to the system.
 }
 ```
 
-**Permissions:** `admin.settings`
+**Permissions:** `admin.language.update`
 
 ## Update Language
 
@@ -162,7 +162,7 @@ Modify an existing language's properties.
 
 **Response:** Updated language data (same format as GET single language)
 
-**Permissions:** `admin.settings`
+**Permissions:** `admin.language.update`
 
 ## Delete Language
 
@@ -195,7 +195,7 @@ Remove a language from the system.
 }
 ```
 
-**Permissions:** `admin.settings`
+**Permissions:** `admin.language.update`
 
 ## Frontend Integration Examples
 

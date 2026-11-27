@@ -61,7 +61,7 @@ class NavigationMenuService extends BaseService
     {
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID;
-        $languageId = $languageId ?? $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        $languageId = $languageId ?? $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
 
         $cacheKey = sprintf('navigation_%s_%d_%d', $mode, $languageId, $userId);
 
@@ -333,7 +333,7 @@ class NavigationMenuService extends BaseService
             $items,
         )));
         $translationMap = $this->navigationMenuItemTranslationRepository->findPresentationByMenuItemIds($itemIds);
-        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        $defaultLanguageId = $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
         $roots = NavigationMenuResolveSupport::resolveRootMenuItems($items);
         $resolvedRoots = $this->buildItemTree(
             $roots,

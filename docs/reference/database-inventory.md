@@ -29,7 +29,7 @@ holds 69.
 
 | Table | Purpose | Entity | Main readers / writers | Status |
 | --- | --- | --- | --- | --- |
-| `pages` | CMS pages: keyword, URL, access type, surface, system flag | `Page` | `PageService`, `AdminPageService`, `PageRepository`, `ACLService`, `NavigationMenuService` | used |
+| `pages` | CMS pages: keyword, URL, access type, surface, system flag, `draft_version` (raised by every draft write; sent back as `X-Page-Version`) | `Page` | `PageService`, `AdminPageService`, `PageRepository`, `ACLService`, `NavigationMenuService` | used |
 | `page_types` | Page type catalogue | `PageType` | `PageService`, `AdminPageService`, `PageTypeRepository` | used |
 | `page_routes` | Public parameterized route contract of a page | `PageRoute` | `PageRouteService`, `SectionAccessibleRouteService`, `PageRouteRepository` | used |
 | `page_versions` | Saved and published snapshots of a page | `PageVersion` | `PageVersionService`, `AdminPageService`, `SectionExportImportService`, `PageVersionRepository` | used |
@@ -111,6 +111,7 @@ holds 69.
 | `plugin_sources` | Plugin registry sources | `PluginSource` | `PluginAdminService`, `RegistryClient`, `PluginSourceUrlResolver`, `PluginSourceRepository` | used |
 | `plugin_operations` | One row per plugin lifecycle event | `PluginOperation` | `PluginAdminService`, `PluginCliFinalizer`, `UpdatePluginHandler`, `UninstallPluginHandler` | used |
 | `plugin_feature_flags` | Feature flag toggles of a plugin | `PluginFeatureFlag` | `PluginAdminService`, `PluginFeatureFlagRepository` | used |
+| `plugin_settings` | Values and encrypted secrets of the settings a plugin declares (contract C14); keyed by the plugin's manifest id with no foreign key to `plugins`: an uninstall keeps the rows, the purge deletes them. Added by migration `Version20261126133108`, after the snapshot of this document. | `PluginSetting` | `PluginSettingsService`, `PluginSettingRepository`, `PluginSettingsPurgeListener` | used |
 | `system_update_operations` | Audit trail of CMS-started SelfHelp updates | `SystemUpdateOperation` | `SystemUpdateService`, `SystemUpdateOperationRepository`, `SystemUpdateMercurePublisher` | used |
 | `page_views` | Anonymous page views per day, page, platform and visitor hash (raw SQL, no ORM) | `PageView` | `PageViewTrackerService` (writes), `AdminAnalyticsService` (reads) | used |
 | `page_view_referrers` | Views per day and external referrer host, for the admin "Referrers" card. The host comes only from header `X-Referrer-Host`; until 2026-11-12 no client sent it, so the table stayed empty (F126). | `PageViewReferrer` | `PageViewTrackerService` (writes), `AdminAnalyticsService` (reads) | used |

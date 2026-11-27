@@ -1,0 +1,13 @@
+# Test-only route of the users part of the plugin contracts (loaded only when
+# APP_ENV=test, see Symfony MicroKernelTrait::configureRoutes).
+#
+# C15: a public route that spends the QA users plugin's rate limit, so
+# PluginRateLimiterTest can prove the 429 `rate_limited` answer (with
+# `meta.retry_after`) through a real request. The controller lives in
+# tests/Support/Plugin; the route is static, so it never touches `api_routes`.
+qa_plugin_rate_limited_v1:
+    path: /cms-api/v1/qa-plugin/rate-limited
+    controller: App\Tests\Support\Plugin\QaRateLimitedController
+    methods: [GET]
+    options:
+        is_public: true

@@ -1,0 +1,37 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Page Edit Lock Status Response",
+    "description": "Status of the edit lock of a page (live sync contract C9). Returned by GET, POST and DELETE /admin/pages/{page_id}/lock and POST /admin/pages/{page_id}/lock/take-over, and as the data of a 409 page_locked answer. Per caller: `mine` is true only for the caller. holder, expires_at and idle_expires_at are null when held is false.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "page_id": { "type": "integer", "description": "The page the lock belongs to." },
+                "held": { "type": "boolean", "description": "True while someone holds the lock." },
+                "mine": { "type": "boolean", "description": "True when the caller is the holder." },
+                "holder": {
+                    "type": ["object", "null"],
+                    "description": "The holder, or null when the lock is free.",
+                    "properties": {
+                        "id": { "type": "integer" },
+                        "name": { "type": "string" }
+                    },
+                    "required": ["id", "name"]
+                },
+                "expires_at": {
+                    "type": ["string", "null"],
+                    "description": "UTC ISO 8601 moment the lease ends unless the holder renews it (120 s after the last renewal)."
+                },
+                "idle_expires_at": {
+                    "type": ["string", "null"],
+                    "description": "UTC ISO 8601 moment the lease ends when the holder writes nothing more (15 minutes after the last draft write, or after the acquisition)."
+                }
+            },
+            "required": ["page_id", "held", "mine", "holder", "expires_at", "idle_expires_at"]
+        }
+    },
+    "required": ["data"]
+}

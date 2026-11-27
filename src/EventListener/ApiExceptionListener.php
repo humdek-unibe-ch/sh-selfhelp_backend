@@ -9,6 +9,7 @@ namespace App\EventListener;
 
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
+use App\Plugin\RateLimit\PluginRateLimitedException;
 use App\Service\Core\ApiRequestLoggerService;
 use App\Service\Core\ApiResponseFormatter;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -73,6 +74,13 @@ class ApiExceptionListener
             return;
         }
 
+        // A spent plugin rate limit (C15): 429 `rate_limited` with `meta.retry_after` and
+        // the `Retry-After` header. Before the generic service exceptions it extends.
+        if ($exception instanceof PluginRateLimitedException) {
+            $event->setResponse($this->apiResponseFormatter->formatRateLimited($exception));
+            return;
+        }
+
         // Service-layer exceptions carry their intended HTTP status in the code.
         // Without this, an uncaught ServiceException (e.g. a controller action
         // that does not wrap the service call in try/catch) would be reported
@@ -102,7 +110,7 @@ class ApiExceptionListener
         // the framework's error logger has already recorded the bubbled
         // exception, so no extra logging is needed here.
         if ($statusCode >= Response::HTTP_INTERNAL_SERVER_ERROR && !$this->kernel->isDebug()) {
-            $message = 'Internal Server Error';
+            $message = ApiResponseFormatter::GENERIC_UNEXPECTED_ERROR;
         }
 
         // Use the ApiResponseFormatter for consistent error responses

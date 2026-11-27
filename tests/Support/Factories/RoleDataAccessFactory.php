@@ -110,6 +110,15 @@ final class RoleDataAccessFactory
         return $this->grant($role, LookupService::RESOURCE_TYPES_GROUP, $groupId, $crud);
     }
 
+    /**
+     * Grant a role CRUD permissions on one item of a plugin resource type (the
+     * type must be registered by an enabled plugin, e.g. {@see \App\Tests\Support\Plugin\QaItemPluginFixture}).
+     */
+    public function grantResourceAccess(Role $role, string $resourceTypeCode, int $resourceId, int $crud = DataAccessSecurityService::PERMISSION_READ): RoleDataAccess
+    {
+        return $this->grant($role, $resourceTypeCode, $resourceId, $crud);
+    }
+
     private function grant(Role $role, string $resourceTypeCode, int $resourceId, int $crud): RoleDataAccess
     {
         $resourceType = $this->lookupService->findByTypeAndCode(LookupService::RESOURCE_TYPES, $resourceTypeCode);

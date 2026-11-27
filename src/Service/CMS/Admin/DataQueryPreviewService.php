@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Service\CMS\Admin;
 
 use App\Entity\DataTable;
+use App\Entity\Language;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\CMS\Common\SectionAccessibleRouteService;
@@ -64,7 +65,7 @@ final class DataQueryPreviewService
         $rawFilter = $this->asString($draft['filter'] ?? $input['filter'] ?? '');
         $selectedColumns = $this->asString($draft['selected_columns'] ?? $input['selected_columns'] ?? '');
         $ownEntriesOnly = $this->resolveBool($draft['own_entries_only'] ?? $input['own_entries_only'] ?? null, true);
-        $languageId = $this->resolveInt($draft['language_id'] ?? $input['language_id'] ?? null) ?: 1;
+        $languageId = $this->resolveInt($draft['language_id'] ?? $input['language_id'] ?? null) ?: Language::INDEPENDENT_ID;
         $timezoneCode = $this->asString($draft['timezone_code'] ?? $input['timezone_code'] ?? '') ?: 'UTC';
 
         if ($sectionId > 0 && $this->sectionAccessibleRouteService->hasAccessiblePagesForSection($sectionId, $userId)) {
@@ -222,7 +223,7 @@ final class DataQueryPreviewService
                 if (!is_array($translation)) {
                     continue;
                 }
-                if ($this->resolveInt($translation['language_id'] ?? null) === 1) {
+                if ($this->resolveInt($translation['language_id'] ?? null) === Language::INDEPENDENT_ID) {
                     return $this->asString($translation['content'] ?? '');
                 }
             }

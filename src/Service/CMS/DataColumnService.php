@@ -77,6 +77,7 @@ class DataColumnService extends BaseService
         'scope',
         'user',
         'metadata',
+        'content_ref',
     ];
 
     /**
@@ -395,6 +396,29 @@ class DataColumnService extends BaseService
     private function isCoreFormKey(string $key): bool
     {
         return str_starts_with($key, FormFieldKeyResolver::FIELD_KEY_PREFIX);
+    }
+
+    /**
+     * Mark columns of a table as holding uploaded files (value type `file`),
+     * creating them when missing. For a source that stores form file keys
+     * without a `file-input` section, such as a plugin; a core form column
+     * keeps the type its input states.
+     *
+     * @param list<string> $fieldKeys
+     */
+    public function markFileColumns(DataTable $dataTable, array $fieldKeys): void
+    {
+        $changed = false;
+        foreach ($this->resolveColumns($dataTable, $fieldKeys) as $key => $column) {
+            if ($this->isCoreFormKey($key) || $column->getValueTypeCode() === LookupService::DATA_COL_VALUE_TYPES_FILE) {
+                continue;
+            }
+            $this->setColumnValueType($column, LookupService::DATA_COL_VALUE_TYPES_FILE);
+            $changed = true;
+        }
+        if ($changed) {
+            $this->entityManager->flush();
+        }
     }
 
     /**

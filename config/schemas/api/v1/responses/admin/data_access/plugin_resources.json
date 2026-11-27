@@ -1,0 +1,25 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin Resources Response Schema",
+    "description": "Schema for the admin/data-access/plugin-resource-types/{typeCode}/resources endpoint: the resources of one plugin resource type (H6). A caller who is not a superuser gets only the items they hold the view grant on (C9, F232).",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["id", "name", "description", "can_assign"],
+                "additionalProperties": false,
+                "properties": {
+                    "id": { "type": "integer", "description": "Resource id, used as resource_id in role permissions" },
+                    "name": { "type": "string" },
+                    "description": { "type": ["string", "null"] },
+                    "can_assign": { "type": "boolean", "description": "The caller holds every grant bit of this item and may therefore hand it out (rule 4.6f)" }
+                }
+            }
+        }
+    }
+}

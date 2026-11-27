@@ -80,10 +80,29 @@
                     "required": [
                         "id", "keyword", "url", "is_headless", "title", "description", "sections"
                     ]
+                },
+                "sync": {
+                    "type": "object",
+                    "description": "Live-sync block (contract C6): what this page depends on and until when it is true. A client refetches the page when a change notice carries a tag in depends_on, and at valid_until.",
+                    "properties": {
+                        "depends_on": {
+                            "type": "array",
+                            "uniqueItems": true,
+                            "items": { "type": "string", "pattern": "^(global_values|page:[0-9]+|page_draft:[0-9]+|table:[0-9]+|res:[a-z][a-z0-9_]{1,63}:[0-9]+)$" },
+                            "description": "Change tags: page:<id> (page_draft:<id> when the draft is served), table:<id> for every data table the page reads, res:<type>:<id> for plugin resources the page or its resolvers depend on, and global_values."
+                        },
+                        "valid_until": {
+                            "type": ["string", "null"],
+                            "format": "date-time",
+                            "description": "UTC ISO 8601 moment from which the shown result may differ only because time passed (a clock condition or clock text flips). Null when time never changes the result. The server never keeps the page in its cache beyond it."
+                        }
+                    },
+                    "required": ["depends_on", "valid_until"],
+                    "additionalProperties": false
                 }
             },
             "required": [
-                "page"
+                "page", "sync"
             ]
         }
     },

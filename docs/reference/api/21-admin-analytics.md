@@ -26,6 +26,7 @@ failures are logged and never break page delivery).
   stored, and a hash cannot be correlated across days.
 - "Unique visitors" therefore means **visitor-days**: multi-day ranges sum
   each day's uniques rather than deduplicating returning visitors.
+- A page view is counted only when the page request carries `X-Page-View: 1` (never on prefetch, live refetch or preview; F135).
 - External referrers come from the validated `X-Referrer-Host` header the web
   client sends on first navigation; self-referrals and invalid hosts are
   dropped.

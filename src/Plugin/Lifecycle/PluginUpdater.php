@@ -67,10 +67,12 @@ final class PluginUpdater
         private readonly PluginMigrationScanner $migrationScanner,
         private readonly PluginMigrationsRunner $migrationsRunner,
         private readonly PluginApiRouteSynchronizer $apiRouteSynchronizer,
+        private readonly PluginCatalogueSynchronizer $catalogueSynchronizer,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
         private readonly PluginCacheInvalidator $cacheInvalidator,
+        private readonly PluginDependencyGuard $dependencyGuard,
     ) {
     }
 
@@ -125,6 +127,11 @@ final class PluginUpdater
                     ['compatibility' => $compat]
                 );
             }
+
+            // C21: the new version's required dependencies and conflicts.
+            $this->dependencyGuard->assertCanActivate($newManifest);
+            // ... and the enabled plugins that require this one must still be satisfied by the new version.
+            $this->dependencyGuard->assertUpdateKeepsDependents($pluginId, $newManifest->getVersion());
 
             $capabilities = $this->capabilityValidator->validate($newManifest, $resolved);
             $migrationScan = $this->migrationScanner->scan($newManifest);
@@ -280,6 +287,12 @@ final class PluginUpdater
             // declares are deleted, and any new rows are inserted.
             // Runs AFTER the migration so any newly declared
             // permissions are resolvable by name.
+            // Catalogue rows declared by the new manifest (rule 7.8):
+            // renames in place, new rows, updated metadata, removed
+            // permissions / lookups / style-field links.
+            $catalogue = $this->catalogueSynchronizer->sync($plugin, $newManifest);
+            $this->recorder->appendLog($operation, 'plugin-catalogue-sync', $catalogue, 83);
+
             $this->apiRouteSynchronizer->sync($plugin, $newManifest);
             $this->recorder->appendLog($operation, 'plugin-api-routes-sync', [
                 'routes' => count($newManifest->getApiRoutes()),

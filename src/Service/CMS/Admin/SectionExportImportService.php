@@ -1451,11 +1451,12 @@ class SectionExportImportService extends BaseService
     /**
      * F07: walk the import tree and refuse it when any section binds a data
      * table the importing user's role cannot read, either through a
-     * table-binding field or through `global_fields.data_config`. Runs before
-     * anything is written, so a refused import leaves the page untouched.
+     * table-binding field or through `global_fields.data_config`, or (C8) a
+     * plugin resource they hold no view grant on. Runs before anything is
+     * written, so a refused import leaves the page untouched.
      *
      * @param array<int, array<string, mixed>> $sectionsData Import tree as received by the controller
-     * @throws ServiceException HTTP 403 when a section binds an unreadable table
+     * @throws ServiceException HTTP 403 when a section binds an unreadable table or a plugin resource that is not bindable
      */
     private function assertImportBindingsAllowed(array $sectionsData): void
     {
@@ -1467,7 +1468,7 @@ class SectionExportImportService extends BaseService
 
             $fields = $sectionData['fields'] ?? null;
             if (is_array($fields)) {
-                $this->tableBindingGuard->assertImportedFieldsBindable($fields);
+                $this->tableBindingGuard->assertImportedFieldsBindable($fields, $this->asString($sectionData['style_name'] ?? ''));
             }
 
             $children = $sectionData['children'] ?? null;

@@ -90,6 +90,8 @@ services:
       MERCURE_URL: http://mercure/.well-known/mercure
       MERCURE_PUBLIC_URL: http://mercure/.well-known/mercure
       SCHEDULED_JOBS_TICK_SECONDS: ${SCHEDULED_JOBS_TICK_SECONDS:-60}
+      # How many due jobs run at the same time (`execute-due --concurrency`).
+      SCHEDULED_JOBS_CONCURRENCY: ${SCHEDULED_JOBS_CONCURRENCY:-4}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

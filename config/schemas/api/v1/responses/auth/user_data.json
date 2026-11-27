@@ -30,6 +30,11 @@
           "type": "boolean",
           "description": "Whether the user is blocked"
         },
+        "acl_stamp": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "Access stamp: first 16 hex characters of SHA-256 over the user's acl_version and the id:acl_version pairs of the user's groups and roles. The same value every API response carries in the X-Acl-Stamp header; a client that sees a different header value refreshes its user data."
+        },
         "acl_version": {
           "type": ["string", "null"],
           "description": "Opaque version token that changes whenever the user's ACL/permissions are invalidated. The frontend compares it across requests to decide when to invalidate its navigation cache."
@@ -100,9 +105,13 @@
               "description": {
                 "type": ["string", "null"],
                 "description": "Role description"
+              },
+              "is_superuser": {
+                "type": "boolean",
+                "description": "True for the superuser role (all permissions, cannot be deleted). Clients read superuser status from this flag, never from the role name."
               }
             },
-            "required": ["id", "name", "description"],
+            "required": ["id", "name", "description", "is_superuser"],
             "additionalProperties": false
           }
         },
@@ -136,7 +145,7 @@
           }
         }
       },
-      "required": ["id", "email", "name", "user_name", "blocked", "acl_version", "receives_notifications", "receives_emails", "language", "timezone", "roles", "permissions", "groups"],
+      "required": ["id", "email", "name", "user_name", "blocked", "acl_version", "acl_stamp", "receives_notifications", "receives_emails", "language", "timezone", "roles", "permissions", "groups"],
       "additionalProperties": false
     }
   },

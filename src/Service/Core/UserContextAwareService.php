@@ -88,7 +88,9 @@ class UserContextAwareService extends BaseService
                 return $page;
             });
 
-        $this->checkAclPermission((int) $page->getId(), $permission);
+        // $permission kept on the public API for call-site clarity; page ACL is select-only.
+        unset($permission);
+        $this->checkAclPermission((int) $page->getId());
     }
 
     /**
@@ -192,7 +194,9 @@ class UserContextAwareService extends BaseService
             $this->throwNotFound('Page not found');
         }
 
-        $this->checkAclPermission($pageId, $permission);
+        // $permission kept on the public API for call-site clarity; page ACL is select-only.
+        unset($permission);
+        $this->checkAclPermission($pageId);
     }
 
     /**
@@ -203,10 +207,9 @@ class UserContextAwareService extends BaseService
      * - Calling ACLService.hasAccess()
      *
      * @param int $resourceId The page/resource ID to check permissions for
-     * @param string $permission The permission to check ('select', 'insert', 'update', 'delete')
      * @throws ServiceException If access is denied
      */
-    private function checkAclPermission(int $resourceId, string $permission): void
+    private function checkAclPermission(int $resourceId): void
     {
         // Get current user ID. Anonymous callers resolve to the guest sentinel,
         // which has no group memberships, so ACLService only grants open-access
@@ -214,8 +217,7 @@ class UserContextAwareService extends BaseService
         $user = $this->getCurrentUser();
         $userId = $user ? $user->getId() : UserContextService::GUEST_USER_ID;
 
-        // Check ACL permission for the resource
-        if (!$this->aclService->hasAccess($userId, $resourceId, $permission)) {
+        if (!$this->aclService->hasAccess($userId, $resourceId)) {
             $this->throwForbidden('Access denied');
         }
     }

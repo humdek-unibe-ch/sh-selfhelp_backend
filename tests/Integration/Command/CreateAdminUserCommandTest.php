@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Command;
 
 use App\Entity\Lookup;
+use App\Entity\Role;
 use App\Entity\User;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
@@ -253,6 +254,55 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
         );
         self::assertSame((int) $group->getId(), $this->coerceInt($membershipGroupId), 'User must join the requested group.');
         self::assertContains('ROLE_ADMIN', $user->getRoles(), 'User must hold the requested role.');
+    }
+
+    // -- 4a. Superuser role by flag, `admin` is only a name (F10) -----------
+
+    public function testWithoutRoleOptionTheRenamedSuperuserRoleIsAssigned(): void
+    {
+        $super = $this->em->getRepository(Role::class)->findOneBy(['isSuperuser' => true]);
+        self::assertInstanceOf(Role::class, $super);
+        // Rolled back by DAMA after the test.
+        $super->setName('qa_cmd_owners');
+        $this->em->flush();
+
+        $email = $this->email('renamed-superuser');
+        $this->runCommand([
+            'email' => $email,
+            'display-name' => 'QA Renamed Superuser',
+            '--password' => self::PASSWORD,
+        ])->assertCommandIsSuccessful();
+
+        $user = $this->findUser($email);
+        self::assertInstanceOf(User::class, $user);
+        $roleId = $this->em->getConnection()->fetchOne(
+            'SELECT id_roles FROM rel_roles_users WHERE id_users = :u',
+            ['u' => (int) $user->getId()],
+        );
+        self::assertSame((int) $super->getId(), $this->coerceInt($roleId), 'No --role must assign the role with is_superuser, whatever its name.');
+    }
+
+    public function testRoleOptionAdminIsAPlainNameLookup(): void
+    {
+        $super = $this->em->getRepository(Role::class)->findOneBy(['isSuperuser' => true]);
+        self::assertInstanceOf(Role::class, $super);
+        // No role is named `admin` any more (rolled back by DAMA).
+        $super->setName('qa_cmd_owners');
+        $this->em->flush();
+
+        $email = $this->email('admin-by-name');
+        $tester = $this->runCommand([
+            'email' => $email,
+            'display-name' => 'QA Admin By Name',
+            '--password' => self::PASSWORD,
+            '--role' => 'admin',
+        ]);
+        $tester->assertCommandIsSuccessful();
+        self::assertStringContainsString("Role 'admin' not found", $tester->getDisplay());
+
+        $user = $this->findUser($email);
+        self::assertInstanceOf(User::class, $user);
+        self::assertSame(0, $this->countRows('rel_roles_users', (int) $user->getId()), '`admin` must not stand for the superuser role.');
     }
 
     // -- 4b. Unknown group/role warns but still creates the user ------------

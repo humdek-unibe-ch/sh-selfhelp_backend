@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\FormList;
 
+use App\Entity\Language;
 use App\Exception\ServiceException;
 use App\Service\CMS\DataQuery\DataQueryEngine;
 use App\Service\CMS\DataRevision\DataRecordHistoryService;
@@ -215,7 +216,7 @@ class FormListHistoryService extends BaseService
                     $ctx,
                     $recordId,
                     $this->asString($entry['field_key'] ?? ''),
-                    $this->asInt($entry['language_id'] ?? 1),
+                    $this->asInt($entry['language_id'] ?? Language::INDEPENDENT_ID),
                     $entry['files'],
                     $version,
                 );
@@ -241,7 +242,7 @@ class FormListHistoryService extends BaseService
             $entry = $change;
             if (($entry['kind'] ?? '') === 'file') {
                 $fieldKey = $this->asString($entry['field_key'] ?? '');
-                $languageId = $this->asInt($entry['language_id'] ?? 1);
+                $languageId = $this->asInt($entry['language_id'] ?? Language::INDEPENDENT_ID);
                 if (is_array($entry['before_files'] ?? null)) {
                     $entry['before_files'] = $this->attachUrls($ctx, $recordId, $fieldKey, $languageId, $entry['before_files'], $from);
                 }

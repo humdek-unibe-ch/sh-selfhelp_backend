@@ -154,21 +154,21 @@ final class ApiResponseFormatterTest extends TestCase
 
     public function testFormatThrowableMasksServerErrorMessageInProduction(): void
     {
-        // debug=false (prod): internal 5xx text must never reach the client.
+        // F13: unexpected 5xx text never reaches the client, even when debug is on.
         $envelope = $this->decode(
             $this->formatter(debug: false)->formatThrowable(new \RuntimeException('secret connection dsn'))
         );
         self::assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $envelope['status']);
-        self::assertSame('Internal Server Error', $envelope['error']);
+        self::assertSame(ApiResponseFormatter::GENERIC_UNEXPECTED_ERROR, $envelope['error']);
     }
 
-    public function testFormatThrowableRevealsServerErrorMessageWhenDebug(): void
+    public function testFormatThrowableMasksServerErrorMessageWhenDebug(): void
     {
-        // debug=true (dev/test): the real message is helpful and allowed.
         $envelope = $this->decode(
             $this->formatter(debug: true)->formatThrowable(new \RuntimeException('detailed failure'))
         );
-        self::assertSame('detailed failure', $envelope['error']);
+        self::assertSame(ApiResponseFormatter::GENERIC_UNEXPECTED_ERROR, $envelope['error']);
+        self::assertStringNotContainsString('detailed failure', (string) json_encode($envelope));
     }
 
     public function testFormatThrowableKeepsClientErrorMessageEvenInProduction(): void

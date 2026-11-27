@@ -50,9 +50,9 @@ final class PageDefaultGroupsTest extends QaWebTestCase
             );
             foreach ($acls as $name => $rights) {
                 self::assertSame(
-                    ['select' => true, 'insert' => false, 'update' => false, 'delete' => false],
+                    ['select' => true],
                     $rights,
-                    sprintf('Group %s gets read access only', $name)
+                    sprintf('Group %s gets see access only', $name)
                 );
             }
         } finally {
@@ -140,7 +140,7 @@ final class PageDefaultGroupsTest extends QaWebTestCase
     }
 
     /**
-     * @return array<string, array{select: bool, insert: bool, update: bool, delete: bool}>
+     * @return array<string, array{select: bool}>
      */
     private function aclsByGroupName(int $pageId): array
     {
@@ -151,9 +151,6 @@ final class PageDefaultGroupsTest extends QaWebTestCase
         foreach ($em->getRepository(PageAclGroup::class)->findBy(['page' => $pageId]) as $acl) {
             $rows[(string) $acl->getGroup()?->getName()] = [
                 'select' => (bool) $acl->getAclSelect(),
-                'insert' => (bool) $acl->getAclInsert(),
-                'update' => (bool) $acl->getAclUpdate(),
-                'delete' => (bool) $acl->getAclDelete(),
             ];
         }
 

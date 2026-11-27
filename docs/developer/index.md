@@ -47,6 +47,7 @@ Technical documentation for the SelfHelp Symfony backend: architecture, patterns
 - [css-class-json.md](css-class-json.md) - CSS class catalog JSON.
 - [style-schema-endpoint.md](style-schema-endpoint.md) - Style schema endpoint and the AI prompt catalog.
 - [30-user-owned-enum-options.md](30-user-owned-enum-options.md) - Stable option codes, language-bound labels, runtime hydration, and reserved template keys.
+- [31-live-sync-change-notices.md](31-live-sync-change-notices.md) - Change notices (Mercure `changed`), topics and audiences, the `X-Acl-Stamp` header, the page `sync` block, page views.
 
 ## System services
 

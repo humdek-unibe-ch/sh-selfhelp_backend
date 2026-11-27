@@ -246,6 +246,8 @@ that feeds the prompt — keep them refreshed together.
 | Endpoint                                    | Permission          |
 |---------------------------------------------|---------------------|
 | `GET /admin/pages/{…}/sections/export`      | `admin.page.export` |
-| `POST /admin/pages/{…}/sections/import`     | `admin.page.export` |
+| `POST /admin/pages/{…}/sections/import`     | `admin.page.update` (since 0.1.48, F237) |
+| `POST /admin/pages/{…}/sections/{parent_section_id}/import` | `admin.page.update` |
+| `POST /admin/pages/{…}/sections/restore-from-version/{version_id}` | `admin.page.update` |
 | `GET /admin/styles/schema`                  | `admin.access`      |
 | `GET /admin/ai/section-prompt-template`     | `admin.page.export` |

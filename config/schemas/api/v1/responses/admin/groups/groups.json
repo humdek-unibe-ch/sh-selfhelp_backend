@@ -14,9 +14,11 @@
           "description": { "type": "string", "description": "Group description" },
           "requires_2fa": { "type": "boolean", "description": "Whether the group requires 2FA" },
           "add_to_new_pages": { "type": "boolean", "description": "Whether every new public page gives this group `select`" },
-          "users_count": { "type": "integer", "description": "Number of users in the group" }
+          "users_count": { "type": "integer", "description": "Number of users in the group" },
+          "can_update": { "type": "boolean", "description": "Whether the caller may update this group (admin.group.update and the update grant on this group)" },
+          "can_delete": { "type": "boolean", "description": "Whether the caller may delete this group (admin.group.delete and the delete grant on this group)" }
         },
-        "required": ["id", "name", "description", "requires_2fa", "add_to_new_pages", "users_count"],
+        "required": ["id", "name", "description", "requires_2fa", "add_to_new_pages", "users_count", "can_update", "can_delete"],
         "additionalProperties": false
       }
     },

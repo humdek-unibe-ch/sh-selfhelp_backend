@@ -278,9 +278,6 @@ CREATE TABLE `page_acl_groups` (
   `id_groups` int NOT NULL,
   `id_pages` int NOT NULL,
   `acl_select` tinyint(1) NOT NULL DEFAULT '1',
-  `acl_insert` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_update` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id_groups`,`id_pages`),
   CONSTRAINT `fk_page_acl_groups_id_pages`  FOREIGN KEY (`id_pages`)  REFERENCES `pages` (`id`)  ON DELETE CASCADE,
   CONSTRAINT `fk_page_acl_groups_id_groups` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
@@ -289,9 +286,6 @@ CREATE TABLE `page_acl_groups` (
 
 **ACL Permission Types:**
 - **`acl_select`**: Read access (view page/content)
-- **`acl_insert`**: Create access (add new content)
-- **`acl_update`**: Update access (modify existing content)
-- **`acl_delete`**: Delete access (remove content)
 
 ### 5. Multi-language Support Tables
 
@@ -443,7 +437,7 @@ CREATE TABLE `data_cells` (
 
 #### Column value type, record version and history (added 2026-11-13)
 
-- `data_cols.id_value_type` (nullable FK to `lookups`, group `dataColValueTypes`: `text`, `number`, `date`, `datetime`, `boolean`; NULL = text) tells the data query engine how to compare and sort a column's text. A known form input supplies it when its column is created and refreshes it when the form is saved. Migration `Version20261113104850`.
+- `data_cols.id_value_type` (nullable FK to `lookups`, group `dataColValueTypes`: `text`, `number`, `date`, `datetime`, `boolean`, `file`; NULL = text) tells the data query engine how to compare and sort a column's text. A known form input supplies it when its column is created and refreshes it when the form is saved. `file` (migration `Version20261119090000`) marks a column whose cells name uploaded form files without a `file-input` section feeding it, such as a plugin's upload column (`DataColumnService::markFileColumns()`); it sorts as text. Migration `Version20261113104850`.
 - `data_rows.version` (INT, default 1) is the record's version, advanced atomically with each persisted change. Migration `Version20261113120906`.
 - `data_rows` has two covering indexes for the list reads, `idx_data_rows_table_timestamp (id_data_tables, timestamp, id, id_action_trigger_types)` and `idx_data_rows_table_user_timestamp (id_data_tables, id_users, timestamp, id, id_action_trigger_types)`, so the default order (`timestamp DESC, id DESC`), the record count and the owner-scoped lists do not read every row of the table. Migration `Version20261113135247`; measurements in [data-query-engine.md](./data-query-engine.md#performance). The older `idx_data_rows_id_data_tables` is now redundant (a prefix of both) and stays until a separate clean-up.
 - `data_revisions` (one event per persisted change, unique `(id_data_rows, version)`), `data_revision_changes` (per field and language: before/after value references, or a checkpoint snapshot) and `data_revision_values` (immutable values, stored once per record) hold the record history. Everything cascades from `data_rows`; actor links are `SET NULL`. Lookups `dataRevisionOperations` and `dataRevisionSources`. See [record-history.md](./record-history.md).
@@ -451,20 +445,21 @@ CREATE TABLE `data_cells` (
 
 #### Translation Logic Rules
 
-1. **Language ID 1 (Internal/Default)**: Represents the internal language, cannot be translated
-2. **Language ID > 1 (Translatable)**: Can have multiple translations
-3. **Translation Rule**: If a cell exists with `language_id = 1`, it cannot have translations
-4. **Multi-translation Rule**: If a cell exists with `language_id > 1`, it can have multiple translations
+1. **Language ID 1 (language independent)**: Seeded row (`locale = all`) for values that are the same in every language (properties, plain form cells). Not a real language: not editable, not deletable, not selectable as a user language or CMS default. Referenced only as `Language::INDEPENDENT_ID`.
+2. **Language ID > 1 (real languages)**: Can have multiple translations; the CMS default is one of these.
+3. **Property / plain value**: Stored under language id 1.
+4. **Translated value**: One cell per real language; a visitor read falls back L → independent → CMS default.
 
 #### Data Retrieval with `get_data_table_filtered`
 
 > **Superseded (2026-11-13).** No code path calls the `get_data_table_*` stored
 > procedures any more: every generic-store read goes through the structured data
 > query engine ([data-query-engine.md](./data-query-engine.md)). The requested
-> language's cell wins and a missing one falls back to language 1 (the procedure
-> returned the larger text when both existed). The procedures remain in the
-> database until a cleanup migration removes them (proposed finding). The text
-> below describes the procedure for historical context only.
+> language's cell wins and a missing one falls back to the language-independent
+> cell, then the CMS default (the procedure returned the larger text when both
+> existed). The procedures remain in the database until a cleanup migration
+> removes them (proposed finding). The text below describes the procedure for
+> historical context only.
 
 The stored procedure `get_data_table_filtered` (renamed from `get_dataTable_with_filter` as part of the lowercase_snake_case normalization in the canonical baseline migration) supports language filtering and timezone conversion:
 
@@ -814,9 +809,6 @@ CREATE PROCEDURE get_user_acl(IN userId INT, IN pageId INT)
 BEGIN
     SELECT
         MAX(ag.acl_select) as acl_select,
-        MAX(ag.acl_insert) as acl_insert,
-        MAX(ag.acl_update) as acl_update,
-        MAX(ag.acl_delete) as acl_delete
     FROM users u
     LEFT JOIN rel_groups_users ug ON u.id = ug.id_users
     LEFT JOIN page_acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId

@@ -99,6 +99,12 @@ framework:
 
 ### Application-Level Validation
 
+Form uploads (`FormFileUploadService`, also used by plugins for their upload
+answers) accept images, office documents, PDF, text, CSV, JSON, XML, GPX,
+archives, and audio and video recordings (`mp3`, `wav`, `ogg`, `m4a`, `webm`,
+`mp4`), up to 25 MB per file and 50 MB per submission; the content must match
+the extension.
+
 The `AdminAssetService` includes file validation:
 
 ```php

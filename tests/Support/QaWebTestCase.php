@@ -12,6 +12,7 @@ namespace App\Tests\Support;
 
 use App\DataFixtures\Test\QaBaselineFixture;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\Response;
@@ -28,6 +29,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 abstract class QaWebTestCase extends WebTestCase
 {
+    use CreatesPageVersionAwareClient;
     use InteractsWithQaBaseline;
     use NarrowsJson;
 
@@ -38,11 +40,18 @@ abstract class QaWebTestCase extends WebTestCase
 
     protected function setUp(): void
     {
-        $this->client = static::createClient();
+        $this->client = static::createPageVersionAwareClient();
 
         /** @var EntityManagerInterface $em */
         $em = self::getContainer()->get(EntityManagerInterface::class);
         $this->assertQaBaselineLoaded($em);
+
+        // The page edit lock (C9) lives in a cache pool that the DAMA rollback does not
+        // reach: start every test with no lease.
+        $leases = self::getContainer()->get('cache.page_edit_lock');
+        if ($leases instanceof CacheItemPoolInterface) {
+            $leases->clear();
+        }
     }
 
     // -- Login helpers ------------------------------------------------------
@@ -129,6 +138,12 @@ abstract class QaWebTestCase extends WebTestCase
             'CONTENT_TYPE' => 'application/json',
         ] + $extra;
     }
+
+    /**
+     * Extra header key that tells the client not to add `X-Page-Version` (for tests of
+     * the missing-header answer); see {@see PageVersionAwareBrowser}.
+     */
+    protected const NO_PAGE_VERSION = PageVersionAwareBrowser::NO_PAGE_VERSION;
 
     /**
      * Perform a JSON request and return the decoded envelope.

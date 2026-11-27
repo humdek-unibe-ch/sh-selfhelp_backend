@@ -12,7 +12,8 @@ namespace App\Tests\Unit\Release;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Release-manifest floor for the unreleased DB-routing / CMS-apps wave.
+ * Release-manifest floor for the current wave (core 0.1.52: plugin host hooks;
+ * the frontend that adopts the new routes and UI is 0.1.79).
  * Registry pairing uses supports.frontend (not shared SemVer alone).
  * Mobile pairing is intentionally one-directional via mobile supports.core.
  */
@@ -20,25 +21,26 @@ final class ReleaseManifestWaveTest extends TestCase
 {
     use \App\Tests\Support\NarrowsJson;
 
-    public function testSupportsFrontendRequires072ForCore045(): void
+    public function testSupportsFrontendRequires079ForCore052(): void
     {
         $manifest = $this->loadManifest();
         self::assertSame('core', $manifest['kind'] ?? null);
         $supports = self::asArray($manifest['supports'] ?? null);
-        self::assertSame('>=0.1.72 <0.2.0', $supports['frontend'] ?? null);
+        self::assertSame('>=0.1.79 <0.2.0', $supports['frontend'] ?? null);
         self::assertSame('>=1.7.0', $supports['manager'] ?? null);
+        self::assertSame('0.2.0', $manifest['pluginApiVersion'] ?? null);
     }
 
-    public function testCore045WithFrontend072IsSupportedByDeclaredRange(): void
+    public function testCore052WithFrontend079IsSupportedByDeclaredRange(): void
     {
         $range = $this->frontendSupportRange();
-        self::assertTrue($this->satisfiesPre1Range('0.1.72', $range));
+        self::assertTrue($this->satisfiesPre1Range('0.1.79', $range));
     }
 
-    public function testCore045RejectsFrontendBelow072(): void
+    public function testCore052RejectsFrontendBelow079(): void
     {
         $range = $this->frontendSupportRange();
-        self::assertFalse($this->satisfiesPre1Range('0.1.71', $range));
+        self::assertFalse($this->satisfiesPre1Range('0.1.78', $range));
     }
 
     public function testDoesNotDeclareSupportsMobile(): void

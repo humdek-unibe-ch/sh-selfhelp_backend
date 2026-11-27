@@ -16,6 +16,17 @@ use App\Service\Core\LookupService;
 use App\Service\Core\ScheduledJobRunnerService;
 use App\Tests\Support\Factories\ScheduledJobFactory;
 use App\Tests\Support\QaKernelTestCase;
+use App\Repository\ScheduledJobRepository;
+use App\Repository\ScheduledJobRunnerRunRepository;
+use App\Repository\ScheduledJobRunnerSettingRepository;
+use App\Service\Cache\Core\CacheService;
+use App\Service\Core\JobSchedulerService;
+use App\Service\Core\TransactionService;
+use App\Service\Sync\ChangeNotifier;
+use App\Tests\Support\MercureTestRecorder;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+use Symfony\Component\Lock\LockFactory;
 
 /**
  * Operational coverage for the Docker scheduled-job runner orchestration
@@ -173,6 +184,80 @@ final class ScheduledJobRunnerServiceTest extends QaKernelTestCase
             $before + 3,
             $repo->count([]),
             'retention_max_runs=null must disable pruning so every run row is kept.'
+        );
+    }
+
+    public function testTheChangeNoticesOfAJobAreSentWhenTheJobIsDone(): void
+    {
+        $hub = new MercureTestRecorder();
+        $notifier = new ChangeNotifier($hub, new NullLogger());
+        $runner = $this->runnerWith($this->service(JobSchedulerService::class), $notifier);
+        $this->jobs->createDueQueuedEmailJob($this->qaUser(), 'qa_runner_notices');
+        $notifier->notify(['mercure/sync/public'], ['navigation']);
+
+        $runner->runDueJobs(ScheduledJobRunnerRun::TRIGGER_SCHEDULER, null, true);
+
+        self::assertSame([], $notifier->pending(), 'The notices of the job were sent, not kept for the next job.');
+        self::assertCount(1, $hub->getUpdates(), 'One message per topic, sent once.');
+    }
+
+    public function testTheNoticesOfOneJobAreSentBeforeTheNextJobRuns(): void
+    {
+        $hub = new MercureTestRecorder();
+        $notifier = new ChangeNotifier($hub, new NullLogger());
+        $sentWhenJobStarted = [];
+        $scheduler = $this->createStub(JobSchedulerService::class);
+        $scheduler->method('executeJob')->willReturnCallback(
+            static function () use ($hub, $notifier, &$sentWhenJobStarted): false {
+                // How many messages the hub already holds when a job begins, then this job's own notice.
+                $sentWhenJobStarted[] = count($hub->getUpdates());
+                $notifier->notify(['mercure/sync/public'], ['table:31']);
+
+                return false;
+            },
+        );
+        $runner = $this->runnerWith($scheduler, $notifier);
+        $this->jobs->createDueQueuedEmailJob($this->qaUser(), 'qa_runner_order_one');
+        $this->jobs->createDueQueuedEmailJob($this->qaUser(), 'qa_runner_order_two');
+
+        $runner->runDueJobs(ScheduledJobRunnerRun::TRIGGER_SCHEDULER, null, true);
+
+        self::assertGreaterThanOrEqual(2, count($sentWhenJobStarted), 'Both due jobs ran.');
+        self::assertSame(0, $sentWhenJobStarted[0]);
+        self::assertSame(1, $sentWhenJobStarted[1], 'The first job\'s message was sent before the second job started.');
+        self::assertSame([], $notifier->pending());
+    }
+
+    public function testTheChangeNoticesOfAFailedJobAreDropped(): void
+    {
+        $hub = new MercureTestRecorder();
+        $notifier = new ChangeNotifier($hub, new NullLogger());
+        $scheduler = $this->createStub(JobSchedulerService::class);
+        $scheduler->method('executeJob')->willThrowException(new \RuntimeException('qa job failed'));
+        $runner = $this->runnerWith($scheduler, $notifier);
+        $this->jobs->createDueQueuedEmailJob($this->qaUser(), 'qa_runner_failed_notices');
+        $notifier->notify(['mercure/sync/public'], ['navigation']);
+
+        $result = $runner->runDueJobs(ScheduledJobRunnerRun::TRIGGER_SCHEDULER, null, true);
+
+        self::assertSame(ScheduledJobRunnerRun::STATUS_FAILED, $result->status, 'The runner records the failed run.');
+        self::assertSame([], $notifier->pending(), 'What a failed job queued is dropped (F136/F211).');
+        self::assertCount(0, $hub->getUpdates(), 'Nothing is sent for a job that failed.');
+    }
+
+    private function runnerWith(JobSchedulerService $scheduler, ChangeNotifier $notifier): ScheduledJobRunnerService
+    {
+        return new ScheduledJobRunnerService(
+            $this->em,
+            $this->service(ScheduledJobRepository::class),
+            $this->service(ScheduledJobRunnerSettingRepository::class),
+            $this->service(ScheduledJobRunnerRunRepository::class),
+            $scheduler,
+            $this->service(TransactionService::class),
+            $this->service(CacheService::class),
+            $this->service(LockFactory::class),
+            $this->service(LoggerInterface::class),
+            $notifier,
         );
     }
 

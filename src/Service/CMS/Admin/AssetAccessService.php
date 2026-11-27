@@ -17,7 +17,9 @@ use App\Repository\UserRepository;
 use App\Service\Auth\UserContextService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
+use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Security\ResourceGrantService;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -40,18 +42,16 @@ class AssetAccessService extends BaseService
     /** Route permission that lets a role upload assets (and so manage its own uploads by default). */
     private const CREATE_PERMISSION = 'admin.asset.create';
 
-    /** The admin role's id, read once per request by {@see withoutAdminRole()}. */
-    private ?int $adminRoleId = null;
-    private bool $adminRoleIdLoaded = false;
-
     public function __construct(
         private readonly UserContextService $userContextService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly AdminDataAccessService $dataAccess,
+        private readonly CreatorGrantService $creatorGrants,
         private readonly EntityManagerInterface $entityManager,
         private readonly UserRepository $userRepository,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
         private readonly LookupService $lookupService,
+        private readonly ResourceGrantService $resourceGrants,
     ) {
     }
 
@@ -188,10 +188,10 @@ class AssetAccessService extends BaseService
             ->where('rda.idResourceTypes = :type')
             ->andWhere('rda.resourceId IN (:ids)')
             ->andWhere('rda.crudPermissions > 0')
-            ->andWhere('r.name != :adminRole')
+            ->andWhere('r.isSuperuser = :notSuper')
             ->setParameter('type', $this->resourceTypeId())
             ->setParameter('ids', $assetIds)
-            ->setParameter('adminRole', DataAccessSecurityService::ADMIN_ROLE_NAME)
+            ->setParameter('notSuper', false)
             ->orderBy('r.name')
             ->getQuery()
             ->getArrayResult();
@@ -229,17 +229,7 @@ class AssetAccessService extends BaseService
      */
     public function withoutAdminRole(array $roleIds): array
     {
-        if ($roleIds === []) {
-            return [];
-        }
-
-        if (!$this->adminRoleIdLoaded) {
-            $admin = $this->entityManager->getRepository(Role::class)->findOneBy(['name' => DataAccessSecurityService::ADMIN_ROLE_NAME]);
-            $this->adminRoleId = $admin instanceof Role ? $admin->getId() : null;
-            $this->adminRoleIdLoaded = true;
-        }
-
-        return array_values(array_filter($roleIds, fn (int $roleId): bool => $roleId !== $this->adminRoleId));
+        return $this->creatorGrants->withoutAdminRole($roleIds);
     }
 
     /**
@@ -253,9 +243,18 @@ class AssetAccessService extends BaseService
      * that writes `role_data_access`, so each change is logged and the touched
      * roles' permission caches are dropped exactly as on the role screens.
      *
+     * Rule 4.6f applies to the target roles: a role the caller does not fully
+     * hold cannot be added or removed (403). The asset itself counts as held
+     * by the caller (decided 2026-11-19): they upload it, or they manage it
+     * through a grant that the caller's edit right already proved. So the bit
+     * on this asset is never "missing", while every other permission and grant
+     * of the target role still has to be held.
+     *
      * @param list<int>|null $roleIds
+     * @param list<int> $alsoHeldAssetIds further assets of the same request the caller
+     *        counts as holding (folder access changes several assets in one go)
      */
-    public function setManagingRoles(Asset $asset, ?array $roleIds): void
+    public function setManagingRoles(Asset $asset, ?array $roleIds, array $alsoHeldAssetIds = []): void
     {
         $roleIds = $this->withoutAdminRole(array_values(array_unique($roleIds ?? $this->defaultManagingRoleIds())));
         foreach ($roleIds as $roleId) {
@@ -272,9 +271,24 @@ class AssetAccessService extends BaseService
             $current[(int) $row->getRole()->getId()] = $row;
         }
 
+        $callerIdOrNull = $this->userId();
+        if ($callerIdOrNull === null) {
+            $this->throwBadRequest('User not authenticated');
+        }
+        $callerId = $callerIdOrNull;
+
+        $held = [['resource_type_id' => $typeId, 'resource_id' => $assetId]];
+        foreach ($alsoHeldAssetIds as $heldAssetId) {
+            $held[] = ['resource_type_id' => $typeId, 'resource_id' => $heldAssetId];
+        }
+
         foreach ($current as $roleId => $row) {
             if (!in_array($roleId, $roleIds, true)) {
-                $this->dataAccess->deleteRolePermission($roleId, (int) $row->getId());
+                // A grant an older version stored for the admin role is noise
+                // (the admin role manages every asset anyway, see
+                // withoutAdminRole()): dropping it changes no one's rights, so
+                // the caller needs no hold on the admin role to clean it up.
+                $this->dataAccess->deleteRolePermission($callerId, $roleId, (int) $row->getId(), !$row->getRole()->isSuperuser(), $held);
             }
         }
 
@@ -282,11 +296,40 @@ class AssetAccessService extends BaseService
             if (isset($current[$roleId]) && $current[$roleId]->getCrudPermissions() === self::FULL_ACCESS) {
                 continue;
             }
-            $this->dataAccess->addRolePermission($roleId, (object) [
+            $this->dataAccess->addRolePermission($callerId, $roleId, (object) [
                 'resource_type_id' => $typeId,
                 'resource_id' => $assetId,
                 'crud_permissions' => self::FULL_ACCESS,
-            ]);
+            ], true, $held);
+        }
+    }
+
+    /**
+     * Drop every grant on an asset that is being deleted. This is clean-up,
+     * not a change of any role's rights: nothing a role could do remains
+     * afterwards, so rule 4.6f is not asked (the caller's delete right on the
+     * asset was checked before). Each removal is still logged
+     * ({@see ResourceGrantService::revokeAll()}). The caller drops the cached
+     * rights of the returned roles with {@see invalidateRoles()} once its
+     * transaction has committed.
+     *
+     * @return list<int> the roles that lost a grant
+     */
+    public function releaseManagingRoles(Asset $asset): array
+    {
+        return $this->resourceGrants->revokeAll(LookupService::RESOURCE_TYPES_ASSET, (int) $asset->getId());
+    }
+
+    /**
+     * Drop the cached rights, the access stamp and the open clients' view of
+     * these roles (after the transaction that changed their grants committed).
+     *
+     * @param list<int> $roleIds
+     */
+    public function invalidateRoles(array $roleIds): void
+    {
+        foreach ($roleIds as $roleId) {
+            $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
         }
     }
 
@@ -341,27 +384,9 @@ class AssetAccessService extends BaseService
      */
     private function defaultManagingRoleIds(): array
     {
-        $userId = $this->userId();
-        if ($userId === null) {
-            return [];
-        }
-
-        /** @var list<array{id: int|string}> $rows */
-        $rows = $this->entityManager->createQueryBuilder()
-            ->select('DISTINCT r.id')
-            ->from(Role::class, 'r')
-            ->innerJoin('r.users', 'u')
-            ->innerJoin('r.permissions', 'p')
-            ->where('u.id = :userId')
-            ->andWhere('p.name = :permission')
-            ->andWhere('r.name != :adminRole')
-            ->setParameter('userId', $userId)
-            ->setParameter('permission', self::CREATE_PERMISSION)
-            ->setParameter('adminRole', DataAccessSecurityService::ADMIN_ROLE_NAME)
-            ->getQuery()
-            ->getArrayResult();
-
-        return array_map(static fn (array $row): int => (int) $row['id'], $rows);
+        return $this->creatorGrants->withoutAdminRole(
+            $this->creatorGrants->callerRoleIdsHolding(self::CREATE_PERMISSION),
+        );
     }
 
     private function resourceTypeId(): int

@@ -185,13 +185,10 @@ final class PageSectionFactory
     public function grantGroupAcl(
         Page $page,
         Group $group,
-        bool $select,
-        bool $insert,
-        bool $update,
-        bool $delete,
         array $affectedUserIds = [],
+        bool $select = true,
     ): void {
-        $this->aclService->addGroupAcl($page, $group, $select, $insert, $update, $delete, $this->em);
+        $this->aclService->addGroupAcl($page, $group, $this->em, $select);
         $this->em->flush();
 
         $this->invalidatePageScopedCaches();

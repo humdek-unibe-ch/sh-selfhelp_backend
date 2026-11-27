@@ -54,6 +54,7 @@ final class PluginEnabler
         private readonly EventDispatcherInterface $events,
         private readonly InstallModeResolver $installModeResolver,
         private readonly PluginCacheInvalidator $cacheInvalidator,
+        private readonly PluginDependencyGuard $dependencyGuard,
     ) {
     }
 
@@ -79,6 +80,14 @@ final class PluginEnabler
 
             if ($plugin->isEnabled() === $enabled) {
                 return $plugin;
+            }
+
+            // C21: enabling needs the plugin's required dependencies enabled and no enabled
+            // conflict; disabling is refused while an enabled plugin requires this one.
+            if ($enabled) {
+                $this->dependencyGuard->assertCanActivate(new PluginManifest($plugin->getManifestJson()));
+            } else {
+                $this->dependencyGuard->assertNoEnabledDependents($pluginId);
             }
 
             $type = $enabled ? PluginOperation::TYPE_ENABLE : PluginOperation::TYPE_DISABLE;

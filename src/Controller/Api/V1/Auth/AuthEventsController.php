@@ -14,6 +14,7 @@ use App\Plugin\Event\PluginRealtimePermissionEvent;
 use App\Service\Auth\UserContextService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Mercure\MercureTopicResolver;
+use App\Service\Sync\AclStampService;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Cookie;
@@ -36,7 +37,8 @@ use Symfony\Component\Mercure\Jwt\LcobucciFactory;
  *     "hubUrl": "...",
  *     "topic": "...",                 // ACL topic (kept for compatibility)
  *     "impersonationTopic": "...",    // impersonation-status topic
- *     "systemUpdateTopic": "...",     // system-update progress topic
+ *     "systemUpdateTopic": "...",     // system-update progress topic (null for guests)
+ *     "syncTopics": ["..."],          // live-sync topics: user, each group, each role, public
  *     "token": "...",                 // single JWT scoped to ALL topics
  *     "expiresIn": 3600
  *   }
@@ -77,9 +79,9 @@ use Symfony\Component\Mercure\Jwt\LcobucciFactory;
  * ## Auth
  *
  * Falls under `^/cms-api/v1/auth: PUBLIC_ACCESS` in `security.yaml` so the
- * Lexik JWT firewall runs in lazy mode. The controller manually checks
- * {@see UserContextService::getCurrentUser()} and 401s anonymous callers,
- * matching the convention used by `/auth/user-data`.
+ * Lexik JWT firewall runs in lazy mode. Guests are served as well (never 401):
+ * they get the public sync topic only; the user, impersonation, system-update and
+ * plugin topics are for signed-in callers.
  */
 class AuthEventsController extends AbstractController
 {
@@ -97,6 +99,7 @@ class AuthEventsController extends AbstractController
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly MercureTopicResolver $topics,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly AclStampService $aclStamp,
         private readonly string $mercurePublicUrl,
         private readonly string $mercureJwtSecret,
         private readonly int $mercureSubscriberTtl
@@ -117,18 +120,34 @@ class AuthEventsController extends AbstractController
      */
     public function events(Request $request): Response
     {
+        // Guests are served too (live-sync contract C4): the public sync topic carries navigation and
+        // global-value notices that every visitor needs. They get no user, impersonation or
+        // system-update topic and no plugin topics.
         $user = $this->userContextService->getCurrentUser();
-        if (!$user) {
-            return $this->responseFormatter->formatError(
-                'User not authenticated',
-                Response::HTTP_UNAUTHORIZED
-            );
-        }
 
-        $userId = (int) $user->getId();
-        $aclTopic = $this->topics->userAclTopic($userId);
-        $impersonationTopic = $this->topics->userImpersonationTopic($userId);
-        $systemUpdateTopic = $this->topics->userSystemUpdateTopic($userId);
+        if ($user) {
+            $userId = (int) $user->getId();
+            $aclTopic = $this->topics->userAclTopic($userId);
+            $impersonationTopic = $this->topics->userImpersonationTopic($userId);
+            $systemUpdateTopic = $this->topics->userSystemUpdateTopic($userId);
+
+            // The sync topics the caller may read, and nothing else: their own, one per group, one per
+            // role, and the public one. The token below lists exactly these (plus the private topics).
+            $memberships = $this->aclStamp->memberships($userId);
+            $syncTopics = [$this->topics->syncUserTopic($userId)];
+            foreach (array_keys($memberships['groups']) as $groupId) {
+                $syncTopics[] = $this->topics->syncGroupTopic($groupId);
+            }
+            foreach (array_keys($memberships['roles']) as $roleId) {
+                $syncTopics[] = $this->topics->syncRoleTopic($roleId);
+            }
+            $syncTopics[] = $this->topics->syncPublicTopic();
+        } else {
+            $aclTopic = null;
+            $impersonationTopic = null;
+            $systemUpdateTopic = null;
+            $syncTopics = [$this->topics->syncPublicTopic()];
+        }
         $useCookieTransport = $this->shouldUseCookieTransport($request);
         $hubUrl = $this->resolvePublicHubUrl($request);
 
@@ -152,16 +171,25 @@ class AuthEventsController extends AbstractController
         // subscription. Plugin listeners use `PluginRealtimePublisher`
         // to publish messages; the topic IRIs they grant here must match
         // the IRIs declared in their `plugin.json#realtimeTopics`.
-        $pluginEvent = new PluginRealtimePermissionEvent($user);
-        $this->eventDispatcher->dispatch($pluginEvent);
-        $pluginTopics = $pluginEvent->getAllowedTopicIris();
+        // The host grants the one-user topics itself (`PluginUserTopicGrant`, audience `user`): the
+        // topic with the caller's own id and no other.
+        $pluginTopics = [];
+        if ($user) {
+            $pluginEvent = new PluginRealtimePermissionEvent($user);
+            $this->eventDispatcher->dispatch($pluginEvent);
+            $pluginTopics = $pluginEvent->getAllowedTopicIris();
+        }
 
         // One subscriber JWT, multiple topics. Mercure supports multiple
         // `topic=` query params on a single SSE connection, so the BFF
         // opens ONE upstream socket instead of N — half the RAM in the
         // hub, half the file descriptors per logged-in user.
         $token = $factory->create(
-            array_values(array_unique(array_merge([$aclTopic, $impersonationTopic, $systemUpdateTopic], $pluginTopics))),
+            array_values(array_unique(array_merge(
+                array_values(array_filter([$aclTopic, $impersonationTopic, $systemUpdateTopic], static fn (?string $topic): bool => $topic !== null)),
+                $syncTopics,
+                $pluginTopics,
+            ))),
             null,
         );
 
@@ -178,6 +206,7 @@ class AuthEventsController extends AbstractController
                 'topic' => $aclTopic,
                 'impersonationTopic' => $impersonationTopic,
                 'systemUpdateTopic' => $systemUpdateTopic,
+                'syncTopics' => $syncTopics,
                 'pluginTopics' => $pluginTopics,
                 'token' => $useCookieTransport ? null : $token,
                 'expiresIn' => $this->mercureSubscriberTtl,

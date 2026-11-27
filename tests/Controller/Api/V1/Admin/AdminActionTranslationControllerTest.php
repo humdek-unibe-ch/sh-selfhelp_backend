@@ -21,7 +21,7 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * Route `admin_actions_translations_get_all_v1`
  * (GET /admin/actions/{actionId}/translations, permission
- * admin.action_translation.read). The success path runs against a self-seeded
+ * admin.action.read; the separate translations right was folded in on 2026-11-19). The success path runs against a self-seeded
  * `qa_` action (DAMA rolls it back), the not-found branch against a sentinel id,
  * and the permission matrix proves admin-only access.
  */

@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\Effective;
 
+use App\Entity\Language;
 use App\Exception\ServiceException;
 use App\Service\CMS\DataColumnService;
 use App\Service\CMS\DataQuery\DataColValueType;
@@ -314,7 +315,7 @@ class FormInputValidator
                 $details[] = 'This field cannot be changed.';
             } elseif (!$input->isFile) {
                 if ($change['action'] === 'remove') {
-                    if ($input->required && $change['language_id'] === 1) {
+                    if ($input->required && $change['language_id'] === Language::INDEPENDENT_ID) {
                         $details[] = 'This field is required now, so the earlier version without it cannot be restored.';
                     }
                 } else {

@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-11-14.
+Last verified: 2026-11-26.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository (form storage keys resolved by `App\Service\CMS\DataColumnService`).
 
 ## Overview
@@ -81,6 +81,8 @@ The file part's name must be the `name` of a `file-input` in that form (here `at
 ```
 
 The success `data` also returns `record_id`, `section_id`, `page_id`, `submitted_at`, `user_authenticated` and the new record's `version` (`1`); see `responses/frontend/form_submitted.json`.
+
+Every write of a form (submit, update, delete, and a list's quick action) also stores which version of the page the person was shown, on the record and on its revision: `page:<page id>@v<n>` for the published version served, `page:<page id>@draft` for an editor's preview or a page that was never published. The client does not send it and cannot change it. Admins read it as `content_ref` in the data browser, the record history and the exports; see [record-history](../../developer/record-history.md#content-reference).
 
 ### Update Form Submission
 
@@ -207,7 +209,7 @@ Return a file uploaded through a form.
 
 **Endpoint:** `GET /cms-api/v1/forms/files/{record_id}/{field}?index=0`
 
-- `field`: the `file-input` name (or its `section_<id>` column key).
+- `field`: the `file-input` name (or its `section_<id>` column key), or a column declared with the value type `file` (a plugin's upload column). A cell may hold one key, a list of keys, or JSON with keys inside (a plugin's answer object); `index` counts the keys in that order.
 - `index`: which file of a multi-file field (default `0`).
 
 **Authentication:** JWT required. Allowed for the user who submitted the record, or a user with READ on the form's data table (admins always). The field's `files_public` switch no longer opens this route to anyone with the link (F165); page viewers use the section-scoped list file route instead ([22-form-lists.md](22-form-lists.md#current-file-of-a-shown-record)). No route-level permission; access is checked per record.

@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace App\Controller\Api\V1\Admin\Plugin;
 
+use App\Exception\ServiceException;
 use App\Plugin\Service\PluginAdminService;
 use App\Service\Core\ApiResponseFormatter;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -114,6 +115,9 @@ final class AdminPluginOperationController extends AbstractController
         if (!is_int($status) || $status < Response::HTTP_BAD_REQUEST || $status >= 600) {
             $status = Response::HTTP_INTERNAL_SERVER_ERROR;
         }
-        return $this->responseFormatter->formatError($e->getMessage(), $status);
+        // A ServiceException may carry data the caller needs (for example the dependents of a 409).
+        $data = $e instanceof ServiceException ? $e->getData() : null;
+
+        return $this->responseFormatter->formatError($e->getMessage(), $status, $data);
     }
 }

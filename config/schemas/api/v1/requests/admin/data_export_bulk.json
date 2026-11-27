@@ -12,7 +12,7 @@
     },
     "format": {
       "type": "string",
-      "enum": ["csv", "json"],
+      "enum": ["csv", "json", "xlsx"],
       "description": "Export format"
     },
     "user_id": {

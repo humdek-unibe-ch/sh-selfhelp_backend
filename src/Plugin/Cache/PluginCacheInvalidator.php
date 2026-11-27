@@ -11,6 +11,8 @@ declare(strict_types=1);
 namespace App\Plugin\Cache;
 
 use App\Plugin\Registry\PluginRegistryService;
+use App\Plugin\Resource\RegisteredResourceTypes;
+use App\Plugin\Resource\ResourceFieldMap;
 use App\Service\Cache\Core\CacheService;
 
 /**
@@ -55,6 +57,12 @@ use App\Service\Cache\Core\CacheService;
  * `invalidateCategory()` per category against the same Redis pool the
  * host already uses), so the orchestrators can keep their existing
  * narrower invalidations in place — duplicate clears are harmless.
+ *
+ * Plugin cache categories (`cacheCategories` in the manifest, named
+ * `<plugin id>.<name>`, contract C4) are cleared by uninstall and purge
+ * through {@see clearPluginCategories()}, and the small registries that
+ * list registered resource types, plugin categories and resource fields
+ * are reset on every change, so the next request reads the new plugin state.
  */
 final class PluginCacheInvalidator
 {
@@ -79,6 +87,9 @@ final class PluginCacheInvalidator
     public function __construct(
         private readonly CacheService $cache,
         private readonly PluginRegistryService $registry,
+        private readonly RegisteredResourceTypes $resourceTypes,
+        private readonly PluginCacheCategories $pluginCategories,
+        private readonly ResourceFieldMap $resourceFields,
     ) {
     }
 
@@ -94,6 +105,7 @@ final class PluginCacheInvalidator
         // single-entry-point behaviour for code that only depends on
         // PluginRegistryService (no behavioural change for that path).
         $this->registry->invalidate();
+        $this->resetRegistries();
 
         foreach (self::IMPACTED_CATEGORIES as $category) {
             $this->cache->withCategory($category)->invalidateCategory();
@@ -113,9 +125,39 @@ final class PluginCacheInvalidator
     public function invalidateAllCaches(): void
     {
         $this->registry->invalidate();
+        $this->resetRegistries();
 
-        foreach (CacheService::ALL_CATEGORIES as $category) {
+        foreach ($this->cache->allCategories() as $category) {
             $this->cache->withCategory($category)->invalidateCategory();
         }
+    }
+
+    /**
+     * Clear the cache categories one plugin declared, enabled or not.
+     *
+     * Uninstall and purge call it with the manifest they hold, because
+     * the plugin row (and with it the registry's knowledge of the
+     * categories) is gone afterwards.
+     *
+     * @param array<string, mixed>|string|null $manifest the decoded manifest or its JSON text
+     * @return int how many categories were cleared
+     */
+    public function clearPluginCategories(string $pluginId, array|string|null $manifest): int
+    {
+        $cleared = 0;
+        foreach (array_keys(PluginCacheCategories::categoriesOf($pluginId, $manifest)) as $category) {
+            $this->cache->withCategory($category)->invalidateCategory();
+            $cleared++;
+        }
+        $this->resetRegistries();
+
+        return $cleared;
+    }
+
+    private function resetRegistries(): void
+    {
+        $this->resourceTypes->reset();
+        $this->pluginCategories->reset();
+        $this->resourceFields->reset();
     }
 }

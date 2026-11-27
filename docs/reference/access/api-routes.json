@@ -1,0 +1,3360 @@
+{
+  "generated_by": "php bin/console app:access:export",
+  "routes": [
+    {
+      "name": "admin_actions_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/actions",
+      "is_public": false,
+      "permissions": [
+        "admin.action.update"
+      ]
+    },
+    {
+      "name": "admin_actions_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/actions",
+      "is_public": false,
+      "permissions": [
+        "admin.action.read"
+      ]
+    },
+    {
+      "name": "admin_actions_plugin_job_types_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/actions/plugin-job-types",
+      "is_public": false,
+      "permissions": [
+        "admin.action.read"
+      ]
+    },
+    {
+      "name": "admin_actions_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/actions/{actionId}",
+      "is_public": false,
+      "permissions": [
+        "admin.action.delete"
+      ]
+    },
+    {
+      "name": "admin_actions_get_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/actions/{actionId}",
+      "is_public": false,
+      "permissions": [
+        "admin.action.read"
+      ]
+    },
+    {
+      "name": "admin_actions_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/actions/{actionId}",
+      "is_public": false,
+      "permissions": [
+        "admin.action.update"
+      ]
+    },
+    {
+      "name": "admin_actions_translations_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/actions/{actionId}/translations",
+      "is_public": false,
+      "permissions": [
+        "admin.action.read"
+      ]
+    },
+    {
+      "name": "admin_ai_section_prompt_template_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/ai/section-prompt-template",
+      "is_public": false,
+      "permissions": [
+        "admin.page.export"
+      ]
+    },
+    {
+      "name": "admin_analytics_summary",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/analytics/summary",
+      "is_public": false,
+      "permissions": [
+        "admin.analytics.read"
+      ]
+    },
+    {
+      "name": "admin_analytics_today",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/analytics/today",
+      "is_public": false,
+      "permissions": [
+        "admin.analytics.read"
+      ]
+    },
+    {
+      "name": "admin_api_routes_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/api-routes",
+      "is_public": false,
+      "permissions": [
+        "admin.permission.read"
+      ]
+    },
+    {
+      "name": "admin_asset_folders_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/asset-folders",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.create"
+      ]
+    },
+    {
+      "name": "admin_asset_folders_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/asset-folders",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.read"
+      ]
+    },
+    {
+      "name": "admin_asset_folders_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/asset-folders/{folderId}",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.delete"
+      ]
+    },
+    {
+      "name": "admin_asset_folders_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/asset-folders/{folderId}",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.update"
+      ]
+    },
+    {
+      "name": "admin_asset_folders_access",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/asset-folders/{folderId}/access",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.update"
+      ]
+    },
+    {
+      "name": "admin_assets_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/assets",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.create"
+      ]
+    },
+    {
+      "name": "admin_assets_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/assets",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.read"
+      ]
+    },
+    {
+      "name": "admin_assets_bulk_delete",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/assets/bulk-delete",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.delete"
+      ]
+    },
+    {
+      "name": "admin_assets_bulk_folder",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/assets/bulk-folder",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.update"
+      ]
+    },
+    {
+      "name": "admin_assets_bulk_groups",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/assets/bulk-groups",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.update"
+      ]
+    },
+    {
+      "name": "admin_assets_export",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/assets/export",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.read"
+      ]
+    },
+    {
+      "name": "admin_assets_import",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/assets/import",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.create"
+      ]
+    },
+    {
+      "name": "admin_assets_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/assets/{assetId}",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.delete"
+      ]
+    },
+    {
+      "name": "admin_assets_get_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/assets/{assetId}",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.read"
+      ]
+    },
+    {
+      "name": "admin_assets_update",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/assets/{assetId}",
+      "is_public": false,
+      "permissions": [
+        "admin.asset.update"
+      ]
+    },
+    {
+      "name": "admin_audit_data_access_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/audit/data-access",
+      "is_public": false,
+      "permissions": [
+        "admin.audit.read"
+      ]
+    },
+    {
+      "name": "admin_audit_data_access_stats",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/audit/data-access/stats",
+      "is_public": false,
+      "permissions": [
+        "admin.audit.read"
+      ]
+    },
+    {
+      "name": "admin_audit_data_access_detail",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/audit/data-access/{id}",
+      "is_public": false,
+      "permissions": [
+        "admin.audit.read"
+      ]
+    },
+    {
+      "name": "admin_cache_clear_api_routes",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/cache/api-routes/clear",
+      "is_public": false,
+      "permissions": [
+        "admin.cache.clear"
+      ]
+    },
+    {
+      "name": "admin_cache_clear_all",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/cache/clear/all",
+      "is_public": false,
+      "permissions": [
+        "admin.cache.clear"
+      ]
+    },
+    {
+      "name": "admin_cache_clear_category",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/cache/clear/category",
+      "is_public": false,
+      "permissions": [
+        "admin.cache.clear"
+      ]
+    },
+    {
+      "name": "admin_cache_clear_user",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/cache/clear/user",
+      "is_public": false,
+      "permissions": [
+        "admin.cache.clear"
+      ]
+    },
+    {
+      "name": "admin_cache_health",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/cache/health",
+      "is_public": false,
+      "permissions": [
+        "admin.cache.read"
+      ]
+    },
+    {
+      "name": "admin_cache_stats",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/cache/stats",
+      "is_public": false,
+      "permissions": [
+        "admin.cache.read"
+      ]
+    },
+    {
+      "name": "admin_cache_reset_stats",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/cache/stats/reset",
+      "is_public": false,
+      "permissions": [
+        "admin.cache.manage"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/cms-apps",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.create"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/cms-apps",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.read"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_by_slug",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/cms-apps/by-slug/{slug}",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.read"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/cms-apps/{id}",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.delete"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/cms-apps/{id}",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.read"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_update",
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/admin/cms-apps/{id}",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.update"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_assign_page",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/cms-apps/{id}/pages",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.update"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_change_page_role",
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/admin/cms-apps/{id}/pages/{page_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.update"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_unassign_page",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/cms-apps/{id}/pages/{page_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.update"
+      ]
+    },
+    {
+      "name": "admin_cms_apps_scaffold",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/cms-apps/{id}/scaffold",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_app.update"
+      ]
+    },
+    {
+      "name": "admin_cms_preferences_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/cms-preferences",
+      "is_public": false,
+      "permissions": [
+        "admin.cms_preferences.read"
+      ]
+    },
+    {
+      "name": "admin_data_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_access_plugin_resource_types",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data-access/plugin-resource-types",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
+      "name": "admin_data_access_plugin_resources",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data-access/plugin-resource-types/{typeCode}/resources",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
+      "name": "admin_data_access_roles_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data-access/roles",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
+      "name": "admin_data_access_role_effective_permissions",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data-access/roles/{roleId}/effective-permissions",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
+      "name": "admin_data_access_role_permission_set",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/data-access/roles/{roleId}/permissions",
+      "is_public": false,
+      "permissions": [
+        "admin.role.update"
+      ]
+    },
+    {
+      "name": "admin_data_query_preview_post",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/data/query-preview",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_record_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/data/records/{recordId}",
+      "is_public": false,
+      "permissions": [
+        "admin.data.delete"
+      ]
+    },
+    {
+      "name": "admin_data_tables_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_tables_bulk_export_post",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/data/tables/bulk-export",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_table_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/data/tables/{tableName}",
+      "is_public": false,
+      "permissions": [
+        "admin.data.delete"
+      ]
+    },
+    {
+      "name": "admin_data_table_column_names_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables/{tableName}/column-names",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_table_columns_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/data/tables/{tableName}/columns",
+      "is_public": false,
+      "permissions": [
+        "admin.data.delete_columns"
+      ]
+    },
+    {
+      "name": "admin_data_table_columns_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables/{tableName}/columns",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_table_columns_display_name_patch",
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/admin/data/tables/{tableName}/columns/display-name",
+      "is_public": false,
+      "permissions": [
+        "admin.data.update_columns"
+      ]
+    },
+    {
+      "name": "admin_data_table_display_name_patch",
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/admin/data/tables/{tableName}/display-name",
+      "is_public": false,
+      "permissions": [
+        "admin.data.update_tables"
+      ]
+    },
+    {
+      "name": "admin_data_table_export_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables/{tableName}/export",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_table_files_zip",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables/{tableName}/files",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_record_compare",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables/{tableName}/records/{recordId}/compare",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_record_history",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables/{tableName}/records/{recordId}/history",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_record_restore",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/data/tables/{tableName}/records/{recordId}/restore",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_record_version",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables/{tableName}/records/{recordId}/versions/{version}",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_data_record_version_file",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/data/tables/{tableName}/records/{recordId}/versions/{version}/files/{fieldKey}",
+      "is_public": false,
+      "permissions": [
+        "admin.data.read"
+      ]
+    },
+    {
+      "name": "admin_groups_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/groups",
+      "is_public": false,
+      "permissions": [
+        "admin.group.create"
+      ]
+    },
+    {
+      "name": "admin_groups_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/groups",
+      "is_public": false,
+      "permissions": [
+        "admin.group.read"
+      ]
+    },
+    {
+      "name": "admin_groups_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/groups/{groupId}",
+      "is_public": false,
+      "permissions": [
+        "admin.group.delete"
+      ]
+    },
+    {
+      "name": "admin_groups_get_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/groups/{groupId}",
+      "is_public": false,
+      "permissions": [
+        "admin.group.read"
+      ]
+    },
+    {
+      "name": "admin_groups_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/groups/{groupId}",
+      "is_public": false,
+      "permissions": [
+        "admin.group.update"
+      ]
+    },
+    {
+      "name": "admin_groups_acls_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/groups/{groupId}/acls",
+      "is_public": false,
+      "permissions": [
+        "admin.group.read"
+      ]
+    },
+    {
+      "name": "admin_groups_acls_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/groups/{groupId}/acls",
+      "is_public": false,
+      "permissions": [
+        "admin.group.acl"
+      ]
+    },
+    {
+      "name": "admin_interpolation_variables_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/interpolation/variables",
+      "is_public": false,
+      "permissions": [
+        "admin.page.read"
+      ]
+    },
+    {
+      "name": "admin_languages_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/languages",
+      "is_public": false,
+      "permissions": [
+        "admin.language.update"
+      ]
+    },
+    {
+      "name": "admin_languages_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/languages",
+      "is_public": false,
+      "permissions": [
+        "admin.language.read"
+      ]
+    },
+    {
+      "name": "admin_languages_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/languages/{id}",
+      "is_public": false,
+      "permissions": [
+        "admin.language.update"
+      ]
+    },
+    {
+      "name": "admin_languages_get_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/languages/{id}",
+      "is_public": false,
+      "permissions": [
+        "admin.language.read"
+      ]
+    },
+    {
+      "name": "admin_languages_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/languages/{id}",
+      "is_public": false,
+      "permissions": [
+        "admin.language.update"
+      ]
+    },
+    {
+      "name": "admin_mobile_preview_session",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/mobile-preview/session",
+      "is_public": false,
+      "permissions": [
+        "admin.mobile_preview.create"
+      ]
+    },
+    {
+      "name": "admin_navigation_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/navigation",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.read"
+      ]
+    },
+    {
+      "name": "admin_navigation_export",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/navigation/export",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.export"
+      ]
+    },
+    {
+      "name": "admin_navigation_import",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/navigation/import",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.import"
+      ]
+    },
+    {
+      "name": "admin_navigation_import_validate",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/navigation/import/validate",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.import"
+      ]
+    },
+    {
+      "name": "admin_navigation_menu_item_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/navigation/items/{item_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.update"
+      ]
+    },
+    {
+      "name": "admin_navigation_menu_item_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/navigation/items/{item_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.update"
+      ]
+    },
+    {
+      "name": "admin_navigation_menu_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/navigation/menus/{menu_key}",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.update"
+      ]
+    },
+    {
+      "name": "admin_navigation_menu_item_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/navigation/menus/{menu_key}/items",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.update"
+      ]
+    },
+    {
+      "name": "admin_navigation_menu_preview",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/navigation/menus/{menu_key}/preview",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.read"
+      ]
+    },
+    {
+      "name": "admin_navigation_menu_reorder",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/navigation/menus/{menu_key}/reorder",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.update"
+      ]
+    },
+    {
+      "name": "admin_navigation_settings_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/navigation/settings",
+      "is_public": false,
+      "permissions": [
+        "admin.navigation.update"
+      ]
+    },
+    {
+      "name": "admin_page_keywords",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/page-keywords",
+      "is_public": false,
+      "permissions": [
+        "admin.access"
+      ]
+    },
+    {
+      "name": "admin_pages_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages",
+      "is_public": false,
+      "permissions": [
+        "admin.page.create"
+      ]
+    },
+    {
+      "name": "admin_pages_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages",
+      "is_public": false,
+      "permissions": [
+        "admin.page.read"
+      ]
+    },
+    {
+      "name": "admin_pages_examples",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/examples",
+      "is_public": false,
+      "permissions": [
+        "admin.page.export"
+      ]
+    },
+    {
+      "name": "admin_pages_export",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/export",
+      "is_public": false,
+      "permissions": [
+        "admin.page.export"
+      ]
+    },
+    {
+      "name": "admin_pages_import",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/import",
+      "is_public": false,
+      "permissions": [
+        "admin.page.create"
+      ]
+    },
+    {
+      "name": "admin_pages_import_validate",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/import/validate",
+      "is_public": false,
+      "permissions": [
+        "admin.page.create"
+      ]
+    },
+    {
+      "name": "admin_pages_get_all_with_language",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/language/{language_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.read"
+      ]
+    },
+    {
+      "name": "admin_pages_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/pages/{page_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.delete"
+      ]
+    },
+    {
+      "name": "admin_pages_get_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.read"
+      ]
+    },
+    {
+      "name": "admin_pages_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/pages/{page_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_export_suggest",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/export/suggest",
+      "is_public": false,
+      "permissions": [
+        "admin.page.export"
+      ]
+    },
+    {
+      "name": "admin_pages_lock_acquire",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/lock",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_lock_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/lock",
+      "is_public": false,
+      "permissions": [
+        "admin.page.delete",
+        "admin.page.update",
+        "admin.page_version.delete",
+        "admin.page_version.publish"
+      ]
+    },
+    {
+      "name": "admin_pages_lock_release",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/pages/{page_id}/lock",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_lock_take_over",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/lock/take-over",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_add_section",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/pages/{page_id}/sections",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_bulk_remove_sections",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/pages/{page_id}/sections",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_sections_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/sections",
+      "is_public": false,
+      "permissions": [
+        "admin.page.read"
+      ]
+    },
+    {
+      "name": "admin_pages_create_section",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/sections/create",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_export_page",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/sections/export",
+      "is_public": false,
+      "permissions": [
+        "admin.page.export"
+      ]
+    },
+    {
+      "name": "admin_sections_import_to_page",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/sections/import",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_restore_from_version",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/sections/restore-from-version/{version_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_import_to_section",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{parent_section_id}/import",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_add",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{parent_section_id}/sections",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_get_children_sections",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{parent_section_id}/sections",
+      "is_public": false,
+      "permissions": [
+        "admin.page.read"
+      ]
+    },
+    {
+      "name": "admin_sections_create_child",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{parent_section_id}/sections/create",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_remove",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{parent_section_id}/sections/{child_section_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_pages_remove_section",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{section_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{section_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.read"
+      ]
+    },
+    {
+      "name": "admin_sections_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{section_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_export_section",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/sections/{section_id}/export",
+      "is_public": false,
+      "permissions": [
+        "admin.page.export"
+      ]
+    },
+    {
+      "name": "admin_page_versions_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/versions",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.read"
+      ]
+    },
+    {
+      "name": "admin_page_versions_compare_draft",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/versions/compare-draft/{version_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.compare"
+      ]
+    },
+    {
+      "name": "admin_page_versions_compare",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/versions/compare/{version1_id}/{version2_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.compare"
+      ]
+    },
+    {
+      "name": "admin_page_versions_has_changes",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/versions/has-changes",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.read"
+      ]
+    },
+    {
+      "name": "admin_page_publish",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/versions/publish",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.publish"
+      ]
+    },
+    {
+      "name": "admin_page_unpublish",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/versions/unpublish",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.publish"
+      ]
+    },
+    {
+      "name": "admin_page_version_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/pages/{page_id}/versions/{version_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.delete"
+      ]
+    },
+    {
+      "name": "admin_page_version_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/pages/{page_id}/versions/{version_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.read"
+      ]
+    },
+    {
+      "name": "admin_page_publish_specific_version",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/pages/{page_id}/versions/{version_id}/publish",
+      "is_public": false,
+      "permissions": [
+        "admin.page_version.publish"
+      ]
+    },
+    {
+      "name": "admin_permissions_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/permissions",
+      "is_public": false,
+      "permissions": [
+        "admin.permission.read",
+        "admin.role.update"
+      ]
+    },
+    {
+      "name": "admin_plugins_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_available",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/available",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_doctor",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/doctor",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_inspect_archive",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/inspect-archive",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_install",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/install",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_operations_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/operations",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_operations_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/operations/{operationId}",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_operations_cancel",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/operations/{operationId}/cancel",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_operations_rollback",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/operations/{operationId}/rollback",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_repair_all",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/repair",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_safe_mode_disable",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/safe-mode/disable",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_safe_mode_enable",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/safe-mode/enable",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_sources_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/sources",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_sources_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/sources",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_sources_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/plugins/sources/{sourceId}",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_sources_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/plugins/sources/{sourceId}",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/{pluginId}",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_disable",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/disable",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_enable",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/enable",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_flags_list",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/{pluginId}/feature-flags",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_flags_set",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/feature-flags",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_health_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/{pluginId}/health",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_pin",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/pin",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_purge",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/purge",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.purge"
+      ]
+    },
+    {
+      "name": "admin_plugins_repair_one",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/repair",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_settings_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/{pluginId}/settings",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_settings_put",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/plugins/{pluginId}/settings",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_uninstall",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/uninstall",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_unpin",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/unpin",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_plugins_update",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/plugins/{pluginId}/update",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.execute"
+      ]
+    },
+    {
+      "name": "admin_registration_codes_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/registration-codes",
+      "is_public": false,
+      "permissions": [
+        "admin.registration_code.read"
+      ]
+    },
+    {
+      "name": "admin_registration_codes_export",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/registration-codes/export",
+      "is_public": false,
+      "permissions": [
+        "admin.registration_code.read"
+      ]
+    },
+    {
+      "name": "admin_registration_codes_generate",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/registration-codes/generate",
+      "is_public": false,
+      "permissions": [
+        "admin.registration_code.create"
+      ]
+    },
+    {
+      "name": "admin_registration_codes_stats",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/registration-codes/stats",
+      "is_public": false,
+      "permissions": [
+        "admin.registration_code.read"
+      ]
+    },
+    {
+      "name": "admin_resources_usage_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/resources/{type}/{id}/usage",
+      "is_public": false,
+      "permissions": [
+        "admin.access"
+      ]
+    },
+    {
+      "name": "admin_roles_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/roles",
+      "is_public": false,
+      "permissions": [
+        "admin.role.create"
+      ]
+    },
+    {
+      "name": "admin_roles_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/roles",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
+      "name": "admin_roles_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/roles/{roleId}",
+      "is_public": false,
+      "permissions": [
+        "admin.role.delete"
+      ]
+    },
+    {
+      "name": "admin_roles_get_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/roles/{roleId}",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
+      "name": "admin_roles_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/roles/{roleId}",
+      "is_public": false,
+      "permissions": [
+        "admin.role.update"
+      ]
+    },
+    {
+      "name": "admin_roles_permissions_add",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/roles/{roleId}/permissions",
+      "is_public": false,
+      "permissions": [
+        "admin.role.permissions"
+      ]
+    },
+    {
+      "name": "admin_roles_permissions_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/roles/{roleId}/permissions",
+      "is_public": false,
+      "permissions": [
+        "admin.role.read"
+      ]
+    },
+    {
+      "name": "admin_roles_permissions_remove",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/roles/{roleId}/permissions",
+      "is_public": false,
+      "permissions": [
+        "admin.role.permissions"
+      ]
+    },
+    {
+      "name": "admin_roles_permissions_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/roles/{roleId}/permissions",
+      "is_public": false,
+      "permissions": [
+        "admin.role.permissions"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/scheduled-jobs",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.read"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_runner_disable",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/scheduled-jobs/runner/disable",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.manage"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_runner_enable",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/scheduled-jobs/runner/enable",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.manage"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_runner_run_now",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/scheduled-jobs/runner/run-now",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.execute"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_runner_settings",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/scheduled-jobs/runner/settings",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.manage"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_runner_status",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/scheduled-jobs/runner/status",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.read"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_stats",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/scheduled-jobs/stats",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.read"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_types",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/scheduled-jobs/types",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.read"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/scheduled-jobs/{jobId}",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.delete"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_get_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/scheduled-jobs/{jobId}",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.read"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_cancel",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/scheduled-jobs/{jobId}/cancel",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.cancel"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_execute",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/scheduled-jobs/{jobId}/execute",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.execute"
+      ]
+    },
+    {
+      "name": "admin_scheduled_jobs_transactions",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/scheduled-jobs/{jobId}/transactions",
+      "is_public": false,
+      "permissions": [
+        "admin.scheduled_job.read"
+      ]
+    },
+    {
+      "name": "admin_sections_pages_batch",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/sections/pages",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_ref_containers_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/sections/ref-containers",
+      "is_public": false,
+      "permissions": [
+        "admin.page.update"
+      ]
+    },
+    {
+      "name": "admin_sections_unused_delete_all",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/sections/unused",
+      "is_public": false,
+      "permissions": [
+        "admin.section.delete"
+      ]
+    },
+    {
+      "name": "admin_sections_unused_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/sections/unused",
+      "is_public": false,
+      "permissions": [
+        "admin.section.read"
+      ]
+    },
+    {
+      "name": "admin_sections_unused_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/sections/unused/{section_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.section.delete"
+      ]
+    },
+    {
+      "name": "admin_sections_destroy",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/sections/{section_id}",
+      "is_public": false,
+      "permissions": [
+        "admin.page.delete"
+      ]
+    },
+    {
+      "name": "admin_styles_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/styles",
+      "is_public": false,
+      "permissions": [
+        "admin.access"
+      ]
+    },
+    {
+      "name": "admin_styles_schema_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/styles/schema",
+      "is_public": false,
+      "permissions": [
+        "admin.access"
+      ]
+    },
+    {
+      "name": "admin_system_advisories",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/advisories",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_health",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/health",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_maintenance_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/maintenance",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_maintenance_set",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/system/maintenance",
+      "is_public": false,
+      "permissions": [
+        "admin.system.maintenance"
+      ]
+    },
+    {
+      "name": "admin_system_update_frontend_preflight",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/update/frontend/preflight",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_update_frontend_releases",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/update/frontend/releases",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_update_frontend_request",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/system/update/frontend/request",
+      "is_public": false,
+      "permissions": [
+        "admin.system.update"
+      ]
+    },
+    {
+      "name": "admin_system_update_mobile_preview_preflight",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/update/mobile-preview/preflight",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_update_mobile_preview_releases",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/update/mobile-preview/releases",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_update_mobile_preview_request",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/system/update/mobile-preview/request",
+      "is_public": false,
+      "permissions": [
+        "admin.system.update"
+      ]
+    },
+    {
+      "name": "admin_system_update_preflight",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/update/preflight",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_update_releases",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/update/releases",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_update_request",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/system/update/request",
+      "is_public": false,
+      "permissions": [
+        "admin.system.update"
+      ]
+    },
+    {
+      "name": "admin_system_update_status",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/update/status",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_system_version",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/system/version",
+      "is_public": false,
+      "permissions": [
+        "admin.system.read"
+      ]
+    },
+    {
+      "name": "admin_users_create",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users",
+      "is_public": false,
+      "permissions": [
+        "admin.user.create"
+      ]
+    },
+    {
+      "name": "admin_users_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/users",
+      "is_public": false,
+      "permissions": [
+        "admin.user.read"
+      ]
+    },
+    {
+      "name": "admin_users_bulk_add_to_group",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/bulk-add-to-group",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_bulk_delete",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/bulk-delete",
+      "is_public": false,
+      "permissions": [
+        "admin.user.delete"
+      ]
+    },
+    {
+      "name": "admin_users_bulk_remove_from_group",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/bulk-remove-from-group",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_bulk_send_activation",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/bulk-send-activation",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_export",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/users/export",
+      "is_public": false,
+      "permissions": [
+        "admin.user.read"
+      ]
+    },
+    {
+      "name": "admin_users_import",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/import",
+      "is_public": false,
+      "permissions": [
+        "admin.user.create"
+      ]
+    },
+    {
+      "name": "admin_users_stats",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/users/stats",
+      "is_public": false,
+      "permissions": [
+        "admin.user.read"
+      ]
+    },
+    {
+      "name": "admin_users_stop_impersonate",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/stop-impersonate",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "admin_users_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/users/{userId}",
+      "is_public": false,
+      "permissions": [
+        "admin.user.delete"
+      ]
+    },
+    {
+      "name": "admin_users_get_one",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/users/{userId}",
+      "is_public": false,
+      "permissions": [
+        "admin.user.read"
+      ]
+    },
+    {
+      "name": "admin_users_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/users/{userId}",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_block",
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/admin/users/{userId}/block",
+      "is_public": false,
+      "permissions": [
+        "admin.user.block"
+      ]
+    },
+    {
+      "name": "admin_users_clean_data",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/{userId}/clean-data",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_groups_add",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/{userId}/groups",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_groups_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/users/{userId}/groups",
+      "is_public": false,
+      "permissions": [
+        "admin.user.read"
+      ]
+    },
+    {
+      "name": "admin_users_groups_remove",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/users/{userId}/groups",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_impersonate",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/{userId}/impersonate",
+      "is_public": false,
+      "permissions": [
+        "admin.user.impersonate"
+      ]
+    },
+    {
+      "name": "admin_users_roles_add",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/{userId}/roles",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_roles_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/users/{userId}/roles",
+      "is_public": false,
+      "permissions": [
+        "admin.user.read"
+      ]
+    },
+    {
+      "name": "admin_users_roles_remove",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/admin/users/{userId}/roles",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "admin_users_send_activation",
+      "methods": [
+        "POST"
+      ],
+      "path": "/admin/users/{userId}/send-activation-mail",
+      "is_public": false,
+      "permissions": [
+        "admin.user.update"
+      ]
+    },
+    {
+      "name": "assets_serve_by_uuid",
+      "methods": [
+        "GET"
+      ],
+      "path": "/assets/{assetUuid}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_events_stream",
+      "methods": [
+        "GET"
+      ],
+      "path": "/auth/events",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_forgot_password",
+      "methods": [
+        "POST"
+      ],
+      "path": "/auth/forgot-password",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_login",
+      "methods": [
+        "POST"
+      ],
+      "path": "/auth/login",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_logout",
+      "methods": [
+        "POST"
+      ],
+      "path": "/auth/logout",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_refresh_token",
+      "methods": [
+        "POST"
+      ],
+      "path": "/auth/refresh-token",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_register",
+      "methods": [
+        "POST"
+      ],
+      "path": "/auth/register",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_reset_password",
+      "methods": [
+        "POST"
+      ],
+      "path": "/auth/reset-password",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_set_language",
+      "methods": [
+        "POST"
+      ],
+      "path": "/auth/set-language",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_2fa_verify",
+      "methods": [
+        "POST"
+      ],
+      "path": "/auth/two-factor-verify",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_user_data_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/auth/user-data",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_user_account_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/auth/user/account",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_user_communication_preferences_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/auth/user/communication-preferences",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_user_name_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/auth/user/name",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_user_password_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/auth/user/password",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "auth_user_timezone_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/auth/user/timezone",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_delete",
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/forms/delete",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_files_serve",
+      "methods": [
+        "GET"
+      ],
+      "path": "/forms/files/{record_id}/{field}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_files_zip",
+      "methods": [
+        "GET"
+      ],
+      "path": "/forms/files/{record_id}/{field}/zip",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_submit",
+      "methods": [
+        "POST"
+      ],
+      "path": "/forms/submit",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_update",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/forms/update",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "frontend_css_classes_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/frontend/css-classes",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "health",
+      "methods": [
+        "GET"
+      ],
+      "path": "/health",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "languages_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/languages",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_list_quick_action",
+      "methods": [
+        "POST"
+      ],
+      "path": "/lists/{section_id}/records/{record_id}/actions/{action_id}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_list_compare",
+      "methods": [
+        "GET"
+      ],
+      "path": "/lists/{section_id}/records/{record_id}/compare",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_list_current_file",
+      "methods": [
+        "GET"
+      ],
+      "path": "/lists/{section_id}/records/{record_id}/files/{field_key}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_list_history",
+      "methods": [
+        "GET"
+      ],
+      "path": "/lists/{section_id}/records/{record_id}/history",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_list_restore",
+      "methods": [
+        "POST"
+      ],
+      "path": "/lists/{section_id}/records/{record_id}/restore",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_list_version",
+      "methods": [
+        "GET"
+      ],
+      "path": "/lists/{section_id}/records/{record_id}/versions/{version}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_list_version_file",
+      "methods": [
+        "GET"
+      ],
+      "path": "/lists/{section_id}/records/{record_id}/versions/{version}/files/{field_key}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "form_list_state",
+      "methods": [
+        "GET"
+      ],
+      "path": "/lists/{section_id}/state",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "system_lookups",
+      "methods": [
+        "GET"
+      ],
+      "path": "/lookups",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "manager_system_update_pending",
+      "methods": [
+        "GET"
+      ],
+      "path": "/manager/system/update/pending",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "manager_system_update_status",
+      "methods": [
+        "POST"
+      ],
+      "path": "/manager/system/update/{operationId}/status",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "mobile_preview_session_exchange",
+      "methods": [
+        "POST"
+      ],
+      "path": "/mobile-preview/session/exchange",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "navigation_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/navigation",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "navigation_last_visited_put",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/navigation/last-visited",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "pages_get_all",
+      "methods": [
+        "GET"
+      ],
+      "path": "/pages",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "pages_get_by_keyword",
+      "methods": [
+        "GET"
+      ],
+      "path": "/pages/by-keyword/{keyword}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "pages_get_all_with_language",
+      "methods": [
+        "GET"
+      ],
+      "path": "/pages/language/{language_id}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "pages_resolve_path",
+      "methods": [
+        "GET"
+      ],
+      "path": "/pages/resolve",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "plugins_manifest",
+      "methods": [
+        "GET"
+      ],
+      "path": "/plugins/manifest",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "search_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/search",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "search_pages_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/search/pages",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "user_validate_token",
+      "methods": [
+        "GET"
+      ],
+      "path": "/validate/{user_id}/{token}",
+      "is_public": true,
+      "permissions": []
+    },
+    {
+      "name": "user_complete_validation",
+      "methods": [
+        "POST"
+      ],
+      "path": "/validate/{user_id}/{token}/complete",
+      "is_public": true,
+      "permissions": []
+    }
+  ],
+  "permissions": [
+    {
+      "name": "admin.access",
+      "description": "Can view and enter the admin/backend area"
+    },
+    {
+      "name": "admin.action.delete",
+      "description": "Can delete actions"
+    },
+    {
+      "name": "admin.action.read",
+      "description": "Can read actions"
+    },
+    {
+      "name": "admin.action.update",
+      "description": "Can update actions"
+    },
+    {
+      "name": "admin.analytics.read",
+      "description": "Read dashboard analytics (page views, today operations)"
+    },
+    {
+      "name": "admin.asset.create",
+      "description": "Can create assets"
+    },
+    {
+      "name": "admin.asset.delete",
+      "description": "Can delete assets"
+    },
+    {
+      "name": "admin.asset.read",
+      "description": "Can read assets"
+    },
+    {
+      "name": "admin.asset.update",
+      "description": "Edit assets: rename, alt text, groups, replace the file"
+    },
+    {
+      "name": "admin.audit.read",
+      "description": "Read audit logs and security monitoring data"
+    },
+    {
+      "name": "admin.cache.clear",
+      "description": "Can clear caches"
+    },
+    {
+      "name": "admin.cache.manage",
+      "description": "Can manage cache settings and operations"
+    },
+    {
+      "name": "admin.cache.read",
+      "description": "Can read cache statistics and monitoring data"
+    },
+    {
+      "name": "admin.cms_app.create",
+      "description": "Create CMS apps"
+    },
+    {
+      "name": "admin.cms_app.delete",
+      "description": "Delete CMS app shells"
+    },
+    {
+      "name": "admin.cms_app.read",
+      "description": "Read CMS apps"
+    },
+    {
+      "name": "admin.cms_app.update",
+      "description": "Update CMS apps and page assignments"
+    },
+    {
+      "name": "admin.cms_preferences.read",
+      "description": "Can read CMS preferences"
+    },
+    {
+      "name": "admin.data.delete",
+      "description": "Can delete data records and data tables"
+    },
+    {
+      "name": "admin.data.delete_columns",
+      "description": "Can delete columns from data tables"
+    },
+    {
+      "name": "admin.data.read",
+      "description": "Can read data and data tables"
+    },
+    {
+      "name": "admin.data.update_columns",
+      "description": "Can rename data table column display labels"
+    },
+    {
+      "name": "admin.data.update_tables",
+      "description": "Can rename data table display labels"
+    },
+    {
+      "name": "admin.group.acl",
+      "description": "Can manage group ACLs"
+    },
+    {
+      "name": "admin.group.create",
+      "description": "Can create new groups"
+    },
+    {
+      "name": "admin.group.delete",
+      "description": "Can delete groups"
+    },
+    {
+      "name": "admin.group.read",
+      "description": "Can read existing groups"
+    },
+    {
+      "name": "admin.group.update",
+      "description": "Can edit existing groups"
+    },
+    {
+      "name": "admin.language.read",
+      "description": "Can read CMS languages"
+    },
+    {
+      "name": "admin.language.update",
+      "description": "Can create, update and delete CMS languages"
+    },
+    {
+      "name": "admin.mobile_preview.create",
+      "description": "Can mint CMS mobile-preview sessions"
+    },
+    {
+      "name": "admin.mobile_preview.read",
+      "description": "Can open the full-screen CMS mobile/web live preview"
+    },
+    {
+      "name": "admin.navigation.export",
+      "description": "Export navigation menus and settings"
+    },
+    {
+      "name": "admin.navigation.import",
+      "description": "Import navigation menus and settings"
+    },
+    {
+      "name": "admin.navigation.read",
+      "description": "Read navigation menus and settings"
+    },
+    {
+      "name": "admin.navigation.update",
+      "description": "Update navigation menus, items, and settings"
+    },
+    {
+      "name": "admin.page.create",
+      "description": "Can create new pages"
+    },
+    {
+      "name": "admin.page.delete",
+      "description": "Can delete pages"
+    },
+    {
+      "name": "admin.page.export",
+      "description": "Can export sections from pages"
+    },
+    {
+      "name": "admin.page.read",
+      "description": "Can read existing pages"
+    },
+    {
+      "name": "admin.page.update",
+      "description": "Can edit existing pages"
+    },
+    {
+      "name": "admin.page_version.compare",
+      "description": "Can compare page versions"
+    },
+    {
+      "name": "admin.page_version.delete",
+      "description": "Can delete page versions"
+    },
+    {
+      "name": "admin.page_version.publish",
+      "description": "Can publish page versions"
+    },
+    {
+      "name": "admin.page_version.read",
+      "description": "Can read and list page versions"
+    },
+    {
+      "name": "admin.permission.read",
+      "description": "Can read all available permissions"
+    },
+    {
+      "name": "admin.plugins.execute",
+      "description": "Request plugin install / update / uninstall / repair / rollback."
+    },
+    {
+      "name": "admin.plugins.manage",
+      "description": "List and inspect plugins, sources, operations, and feature flags."
+    },
+    {
+      "name": "admin.plugins.purge",
+      "description": "Execute the destructive plugin purge operation."
+    },
+    {
+      "name": "admin.registration_code.create",
+      "description": "Can create registration codes"
+    },
+    {
+      "name": "admin.registration_code.read",
+      "description": "Can read registration codes"
+    },
+    {
+      "name": "admin.role.create",
+      "description": "Can create new roles"
+    },
+    {
+      "name": "admin.role.delete",
+      "description": "Can delete roles"
+    },
+    {
+      "name": "admin.role.permissions",
+      "description": "Can manage role permissions"
+    },
+    {
+      "name": "admin.role.read",
+      "description": "Can read existing roles"
+    },
+    {
+      "name": "admin.role.update",
+      "description": "Can edit existing roles"
+    },
+    {
+      "name": "admin.scheduled_job.cancel",
+      "description": "Can cancel scheduled jobs"
+    },
+    {
+      "name": "admin.scheduled_job.delete",
+      "description": "Can delete scheduled jobs"
+    },
+    {
+      "name": "admin.scheduled_job.execute",
+      "description": "Can execute scheduled jobs"
+    },
+    {
+      "name": "admin.scheduled_job.manage",
+      "description": "Can manage the scheduled-job runner settings"
+    },
+    {
+      "name": "admin.scheduled_job.read",
+      "description": "Can read scheduled jobs"
+    },
+    {
+      "name": "admin.section.delete",
+      "description": "Can delete sections"
+    },
+    {
+      "name": "admin.section.read",
+      "description": "Can read unused sections and section utilities that need only read"
+    },
+    {
+      "name": "admin.system.maintenance",
+      "description": "Can enable/disable maintenance mode for the current instance"
+    },
+    {
+      "name": "admin.system.read",
+      "description": "Can read system version and update status for the current instance"
+    },
+    {
+      "name": "admin.system.update",
+      "description": "Can request system updates for the current instance"
+    },
+    {
+      "name": "admin.user.block",
+      "description": "Can block users"
+    },
+    {
+      "name": "admin.user.create",
+      "description": "Can create new users"
+    },
+    {
+      "name": "admin.user.delete",
+      "description": "Can delete users"
+    },
+    {
+      "name": "admin.user.impersonate",
+      "description": "Can impersonate users"
+    },
+    {
+      "name": "admin.user.read",
+      "description": "Can read existing users"
+    },
+    {
+      "name": "admin.user.update",
+      "description": "Can edit existing users"
+    }
+  ]
+}

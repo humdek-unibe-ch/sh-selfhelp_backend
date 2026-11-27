@@ -78,6 +78,13 @@ class DataRevision
     #[ORM\Column(name: 'restored_from_version', type: Types::INTEGER, nullable: true)]
     private ?int $restoredFromVersion = null;
 
+    /**
+     * The content this write was made for (contract C19): `page:<id>@v<n>`, `page:<id>@draft` or
+     * `res:<type>:<id>@v<n>`. NULL: the write named none (a job, an import) or predates the reference.
+     */
+    #[ORM\Column(name: 'content_ref', type: Types::STRING, length: 191, nullable: true)]
+    private ?string $contentRef = null;
+
     /** A checkpoint also stores the full state after it, so reconstruction can start here. */
     #[ORM\Column(name: 'is_checkpoint', type: Types::BOOLEAN, options: ['default' => false])]
     private bool $isCheckpoint = false;
@@ -212,6 +219,18 @@ class DataRevision
     public function setRestoredFromVersion(?int $restoredFromVersion): static
     {
         $this->restoredFromVersion = $restoredFromVersion;
+
+        return $this;
+    }
+
+    public function getContentRef(): ?string
+    {
+        return $this->contentRef;
+    }
+
+    public function setContentRef(?string $contentRef): static
+    {
+        $this->contentRef = $contentRef;
 
         return $this;
     }

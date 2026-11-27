@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Service\Auth;
 
+use App\Entity\Language;
 use App\Repository\PageRepository;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\GlobalVariableService;
@@ -218,8 +219,8 @@ class MailTemplateService
             ];
         }
 
-        // Global sender fields are stored as "props" (non-translatable, language id = 1).
-        $propsLanguageId = $this->getLanguageIdByLocale(MailTemplateDefaults::PROPS_LOCALE) ?? 1;
+        // Global sender fields are stored as "props" on the language-independent row.
+        $propsLanguageId = $this->getLanguageIdByLocale(MailTemplateDefaults::PROPS_LOCALE) ?? Language::INDEPENDENT_ID;
 
         $isHtmlRaw = $this->fetchField($pageId, 'mail_is_html', $propsLanguageId);
 

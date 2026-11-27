@@ -265,6 +265,25 @@ final class AuthControllerTest extends QaWebTestCase
         self::assertStringContainsString('Invalid language ID', $this->coerceString($envelope['error'] ?? ''));
     }
 
+    public function testSetLanguageIndependentIdIsRejected(): void
+    {
+        $token = $this->loginAsQaAdmin();
+        $before = $this->assertEnvelopeSuccess($this->jsonRequest('GET', '/cms-api/v1/auth/user-data', null, $token));
+        $language = is_array($before['language'] ?? null) ? $before['language'] : [];
+        $previous = self::coerceInt($language['id'] ?? null);
+        self::assertNotSame(1, $previous);
+
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/auth/set-language', ['language_id' => 1], $token);
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
+        $this->assertEnvelope400($envelope);
+        self::assertStringContainsString('language-independent', $this->coerceString($envelope['error'] ?? ''));
+
+        $after = $this->assertEnvelopeSuccess($this->jsonRequest('GET', '/cms-api/v1/auth/user-data', null, $token));
+        $afterLanguage = is_array($after['language'] ?? null) ? $after['language'] : [];
+        self::assertSame($previous, self::coerceInt($afterLanguage['id'] ?? null));
+    }
+
     /**
      * Opt a seeded QA persona into a `qa_`-prefixed 2FA-required group so the
      * real login flow challenges for 2FA. The write is DAMA-rolled-back and

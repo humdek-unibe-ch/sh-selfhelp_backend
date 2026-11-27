@@ -137,12 +137,47 @@ jobs:
         # Mirrors `composer test:smoke`; --log-junit captures an artifact.
         run: php bin/phpunit --testsuite=Smoke --testdox --log-junit build/phpunit/smoke.junit.xml
 
-      - name: PHPUnit security group (permission matrix)
+      # The permission catalogue (docs/reference/permissions.md) takes its
+      # screens column from the frontend's generated admin-screens.json
+      # (F239). Same-branch-or-main, like the frontend's e2e-golden job does
+      # for the backend: coordinated work uses equally named branches.
+      - name: Resolve frontend ref (same branch as this build, else main)
+        id: frontend-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          REF="main"
+          if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && \
+             git ls-remote --exit-code --heads \
+               "https://x-access-token:${GH_TOKEN}@github.com/humdek-unibe-ch/sh-selfhelp_frontend.git" \
+               "refs/heads/${BRANCH}" > /dev/null 2>&1; then
+            REF="$BRANCH"
+          fi
+          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+          echo "Resolved sh-selfhelp_frontend ref: ${REF} (build branch: ${BRANCH})"
+
+      - name: Checkout frontend admin screens (for the permission catalogue)
+        uses: actions/checkout@v4
+        with:
+          repository: humdek-unibe-ch/sh-selfhelp_frontend
+          ref: ${{ steps.frontend-ref.outputs.ref }}
+          path: .frontend-checkout
+          sparse-checkout: |
+            docs/reference/admin-screens.json
+          sparse-checkout-cone-mode: false
+
+      - name: PHPUnit security group (permission matrix + access catalogue)
         # Negative-permission matrix tests (admin allowed, non-admins 403,
         # anonymous 401) across the admin API. Scoped to the `security` group
         # so it runs the hardened permission tests without pulling in the
-        # not-yet-migrated legacy Integration tests.
-        run: php bin/phpunit --testsuite=Integration --group=security --testdox --log-junit build/phpunit/security.junit.xml
+        # not-yet-migrated legacy Integration tests. Includes
+        # AccessCatalogueFreshnessTest: the generated route table and
+        # permission catalogue must match the migrated database (F239).
+        env:
+          SELFHELP_FRONTEND_DIR: ${{ github.workspace }}/.frontend-checkout
+        run: php -d memory_limit=2G bin/phpunit --testsuite=Integration --group=security --testdox --log-junit build/phpunit/security.junit.xml
 
       - name: PHPUnit golden suite (form -> action -> scheduled job + page versioning)
         # Mirrors `composer test:golden`; the reference business workflows.

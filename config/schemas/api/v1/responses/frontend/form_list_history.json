@@ -13,7 +13,15 @@
           "type": "object",
           "required": ["items", "total", "page", "page_size", "current_version"],
           "properties": {
-            "items": { "type": "array", "items": { "type": "object" } },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "content_ref": { "$ref": "../common/_content_ref.json" }
+                }
+              }
+            },
             "total": { "type": "integer", "minimum": 0 },
             "page": { "type": "integer", "minimum": 1 },
             "page_size": { "type": "integer", "minimum": 1 },

@@ -46,6 +46,15 @@ class Group
     #[ORM\Column(name: 'add_to_new_pages', type: 'boolean', options: ['default' => false])]
     private bool $addToNewPages = false;
 
+    /**
+     * Opaque token that changes whenever what the group's members may see
+     * changes (its page ACL). A group change bumps this one value instead of
+     * every member's `users.acl_version`; the access stamp (`X-Acl-Stamp`)
+     * folds it in, so a member's open client notices without a per-member write.
+     */
+    #[ORM\Column(name: 'acl_version', type: 'string', length: 36, nullable: true)]
+    private ?string $acl_version = null;
+
     public function __construct()
     {
         $this->usersGroups = new \Doctrine\Common\Collections\ArrayCollection();
@@ -144,6 +153,26 @@ class Group
     public function setAddToNewPages(bool $addToNewPages): static
     {
         $this->addToNewPages = $addToNewPages;
+
+        return $this;
+    }
+
+    public function getAclVersion(): ?string
+    {
+        return $this->acl_version;
+    }
+
+    public function setAclVersion(?string $aclVersion): static
+    {
+        $this->acl_version = $aclVersion;
+
+        return $this;
+    }
+
+    /** Assign a new acl_version; see the property for why. */
+    public function bumpAclVersion(): static
+    {
+        $this->acl_version = bin2hex(random_bytes(16));
 
         return $this;
     }

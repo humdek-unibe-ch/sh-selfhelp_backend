@@ -7,6 +7,7 @@
 
 namespace App\Service\CMS\Frontend;
 
+use App\Entity\Language;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
@@ -28,6 +29,12 @@ use App\Service\Core\InterpolationService;
 use App\Service\Core\ServerBuiltString;
 use App\Service\Core\UserContextAwareService;
 use App\Service\Auth\UserContextService;
+use App\Plugin\Render\PluginRenderContext;
+use App\Plugin\Render\PluginStyleResolverRegistry;
+use App\Service\Sync\ClockBoundaries;
+use App\Service\Sync\PageResourceScanner;
+use App\Service\Sync\PageTableScanner;
+use App\Service\Sync\SyncTag;
 use App\Service\System\PlatformAboutService;
 
 class PageService extends BaseService
@@ -37,9 +44,6 @@ class PageService extends BaseService
      * take over: the visitor and the site, the route and the position of the record in the page.
      */
     private const ROW_TEMPLATE_RESERVED_SCOPES = ['system', 'globals', 'route', 'route_requirements', '_index'];
-
-    // Default values for language
-    private const PROPERTY_LANGUAGE_ID = 1; // Language ID 1 is for properties, not a real language
 
     /**
      * Page behaviour property field (display=0) projected onto the single-page
@@ -67,6 +71,7 @@ class PageService extends BaseService
         'two-factor-authentication' => 'two-factor-auth',
         'reset-password'           => 'reset-password',
         'profile'                  => 'profile',
+        'register'                 => 'register',
         'no-access'                => 'no-access',
         'no-access-guest'          => 'no-access',
         'missing'                  => 'missing',
@@ -98,6 +103,10 @@ class PageService extends BaseService
         private readonly \App\Service\CMS\FormFileUploadService $formFiles,
         private readonly \App\Service\CMS\DataQuery\DataQueryEngine $dataQueryEngine,
         private readonly \App\Service\CMS\FormFieldKeyResolver $formFieldKeys,
+        private readonly ClockBoundaries $clockBoundaries,
+        private readonly PageTableScanner $tableScanner,
+        private readonly PageResourceScanner $resourceScanner,
+        private readonly PluginStyleResolverRegistry $pluginResolvers,
     ) {
     }
 
@@ -467,13 +476,122 @@ class PageService extends BaseService
         // otherwise serve the draft version (fresh from database). The same decision
         // ({@see EffectivePageResolver::servesPublished()}) picks the configuration every endpoint
         // behind the page (lists, form writes, history) acts on, so they cannot disagree with the page.
-        $pageData = $this->effectivePages->servesPublished($page, $preview)
-            ? $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements)
-            : $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements);
+        $servesPublished = $this->effectivePages->servesPublished($page, $preview);
+
+        // Everything the page decides by the clock (a condition on the date or time, a clock token in a
+        // text) reports its next change into this scope: it becomes `sync.valid_until`.
+        $served = $this->clockBoundaries->collect(
+            fn (): array => $servesPublished
+                ? $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements)
+                : $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements)
+        );
 
         // Both versions leave here, after every cache read: what the `version`
-        // style shows depends on the caller, so it is added last.
-        return $this->withPlatformAboutOnPage($pageData);
+        // style shows and what a plugin section resolves depend on the caller,
+        // so they are added last (contract C6, rule 3.8).
+        $pageData = $this->withPlatformAboutOnPage($served['value']);
+        $user = $this->userContextAwareService->getCurrentUser();
+        $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID;
+        [$pageData, $resolverDependsOn] = $this->pluginResolvers->apply(
+            $pageData,
+            new PluginRenderContext(
+                $userId,
+                $page_id,
+                $languageId,
+                $servesPublished,
+                $preview,
+                $mode,
+            ),
+        );
+        $pageData['sync'] = $this->syncBlock($page, $servesPublished, $served['valid_until'], $resolverDependsOn);
+
+        return $pageData;
+    }
+
+    /**
+     * The `sync` block of a page payload (live-sync contract C6): the change tags the page depends on
+     * and the moment time alone changes the result. Resource tags come from the
+     * effective page's `resourceFields` and from the resolvers that just ran;
+     * unregistered `res:` tags and `table:` ids of missing tables are dropped.
+     *
+     * @param list<string> $resolverDependsOn already-filtered tags from {@see PluginStyleResolverRegistry::apply()}
+     * @return array{depends_on: list<string>, valid_until: string|null}
+     */
+    private function syncBlock(
+        \App\Entity\Page $page,
+        bool $servesPublished,
+        ?int $validUntil,
+        array $resolverDependsOn = [],
+    ): array {
+        $pageId = (int) $page->getId();
+        $effective = $servesPublished ? $this->effectivePages->forPage($page, false) : $this->effectivePages->draftOf($page);
+
+        $dependsOn = [$servesPublished ? SyncTag::page($pageId) : SyncTag::pageDraft($pageId)];
+
+        // Table ids are sorted as numbers (so table:9 before table:10), then
+        // resource tags alphabetically. Both sets absorb the resolvers' tags.
+        $tableIds = $this->tableScanner->scan($effective)['any'];
+        $resourceTags = [];
+        foreach ($this->resourceScanner->scan($effective) as $resource) {
+            $tag = $this->pluginResolvers->resourceTag($resource['type'], $resource['id']);
+            if ($tag !== null) {
+                $resourceTags[$tag] = $tag;
+            }
+        }
+        foreach ($resolverDependsOn as $tag) {
+            if (preg_match('/^table:(\d+)$/', $tag, $m) === 1) {
+                $tableIds[] = (int) $m[1];
+            } elseif (str_starts_with($tag, 'res:')) {
+                $resourceTags[$tag] = $tag;
+            }
+        }
+        $tableIds = array_values(array_unique($tableIds));
+        sort($tableIds);
+        foreach ($tableIds as $tableId) {
+            $dependsOn[] = SyncTag::table($tableId);
+        }
+        $resourceTags = array_values($resourceTags);
+        sort($resourceTags);
+        foreach ($resourceTags as $tag) {
+            $dependsOn[] = $tag;
+        }
+        $dependsOn[] = SyncTag::GLOBAL_VALUES;
+
+        return [
+            'depends_on' => $dependsOn,
+            'valid_until' => $validUntil === null ? null : gmdate('Y-m-d\TH:i:s\Z', $validUntil),
+        ];
+    }
+
+    /**
+     * Cached value that never outlives the clock: the entry stores the moment time next changes its
+     * result, and an entry past that moment is dropped and built again. The moment also reaches the
+     * scope around the call, so a cache hit reports it just as a build does.
+     *
+     * @param callable(): mixed $compute
+     */
+    private function rememberUntilClockChanges(CacheService $cache, string $key, callable $compute): mixed
+    {
+        $value = null;
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $envelope = $cache->getItem($key, function () use ($compute): array {
+                $built = $this->clockBoundaries->collect($compute);
+
+                return ['value' => $built['value'], 'valid_until' => $built['valid_until']];
+            });
+
+            $until = $envelope['valid_until'];
+            if ($attempt === 0 && $until !== null && $until <= time()) {
+                $cache->invalidateItem($key);
+                continue;
+            }
+
+            $this->clockBoundaries->note($until);
+            $value = $envelope['value'];
+            break;
+        }
+
+        return $value;
     }
 
     /**
@@ -813,7 +931,7 @@ class PageService extends BaseService
 
         // Try to get from cache first. The route-param suffix keeps one cache
         // entry per param set so e.g. /team/7 and /team/8 never collide.
-        $cacheKey = "page_draft_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
+        $cacheKey = "page_draft_v2_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
 
         // Get flat sections to extract data table dependencies for page-level cache
         /** @var list<array<string, mixed>> $flatSections */
@@ -842,7 +960,7 @@ class PageService extends BaseService
             }
         }
 
-        $pageData = $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections, $routeParams, $routeRequirements) {
+        $pageData = $this->rememberUntilClockChanges($cacheService, $cacheKey, function () use ($languageId, $page, $flatSections, $routeParams, $routeRequirements) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
@@ -1158,7 +1276,7 @@ class PageService extends BaseService
 
                 $entryTableProperties = $this->translationRepository->fetchTranslationsForSections(
                     $entryHolderSectionIds,
-                    self::PROPERTY_LANGUAGE_ID
+                    Language::INDEPENDENT_ID
                 );
 
                 foreach ($entryTableProperties as $holderId => $fields) {
@@ -1240,7 +1358,7 @@ class PageService extends BaseService
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
 
-        $cacheKey = "page_sections_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
+        $cacheKey = "page_sections_v2_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
 
         // Get flat sections first to extract data table dependencies
         /** @var list<array<string, mixed>> $flatSections */
@@ -1270,37 +1388,8 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements, $page_id) {
-            // Build nested hierarchical structure (without applying data initially)
-            $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
-
-            // Extract all section IDs from the hierarchical structure
-            $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
-
-            // Get default language ID for fallback translations
-            $defaultLanguageId = null;
-            try {
-                $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
-            } catch (\Exception $e) {
-                // If there's an error getting the default language, continue without fallback
-            }
-
-            // Fetch all translations for these sections with fallback to default language
-            $translations = $this->translationRepository->fetchTranslationsForSectionsWithFallback(
-                $sectionIds,
-                $languageId,
-                $defaultLanguageId
-            );
-
-            // Fetch property translations (language ID 1) for fields of type 1
-            $propertyTranslations = $this->translationRepository->fetchTranslationsForSections(
-                $sectionIds,
-                self::PROPERTY_LANGUAGE_ID
-            );
-
-            // Apply translations to the sections recursively
-            // Note: fallback is now handled internally by fetchTranslationsForSectionsWithFallback
-            $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
+        $sections = $this->rememberUntilClockChanges($cacheService, $cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements, $page_id) {
+            $sections = $this->translatedDraftSections($flatSections, $languageId);
 
             // Process sections recursively with proper data inheritance and sequential operations
             // This replaces the bulk applySectionsData, interpolation, and condition filtering.
@@ -1320,6 +1409,179 @@ class PageService extends BaseService
 
             return $sections;
         });
+
+        /** @var list<array<string, mixed>> $sections */
+        $sections = is_array($sections) ? array_values($sections) : [];
+
+        return $sections;
+    }
+
+    /**
+     * The live (draft) section tree of a page, nested and translated for one language, before any data is
+     * retrieved, value interpolated or condition evaluated.
+     *
+     * @param list<array<string, mixed>> $flatSections rows from {@see SectionRepository::fetchSectionsHierarchicalByPageId()}
+     * @return array<int, array<string, mixed>>
+     */
+    private function translatedDraftSections(array $flatSections, int $languageId): array
+    {
+        // Build nested hierarchical structure (without applying data initially)
+        $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
+
+        // Extract all section IDs from the hierarchical structure
+        $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
+
+        // Get default language ID for fallback translations
+        $defaultLanguageId = null;
+        try {
+            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+        } catch (\Exception $e) {
+            // If there's an error getting the default language, continue without fallback
+        }
+
+        // Fetch all translations for these sections with fallback to default language
+        $translations = $this->translationRepository->fetchTranslationsForSectionsWithFallback(
+            $sectionIds,
+            $languageId,
+            $defaultLanguageId
+        );
+
+        // Fetch property translations (language ID 1) for fields of type 1
+        $propertyTranslations = $this->translationRepository->fetchTranslationsForSections(
+            $sectionIds,
+            Language::INDEPENDENT_ID
+        );
+
+        // Apply translations to the sections recursively
+        // Note: fallback is now handled internally by fetchTranslationsForSectionsWithFallback
+        $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
+
+        return $sections;
+    }
+
+    /**
+     * The variables one section of a page sees when the page is drawn for the current user, in one
+     * language: user and system values, global values, route parameters, and the data that the
+     * section's and its ancestors' `data_config` load. This is what `{{name}}` in that section's
+     * content resolves to. A plugin uses it to replace variables in content it serves outside the
+     * page response (H1, e.g. the questions of a survey).
+     *
+     * Built exactly like the page: only the section's ancestors and the section itself are
+     * processed, in page order, each with its own data configuration. Returns an empty array when
+     * the section is not on the page or an ancestor is hidden by its condition; whether the caller
+     * may see the section at all is checked before, by the caller.
+     *
+     * Known limit: the call names the section, not a row. Under a repeating ancestor (an entry
+     * list or a loop) every copy gets the first row's variables, and under a data view none.
+     * Telling the copies apart needs the row in the plugin's call.
+     *
+     * @param array<string, string> $routeParams public route params ({{route.*}})
+     * @return array<array-key, mixed>
+     */
+    public function variablesForSection(EffectivePage $effective, int $sectionId, int $languageId, array $routeParams = []): array
+    {
+        if (!$effective->contains($sectionId)) {
+            return [];
+        }
+        $sections = $effective->isPublished()
+            ? $this->publishedSections($effective, $languageId)
+            : array_values($this->translatedDraftSections(
+                $this->listOfStringKeyedRows($this->sectionRepository->fetchSectionsHierarchicalByPageId($effective->pageId)),
+                $languageId
+            ));
+
+        $chain = $this->sectionChain($sections, $sectionId);
+        if ($chain === null) {
+            return [];
+        }
+        // Debug keeps `retrieved_data` (the section's variables) on the processed section.
+        $target = array_pop($chain);
+        $node = $target;
+        $node['children'] = [];
+        $node['debug'] = true;
+        while (($parent = array_pop($chain)) !== null) {
+            $parent['children'] = [$node];
+            $node = $parent;
+        }
+
+        $user = $this->userContextAwareService->getCurrentUser();
+        $processed = $this->processSectionsRecursively(
+            [$node],
+            $this->buildRouteScope($routeParams, []),
+            $user ? (int) $user->getId() : null,
+            $languageId,
+            false,
+            $effective->pageId,
+        );
+
+        $current = $processed[0] ?? null;
+        while (is_array($current)) {
+            if ($this->asInt($current['id'] ?? null) === $sectionId) {
+                return $this->asArray($current['retrieved_data'] ?? []);
+            }
+            $children = $this->asArray($current['children'] ?? []);
+            $current = $children[0] ?? null;
+        }
+
+        return [];
+    }
+
+    /**
+     * The path from a top-level section to the section with the given id, both included; null when it is
+     * not in the tree.
+     *
+     * @param array<array-key, mixed> $sections
+     * @return list<array<string, mixed>>|null
+     */
+    private function sectionChain(array $sections, int $sectionId): ?array
+    {
+        foreach ($sections as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $row = $this->stringKeyed($section);
+            if ($this->asInt($row['id'] ?? null) === $sectionId) {
+                return [$row];
+            }
+            $below = $this->sectionChain($this->asArray($row['children'] ?? []), $sectionId);
+            if ($below !== null) {
+                return [$row, ...$below];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<array-key, mixed> $rows
+     * @return list<array<string, mixed>>
+     */
+    private function listOfStringKeyedRows(array $rows): array
+    {
+        $list = [];
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                $list[] = $this->stringKeyed($row);
+            }
+        }
+
+        return $list;
+    }
+
+    /**
+     * @param array<array-key, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function stringKeyed(array $row): array
+    {
+        $out = [];
+        foreach ($row as $key => $value) {
+            if (is_string($key)) {
+                $out[$key] = $value;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -1418,36 +1680,25 @@ class PageService extends BaseService
     }
 
     /**
-     * Determine which language ID to use for translations
-     * 
-     * @param int|null $language_id Explicitly provided language ID
-     * @return int The language ID to use
+     * Real language for translations: explicit, else the user's, else the CMS
+     * default, else the lowest real language id. Never the language-independent row.
      */
     public function determineLanguageId(?int $language_id = null): int
     {
-        // If language_id is explicitly provided, use it
-        if ($language_id !== null) {
+        if ($language_id !== null && $language_id !== Language::INDEPENDENT_ID) {
             return $language_id;
         }
 
-        // If user is logged in, use their preferred language
         $user = $this->userContextAwareService->getCurrentUser();
         $userLanguage = $user?->getLanguage();
         if ($userLanguage !== null) {
-            return (int) $userLanguage->getId();
+            $id = (int) $userLanguage->getId();
+            if ($id !== Language::INDEPENDENT_ID) {
+                return $id;
+            }
         }
 
-        // Otherwise use default language from CMS preferences
-        try {
-            return (int) $this->cache
-                ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
-                ->getItem("cms_preferences_default_language_id", fn() => $this->cmsPreferenceService->getDefaultLanguageId());
-        } catch (\Exception $e) {
-            // If there's an error getting the default language, use fallback
-        }
-
-        // Fallback to language ID 2 if no default language is configured
-        return 2;
+        return $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
     }
 
     /**
@@ -1466,7 +1717,7 @@ class PageService extends BaseService
      * @param int $languageId Language ID for data retrieval
      * @return list<array<string, mixed>> Processed sections that pass conditions
      */
-    private function processSectionsRecursively(array $sections, array $parentData = [], ?int $userId = null, int $languageId = 1, bool $rowTemplate = false, int $pageId = 0): array
+    private function processSectionsRecursively(array $sections, array $parentData = [], ?int $userId = null, int $languageId = Language::INDEPENDENT_ID, bool $rowTemplate = false, int $pageId = 0): array
     {
         $processedSections = [];
 
@@ -2057,6 +2308,7 @@ class PageService extends BaseService
         }
 
         if (str_contains($raw, '{{')) {
+            $this->clockBoundaries->noteText($raw);
             $raw = $this->interpolationService->interpolate($raw, $sectionData);
         }
 
@@ -2324,6 +2576,8 @@ class PageService extends BaseService
         $isDebugEnabled = isset($section['debug']) && $section['debug'];
         $interpolateCondition = $isDebugEnabled && $conditionAsText;
 
+        $this->noteClockTexts($section);
+
         // Update section's retrieved_data for interpolation access
         $section['retrieved_data'] = $interpolationData;
 
@@ -2350,6 +2604,32 @@ class PageService extends BaseService
 
         // Interpolate only fields that actually exist in this section
         $this->interpolateExistingContentFields($section, $interpolationData, $interpolateCondition);
+    }
+
+    /**
+     * Report the clock tokens (`{{system.current_date}}` and the like) in the texts of one section
+     * that are about to be interpolated: such a text changes by itself as time passes, which the
+     * page reports as `sync.valid_until`. Only the section's own fields are read, never its children.
+     *
+     * @param array<string, mixed> $section
+     */
+    private function noteClockTexts(array $section): void
+    {
+        foreach (['css', 'css_mobile'] as $field) {
+            if (isset($section[$field]) && is_string($section[$field])) {
+                $this->clockBoundaries->noteText($section[$field]);
+            }
+        }
+        foreach (['content', 'meta'] as $field) {
+            if (isset($section[$field])) {
+                $this->clockBoundaries->noteTexts($section[$field]);
+            }
+        }
+        foreach ($section as $fieldValue) {
+            if (is_array($fieldValue) && isset($fieldValue['content']) && is_string($fieldValue['content'])) {
+                $this->clockBoundaries->noteText($fieldValue['content']);
+            }
+        }
     }
 
     /**
@@ -2455,6 +2735,8 @@ class PageService extends BaseService
             return $config;
         }
 
+        $this->clockBoundaries->noteTexts($config);
+
         $interpolatedConfig = $config;
 
         // Interpolate string fields that might contain variables
@@ -2519,7 +2801,7 @@ class PageService extends BaseService
      *                        sections of a record template only (the condition of any other section is left as it is)
      * @return array{passes: bool, debug?: array<string, mixed>} Result with 'passes' boolean and optional 'debug' info
      */
-    private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = 1, ?array $tokenData = null): array
+    private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = Language::INDEPENDENT_ID, ?array $tokenData = null): array
     {
         if (!isset($section['condition']) || empty($section['condition'])) {
             return ['passes' => true];

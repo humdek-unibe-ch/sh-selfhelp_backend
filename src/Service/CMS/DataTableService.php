@@ -24,6 +24,7 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Security\ResourceGrantService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -69,6 +70,7 @@ class DataTableService extends BaseService
         private readonly FormFieldKeyResolver $formFieldKeyResolver,
         private readonly DataRevisionErasureService $historyErasure,
         private readonly FormFileUploadService $formFileUploadService,
+        private readonly ResourceGrantService $resourceGrants,
     ) {
     }
 
@@ -353,7 +355,16 @@ class DataTableService extends BaseService
             // Doctrine will cascade delete all related rows, columns, and cells
             $this->entityManager->remove($dataTable);
             $this->entityManager->flush();
+
+            // The grant rows have no foreign key to the table (F280): they go with it.
+            $revokedRoleIds = $this->resourceGrants->revokeAll(LookupService::RESOURCE_TYPES_DATA_TABLE, (int) $deletedDataTableId);
+
             $this->entityManager->commit();
+
+            // The roles that held a grant on the table: their rights, access stamp and open clients.
+            foreach ($revokedRoleIds as $roleId) {
+                $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
+            }
 
             // A file cannot roll back, so it goes only once the data is gone for good.
             $this->formFileUploadService->deleteUnreferencedFiles($history->fileKeys);
@@ -546,9 +557,10 @@ class DataTableService extends BaseService
      * in the Data browser) followed by the table's dynamic data columns
      * (`standard:false`). `fieldKey` is the immutable storage key; `displayName`
      * is the mutable human label (null when never curated). `isFile` tells the
-     * Data browser which columns hold uploaded files: true only for a column of
-     * a core form that belongs to a `file-input` section, so the client never
-     * guesses it from a cell's value. Returns false if the table is not found.
+     * Data browser which columns hold uploaded files: a column of a core form
+     * that belongs to a `file-input` section, or one declared with the value
+     * type `file` (a plugin's upload column), so the client never guesses it
+     * from a cell's value. Returns false if the table is not found.
      *
      * @return list<array<string, mixed>>|false
      */
@@ -578,7 +590,10 @@ class DataTableService extends BaseService
                 'displayName' => $col->getDisplayName(),
                 'locked' => $col->isDisplayNameManual(),
                 'standard' => false,
-                'isFile' => $fieldKey !== null && $this->formFieldKeyResolver->isFileInput($tableName, $fieldKey),
+                'isFile' => $fieldKey !== null && (
+                    $col->getValueTypeCode() === LookupService::DATA_COL_VALUE_TYPES_FILE
+                    || $this->formFieldKeyResolver->isFileInput($tableName, $fieldKey)
+                ),
             ];
         }
         return $result;

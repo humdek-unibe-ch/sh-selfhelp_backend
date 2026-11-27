@@ -12,6 +12,8 @@ namespace App\EventListener;
 
 use App\Entity\User;
 use App\Service\Mercure\MercureTopicResolver;
+use App\Service\Sync\ChangeNotifier;
+use App\Service\Sync\SyncTag;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
@@ -74,7 +76,8 @@ final class AclVersionMercurePublisher
     public function __construct(
         private readonly HubInterface $hub,
         private readonly MercureTopicResolver $topics,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly ChangeNotifier $notifier,
     ) {
     }
 
@@ -114,6 +117,11 @@ final class AclVersionMercurePublisher
         $this->pending = [];
 
         foreach ($batch as $userId => $newVersion) {
+            // The live-sync notice (`acl` to the user's sync topic) is queued here, at the same
+            // persistence boundary, so every path that bumps the version (admin, bulk, import,
+            // job, profile) is covered. It is sent once when the request or job is done.
+            $this->notifier->notify([$this->topics->syncUserTopic($userId)], [SyncTag::ACL]);
+
             try {
                 $payload = json_encode(
                     ['aclVersion' => $newVersion],

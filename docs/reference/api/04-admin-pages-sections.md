@@ -146,6 +146,21 @@ Retrieve detailed information about a specific page including its fields and tra
 
 **Permissions:** `admin.page.read`
 
+**Caller rights (since 0.1.48):** `data.rights` says what the signed-in person
+may do with this page, so the editor can hide what would be refused:
+
+```json
+"rights": { "can_update": true, "can_delete": false, "can_publish": true }
+```
+
+Each flag needs the route permission **and** the grant bit on this page
+(`can_update`: `admin.page.update` + update; `can_delete`: `admin.page.delete` +
+delete; `can_publish`: `admin.page_version.publish` + update); the superuser
+role gets all. It is computed per request after the cached page is read and is
+never cached with it. The server still checks every write on its own.
+
+**Draft version:** the data also carries `draft_version` (integer), and the response header `X-Page-Version` has the same value. Send it back as `X-Page-Version` on the next write to this page (see [Draft Version](#draft-version-x-page-version)).
+
 ### Create Page
 
 Create a new page with specified properties.
@@ -286,6 +301,48 @@ Delete a page and all its associated sections.
 ```
 
 **Permissions:** `admin.page.delete`
+
+### Draft Version (`X-Page-Version`)
+
+Every write to a page's draft must name the version it is based on, so an editor never overwrites a newer draft unseen. This covers: update page, delete page, add / create / remove / update / import sections (to the page and to a section), restore from version, publish, unpublish, publish a version and delete a version (every non-GET `/admin/pages/{page_id}/...` route except the lock routes).
+
+**Request header:** `X-Page-Version: <draft_version>` (a positive whole number; read it from `GET /admin/pages/{page_id}` or from the header of the last write).
+
+| Case | Status | `error` | `data` |
+|---|---|---|---|
+| header missing or not a positive integer | `400` | `page_version_required` | `null` |
+| header is not the current version | `409` | `stale_page_version` | `{ "page_id": 12, "current_version": 4 }` |
+| header is the current version | 2xx | | the response header `X-Page-Version` is the new version (current + 1) |
+
+A refused or failed write leaves the version unchanged. Of two writes that send the same version, exactly one runs and the other gets `409 stale_page_version`. A client that gets 409 reloads the page (`GET`), merges, and sends the new version. The header is an allowed CORS request header and an exposed response header.
+
+### Page Edit Lock
+
+One editor at a time holds the lock of a page. The lease ends **120 seconds after the last renewal** and **15 minutes after the holder's last draft write** (after the acquisition when they wrote nothing). A client renews while the page is open by repeating `POST .../lock`. After the idle end, the previous holder's next renew answers `409 lock_idle_ended` (resume through take-over); others may take the free lock as before.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /cms-api/v1/admin/pages/{page_id}/lock` | status of the lock; changes nothing |
+| `POST /cms-api/v1/admin/pages/{page_id}/lock` | acquire a free lock, or renew your own; `409 page_locked` when someone else holds it; `409 lock_idle_ended` after your own idle end |
+| `POST /cms-api/v1/admin/pages/{page_id}/lock/take-over` | become the holder, whoever held it (also the explicit resume after idle) |
+| `DELETE /cms-api/v1/admin/pages/{page_id}/lock` | release your own lock; no effect when it is not yours |
+
+**Permissions.** Acquire, release and take-over need `admin.page.update` and the update grant on the page. `GET` also accepts `admin.page.delete`, `admin.page_version.publish` or `admin.page_version.delete`, with the update or delete grant on the page. Otherwise 403, or 404 for a page that does not exist.
+
+**Response data** ([schema](../../../config/schemas/api/v1/responses/admin/pages/page_lock.json)):
+```json
+{
+  "page_id": 12,
+  "held": true,
+  "mine": false,
+  "holder": { "id": 7, "name": "Alex Editor" },
+  "expires_at": "2026-11-20T12:02:00Z",
+  "idle_expires_at": "2026-11-20T12:15:00Z"
+}
+```
+`held` is false and `holder`, `expires_at`, `idle_expires_at` are `null` when nobody holds the lock. `mine` is true when the caller holds it. A `409 lock_idle_ended` answer uses the same shape with `held: false`.
+
+**Lock and drafts.** A draft write by someone other than the holder answers `409` with error `page_locked` and the same data as above (the lock is checked before the version). A draft write while nobody holds the lock succeeds and leaves the caller holding it. After a take-over, the previous holder's next write gets `409 page_locked`. Delete, publish, unpublish, publish-specific-version and version-delete by a caller who may do that action (and does not hold `admin.page.update`) also answer `409 page_locked` while someone else holds the lock; they need neither the lock nor `X-Page-Version`. A successful page delete removes the lease. A change of who holds the lock sends the live-sync notice `page_lock:<page_id>` to the roles that may edit the page.
 
 ## Section Management
 
@@ -783,7 +840,7 @@ Retrieve sections that are not attached to any page.
 
 **Response:** Array of unused sections
 
-**Permissions:** `admin.page.update`
+**Permissions:** `admin.section.read`
 
 ### Get Reference Containers
 
@@ -974,6 +1031,18 @@ const handlePageOperation = async (operation, ...args) => {
         success: false,
         error: 'Page or section not found',
         action: 'show_not_found'
+      };
+    } else if (errorData?.status === 409 && errorData?.error === 'page_locked') {
+      return {
+        success: false,
+        error: `Locked by ${errorData.data.holder.name}`,
+        action: 'show_lock_holder'
+      };
+    } else if (errorData?.status === 409 && errorData?.error === 'stale_page_version') {
+      return {
+        success: false,
+        error: 'The page changed; reload it',
+        action: 'reload_page'
       };
     } else if (errorData?.status === 409) {
       return {

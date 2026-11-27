@@ -49,8 +49,9 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *   - status     = active   (id_status -> lookups['userStatus']['active'])
  *   - blocked    = 0
  *   - user_type  = user     (id_user_types -> lookups['userTypes']['user'])
- *   - roles      = [admin]   (admin rights come from the role; there is no
- *                            admin group. `--group` adds one if wanted.)
+ *   - roles      = [the role with is_superuser] (admin rights come from the
+ *                  role; there is no admin group. `--role=<name>` assigns a
+ *                  role by name instead; `--group` adds a group if wanted.)
  *
  * Re-running the command with the same email updates the password and
  * re-asserts admin role membership instead of erroring out, so it
@@ -78,7 +79,7 @@ class CreateAdminUserCommand extends Command
             ->addOption('password', 'p', InputOption::VALUE_REQUIRED, 'Password (prompted if omitted).')
             ->addOption('name', null, InputOption::VALUE_REQUIRED, 'user_name column (defaults to email).')
             ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Group keyword to add the user to (optional).')
-            ->addOption('role', null, InputOption::VALUE_REQUIRED, 'Role keyword to add the user to.', 'admin')
+            ->addOption('role', null, InputOption::VALUE_REQUIRED, 'Role name to assign, looked up by name. Omit it (or pass an empty value) to assign the role with is_superuser.')
             ->addOption('no-admin', null, InputOption::VALUE_NONE, 'Skip admin group/role assignment (creates a plain validated user).');
     }
 
@@ -161,13 +162,21 @@ class CreateAdminUserCommand extends Command
             $roleKw = is_string($roleOpt) ? $roleOpt : '';
 
             $group = $em->getRepository(Group::class)->findOneBy(['name' => $groupKw]);
-            $role = $em->getRepository(Role::class)->findOneBy(['name' => $roleKw]);
+            // No value resolves the superuser role by flag (F10), so a renamed
+            // superuser role still works. Any given value is a plain name lookup.
+            $role = $roleKw === ''
+                ? $em->getRepository(Role::class)->findOneBy(['isSuperuser' => true])
+                : $em->getRepository(Role::class)->findOneBy(['name' => $roleKw]);
 
             if ($groupKw !== '' && !$group instanceof Group) {
                 $io->warning("Group '{$groupKw}' not found — skipping group assignment.");
             }
             if (!$role instanceof Role) {
-                $io->warning("Role '{$roleKw}' not found — skipping role assignment.");
+                $io->warning(
+                    $roleKw === ''
+                        ? 'No superuser role found — skipping role assignment.'
+                        : "Role '{$roleKw}' not found — skipping role assignment."
+                );
             }
 
             // Group membership goes through the rel_groups_users join table.

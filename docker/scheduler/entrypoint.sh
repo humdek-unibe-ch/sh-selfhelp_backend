@@ -36,10 +36,20 @@ if [ ! -f vendor/autoload.php ]; then
 fi
 
 tick_seconds="${SCHEDULED_JOBS_TICK_SECONDS:-60}"
+concurrency="${SCHEDULED_JOBS_CONCURRENCY:-4}"
 
-echo "scheduler: starting due-job loop every ${tick_seconds}s"
+echo "scheduler: starting due-job loop every ${tick_seconds}s (concurrency=${concurrency}); a job that is due at once wakes the loop"
+
+# `app:scheduled-jobs:wait` replaces a plain sleep: it returns after the tick, or as soon as a
+# job is created that is due now (it prints `woken`). A woken tick skips the interval gate, so
+# an immediate job starts within about two seconds; due-time jobs are unchanged.
+woken=""
 
 while true; do
-  php bin/console app:scheduled-jobs:execute-due --env="${APP_ENV:-dev}" --no-interaction
-  sleep "${tick_seconds}"
+  php bin/console app:scheduled-jobs:execute-due --concurrency="${concurrency}" ${woken} --env="${APP_ENV:-dev}" --no-interaction
+  waited="$(php bin/console app:scheduled-jobs:wait --timeout="${tick_seconds}" --env="${APP_ENV:-dev}" --no-interaction || true)"
+  case "${waited}" in
+    *woken*) woken="--woken" ;;
+    *) woken="" ;;
+  esac
 done

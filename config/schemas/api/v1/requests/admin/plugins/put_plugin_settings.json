@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Save Plugin Settings",
+  "description": "Body of PUT /cms-api/v1/admin/plugins/{pluginId}/settings (contract C14). `values` maps a setting key of the plugin manifest to its new value: a value sets it (a secret is encrypted), null clears it, and a key that is left out stays as it is. Each value is checked against the type the manifest declares (string, number, boolean, url) by the service: 400 invalid_plugin_setting.",
+  "additionalProperties": false,
+  "required": ["values"],
+  "properties": {
+    "values": {
+      "type": "object",
+      "maxProperties": 100
+    }
+  }
+}

@@ -10,6 +10,8 @@ namespace App\Service\Auth;
 
 use App\Entity\Lookup;
 use App\Entity\User;
+use App\Plugin\Event\Domain\PluginDomainEventDispatcher;
+use App\Plugin\Event\Domain\UserDeletedEvent;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\QueuedJobTimezoneAdjustmentService;
@@ -31,6 +33,7 @@ class ProfileService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly QueuedJobTimezoneAdjustmentService $timezoneAdjustmentService,
         private readonly UserDataCleanerService $userDataCleaner,
+        private readonly PluginDomainEventDispatcher $pluginEvents,
     ) {
     }
 
@@ -268,7 +271,7 @@ class ProfileService extends BaseService
             }
 
             // Prevent deletion of system users
-            if (in_array(strtolower($managedUser->getName() ?? ''), ['admin', 'tpf'])) {
+            if ($managedUser->isSystem()) {
                 throw new \InvalidArgumentException('Cannot delete system accounts');
             }
 
@@ -321,6 +324,9 @@ class ProfileService extends BaseService
             $groupCache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_GROUP, $outcome['groupIds']);
             $groupCache->invalidateAllListsInCategory();
         }
+
+        // The account and its data are gone for good: plugin listeners may clean up (C24).
+        $this->pluginEvents->dispatchAfterCommit(new UserDeletedEvent($outcome['userId']));
     }
 
 

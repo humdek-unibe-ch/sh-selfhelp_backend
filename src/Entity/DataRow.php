@@ -13,6 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 #[ORM\Table(name: 'data_rows')]
 #[ORM\Index(name: 'idx_data_rows_id_data_tables', columns: ['id_data_tables'])]
+#[ORM\Index(name: 'idx_data_rows_id_users', columns: ['id_users'])]
 // Ordered and owner-scoped pages and counts of the data query engine: the index order is
 // `ORDER BY timestamp DESC, id DESC` and the deleted marker is in the index (see the migration).
 #[ORM\Index(name: 'idx_data_rows_table_timestamp', columns: ['id_data_tables', 'timestamp', 'id', 'id_action_trigger_types'])]
@@ -56,6 +57,15 @@ class DataRow
      */
     #[ORM\Column(name: 'version', type: 'integer', options: ['default' => 1])]
     private int $version = 1;
+
+    /**
+     * The content the latest write that named one was made for (contract C19):
+     * `page:<id>@v<n>`, `page:<id>@draft` or `res:<type>:<id>@v<n>`. NULL means
+     * "unknown": records written before the reference existed, and records only
+     * jobs or imports wrote. A write without a reference never clears it.
+     */
+    #[ORM\Column(name: 'content_ref', type: 'string', length: 191, nullable: true)]
+    private ?string $contentRef = null;
 
     public function getId(): ?int
     {
@@ -140,6 +150,18 @@ class DataRow
     public function setVersion(int $version): static
     {
         $this->version = $version;
+
+        return $this;
+    }
+
+    public function getContentRef(): ?string
+    {
+        return $this->contentRef;
+    }
+
+    public function setContentRef(?string $contentRef): static
+    {
+        $this->contentRef = $contentRef;
 
         return $this;
     }

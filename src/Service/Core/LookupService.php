@@ -66,6 +66,8 @@ final class LookupService
     public const DATA_COL_VALUE_TYPES_DATE = 'date';
     public const DATA_COL_VALUE_TYPES_DATETIME = 'datetime';
     public const DATA_COL_VALUE_TYPES_BOOLEAN = 'boolean';
+    /** The cells name uploaded files (form file keys), for a column no `file-input` section feeds. */
+    public const DATA_COL_VALUE_TYPES_FILE = 'file';
 
     // dataRevisionOperations (data_revisions.id_operations: what happened to the record)
     public const DATA_REVISION_OPERATIONS_CREATE = 'create';
@@ -81,6 +83,7 @@ final class LookupService
     public const DATA_REVISION_SOURCES_JOB = 'job';
     public const DATA_REVISION_SOURCES_IMPORT = 'import';
     public const DATA_REVISION_SOURCES_SYSTEM = 'system';
+    public const DATA_REVISION_SOURCES_PLUGIN = 'plugin';
 
     // actionScheduleTypes
     public const ACTION_SCHEDULE_TYPES_IMMEDIATELY = 'immediately';

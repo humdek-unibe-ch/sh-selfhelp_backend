@@ -32,6 +32,11 @@
                     "type": "string",
                     "format": "date-time",
                     "description": "Response timestamp in ISO 8601 format (YYYY-MM-DDTHH:mm:ssZ or YYYY-MM-DDTHH:mm:ss+HH:MM)."
+                },
+                "retry_after": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Only on 429 `rate_limited` (a plugin rate limit): whole seconds until the caller may try again. The Retry-After header carries the same value."
                 }
             },
             "required": [

@@ -80,6 +80,8 @@ See [01-authentication.md](01-authentication.md) for the login, refresh, 2FA, an
 - [14-admin-actions.md](14-admin-actions.md) - Automated action system.
 - [20-admin-system-maintenance.md](20-admin-system-maintenance.md) - Instance-scoped version, update preflight, request, and status (SelfHelp Manager flow).
 - [21-admin-analytics.md](21-admin-analytics.md) - Anonymous page-view analytics and the today's-operations dashboard snapshot.
+- [23-admin-resource-usage.md](23-admin-resource-usage.md) - Where a plugin resource is used (pages and actions).
+- [24-admin-plugin-settings.md](24-admin-plugin-settings.md) - Settings and secrets a plugin declares: list, save, encryption, environment override.
 
 ### Public and forms
 

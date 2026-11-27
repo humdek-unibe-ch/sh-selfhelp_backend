@@ -68,6 +68,14 @@ class ScheduledJob
     private ?DataRow $dataRow = null;
 
     /**
+     * Which version of that record triggered the job (`record:<id>@v<n>`, C26).
+     * Null for jobs without a record (reminders, queueNow, recurring). No FK: it
+     * stays when history is erased and then points at nothing.
+     */
+    #[ORM\Column(name: 'record_ref', type: 'string', length: 191, nullable: true)]
+    private ?string $recordRef = null;
+
+    /**
      * Reminder-specific metadata stored separately from the base scheduled-job table.
      */
     #[ORM\OneToOne(mappedBy: 'scheduledJob', targetEntity: ScheduledJobReminder::class, cascade: ['persist', 'remove'], orphanRemoval: true)]
@@ -180,6 +188,17 @@ class ScheduledJob
     public function setDataRow(?DataRow $dataRow): self
     {
         $this->dataRow = $dataRow;
+        return $this;
+    }
+
+    public function getRecordRef(): ?string
+    {
+        return $this->recordRef;
+    }
+
+    public function setRecordRef(?string $recordRef): self
+    {
+        $this->recordRef = $recordRef;
         return $this;
     }
 

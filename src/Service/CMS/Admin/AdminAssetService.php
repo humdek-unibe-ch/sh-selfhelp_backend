@@ -17,6 +17,7 @@ use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Sync\ChangeNoticeService;
 
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -43,6 +44,7 @@ class AdminAssetService extends BaseService
         private readonly CacheService $cache,
         private readonly AssetAccessService $accessService,
         private readonly AssetStorageService $storage,
+        private readonly ChangeNoticeService $notices,
     ) {
     }
 
@@ -310,6 +312,7 @@ class AdminAssetService extends BaseService
 
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ASSET, $id);
         $this->invalidateAssetLists();
+        $this->notices->assetChanged($id);
 
         return $this->toArray($asset);
     }
@@ -363,6 +366,7 @@ class AdminAssetService extends BaseService
 
         foreach ($assets as $asset) {
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ASSET, (int) $asset->getId());
+            $this->notices->assetChanged((int) $asset->getId());
         }
         $this->invalidateAssetLists();
 
@@ -398,6 +402,9 @@ class AdminAssetService extends BaseService
             sprintf('Moved assets [%s] to folder %s', implode(',', $assetIds), $folder?->getId() ?? 'top level')
         );
         $this->invalidateAssetLists();
+        foreach ($assets as $asset) {
+            $this->notices->assetChanged((int) $asset->getId());
+        }
 
         return ['moved' => count($assets)];
     }
@@ -441,6 +448,7 @@ class AdminAssetService extends BaseService
     private function removeAssets(array $assets): void
     {
         $removed = [];
+        $revokedRoleIds = [];
 
         $this->entityManager->beginTransaction();
         try {
@@ -458,7 +466,12 @@ class AdminAssetService extends BaseService
                 );
 
                 // role_data_access has no FK to the asset: drop its grants first.
-                $this->accessService->setManagingRoles($asset, []);
+                // Live sync: named before the grants go (they are what tells who manages the asset).
+                // The notice leaves after the response, so a failed delete costs one extra refetch.
+                $this->notices->assetChanged((int) $asset->getId());
+                foreach ($this->accessService->releaseManagingRoles($asset) as $roleId) {
+                    $revokedRoleIds[$roleId] = $roleId;
+                }
                 $this->entityManager->remove($asset);
             }
             $this->entityManager->flush();
@@ -468,6 +481,9 @@ class AdminAssetService extends BaseService
             $this->entityManager->rollback();
             throw $e;
         }
+
+        // Rights, access stamp and open clients of the roles that held a grant on an asset.
+        $this->accessService->invalidateRoles(array_values($revokedRoleIds));
 
         foreach ($removed as $id => $uuid) {
             $this->storage->delete($uuid);
@@ -777,6 +793,8 @@ class AdminAssetService extends BaseService
         }
 
         $groups = $groupIds !== null ? $this->accessService->resolveGroups($groupIds) : null;
+        // The caller counts as holding every asset of the subtree (they may update each one).
+        $subtreeAssetIds = array_map(static fn (Asset $asset): int => (int) $asset->getId(), $assets);
 
         $this->entityManager->beginTransaction();
         try {
@@ -785,7 +803,7 @@ class AdminAssetService extends BaseService
                     $this->replaceGroups($asset, $groups);
                 }
                 if ($roleIds !== null) {
-                    $this->accessService->setManagingRoles($asset, $roleIds);
+                    $this->accessService->setManagingRoles($asset, $roleIds, $subtreeAssetIds);
                 }
                 $asset->touch();
             }
@@ -814,6 +832,7 @@ class AdminAssetService extends BaseService
 
         foreach ($assets as $asset) {
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ASSET, (int) $asset->getId());
+            $this->notices->assetChanged((int) $asset->getId());
         }
         $this->invalidateAssetLists();
 

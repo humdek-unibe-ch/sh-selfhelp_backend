@@ -87,19 +87,17 @@ final class QaFormListFixtureSmokeTest extends QaKernelTestCase
         self::assertInstanceOf(Group::class, $subject);
         $acl = $this->em->getRepository(PageAclGroup::class)->findOneBy(['group' => $subject, 'page' => $entries]);
         self::assertInstanceOf(PageAclGroup::class, $acl, 'The subject group must have an ACL row on the entries page.');
-        self::assertTrue($acl->getAclSelect() && $acl->getAclInsert() && $acl->getAclUpdate() && $acl->getAclDelete());
+        self::assertTrue($acl->getAclSelect(), 'The subject group may see the entries page.');
 
         $aclService = $this->service(ACLService::class);
         foreach ([QaBaselineFixture::QA_USER_EMAIL, QaBaselineFixture::QA_EDITOR_EMAIL] as $email) {
             $user = $this->em->getRepository(User::class)->findOneBy(['email' => $email]);
             self::assertInstanceOf(User::class, $user);
-            foreach (['select', 'insert', 'update', 'delete'] as $mode) {
-                self::assertTrue($aclService->hasAccess((int) $user->getId(), (int) $entries->getId(), $mode), $email . ' must have ' . $mode . ' on the entries page.');
-            }
+            self::assertTrue($aclService->hasAccess((int) $user->getId(), (int) $entries->getId()), $email . ' must see the entries page.');
         }
         $guest = $this->em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_GUEST_EMAIL]);
         self::assertInstanceOf(User::class, $guest);
-        self::assertFalse($aclService->hasAccess((int) $guest->getId(), (int) $entries->getId(), 'select'), 'qa.guest is in no group and must not see the entries.');
+        self::assertFalse($aclService->hasAccess((int) $guest->getId(), (int) $entries->getId()), 'qa.guest is in no group and must not see the entries.');
     }
 
     public function testTheWideFormsHoldManyInputsWithVeryLongLabelsAndTheirColumnsAreLabelledLong(): void

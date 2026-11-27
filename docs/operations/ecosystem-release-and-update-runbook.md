@@ -323,6 +323,14 @@ Admins do not run Docker. The CMS records intent; the manager executes:
    backup → pull → compose → migrate → health pipeline, streaming status
    back; the admin watches `GET /admin/system/update/status`.
 
+Caches after a migration: after every successful `doctrine:migrations:migrate`
+(the manager's migrate step, a fresh install, `app:test:reset-db`, a local run)
+the backend clears the API route lists and the whole permission cache itself
+(`MigrationsCacheInvalidationListener`), so a migration that renames a
+permission or re-links a route is effective at once and nobody has to clear
+Redis by hand. `php bin/console cache:clear-api-routes` remains for a manual
+route change made outside a migration.
+
 Details: [platform-and-plugin-ecosystem.md](platform-and-plugin-ecosystem.md)
 §Path B and `../developer/25-instance-scoped-system-layer.md`.
 

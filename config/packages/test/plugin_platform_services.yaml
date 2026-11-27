@@ -1,0 +1,49 @@
+# Test-only wiring of the platform part of the plugin contracts (loaded only when
+# APP_ENV=test): jobs in actions, jobs started at once, jobs a plugin queues (C12,
+# C13, C22, C25), plugin settings and secrets (C14) and realtime to one user (C18).
+#
+# Nothing in the host injects the interfaces a plugin calls (PluginJobQueueInterface,
+# PluginSettingsInterface, PluginRealtimePublisherInterface), so the compiled container
+# drops them unless they are public; tests fetch them by the ids below. The aliases point at
+# the interfaces, not at the classes, so a test gets exactly what a plugin gets. They have ids
+# of their own because config/services.yaml loads after this file and its class scan aliases
+# every interface that has one implementation, as a private alias that replaces a public one.
+services:
+    test.plugin_job_queue:
+        alias: App\Plugin\ScheduledJob\PluginJobQueueInterface
+        public: true
+
+    test.plugin_realtime_publisher:
+        alias: App\Plugin\Realtime\PluginRealtimePublisherInterface
+        public: true
+
+    test.plugin_settings:
+        alias: App\Plugin\Settings\PluginSettingsInterface
+        public: true
+
+    # The handlers of the QA platform plugin's job types: one service per type, so each is collected
+    # into the real PluginScheduledJobRegistry (autoconfigure applies the handler tag). Whether a job
+    # of the type may be planned or queued depends on an enabled plugin declaring the type.
+    qa_platform.job_handler.note:
+        class: App\Tests\Support\Plugin\QaPlatformJobHandler
+        arguments: ['qa_note_job']
+        autoconfigure: true
+        public: true
+
+    qa_platform.job_handler.sleep:
+        class: App\Tests\Support\Plugin\QaPlatformJobHandler
+        arguments: ['qa_sleep_job']
+        autoconfigure: true
+        public: true
+
+    qa_platform.job_handler.timeout:
+        class: App\Tests\Support\Plugin\QaPlatformJobHandler
+        arguments: ['qa_timeout_job']
+        autoconfigure: true
+        public: true
+
+    qa_platform.job_handler.sweep:
+        class: App\Tests\Support\Plugin\QaPlatformJobHandler
+        arguments: ['qa_sweep_job']
+        autoconfigure: true
+        public: true

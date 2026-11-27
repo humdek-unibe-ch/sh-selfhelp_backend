@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\DataQuery;
 
+use App\Entity\Language;
+
 /**
  * A structured read of one generic data table, executed by
  * {@see DataQueryEngine}. Every reader of the generic store (lists, tables,
@@ -42,7 +44,7 @@ final readonly class DataQuery
      * @param int $offset records to skip
      * @param list<string>|null $columns projected column keys; null reads every column of the table
      * @param bool $excludeDeleted leave out soft-deleted records
-     * @param int $languageId requested language; a missing cell falls back to the default language (id 1)
+     * @param int $languageId requested language; missing cells fall back in the engine (visitor language, then language-independent)
      * @param bool $allLanguages one result row per record and language instead of one per record
      * @param string $timezone time zone code that `entry_date` is shown in
      * @param bool $withTotal also count the matching records
@@ -61,7 +63,7 @@ final readonly class DataQuery
         public int $offset = 0,
         public ?array $columns = null,
         public bool $excludeDeleted = true,
-        public int $languageId = 1,
+        public int $languageId = Language::INDEPENDENT_ID,
         public bool $allLanguages = false,
         public string $timezone = 'UTC',
         public bool $withTotal = false,

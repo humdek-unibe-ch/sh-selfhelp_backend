@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-11-13.
-Source of truth: `App\Controller\Api\V1\Admin\AdminDataController`, the request schemas under `config/schemas/api/v1/requests/admin/`, and the `api_routes` rows seeded by `migrations/Version20260603092955.php`, `migrations/Version20260626121351.php` and `migrations/Version20260629074552.php`.
+Last verified: 2026-11-26.
+Source of truth: `App\Controller\Api\V1\Admin\AdminDataController`, `App\Service\CMS\Admin\DataTableExportService`, the request schemas under `config/schemas/api/v1/requests/admin/`, and the `api_routes` rows seeded by `migrations/Version20260603092955.php`, `migrations/Version20260626121351.php` and `migrations/Version20260629074552.php`.
 
 ## Overview
 
@@ -116,7 +116,11 @@ show a lock badge and the CMS form inspector can warn that the label is curated.
 | `language_id` | int | `1` | Translation language |
 
 Returns `{ "data": { "rows": [ ... ] } }`. Row shape depends on the table's
-columns; each row also carries record metadata (e.g. `record_id`).
+columns; each row also carries record metadata (e.g. `record_id`) and
+`content_ref`: the content the record was written for (`page:<page id>@v<n>`,
+`page:<page id>@draft` or `res:<type>:<item id>@v<n>`), `null` for a record written
+before the reference was stored or by a job or an import. See
+[content reference](../../developer/record-history.md#content-reference).
 
 ### Get columns / column names
 
@@ -194,6 +198,10 @@ the route and the caller's **UPDATE** grant on the named table. Schemas under
 Guest `401`; role without the table UPDATE grant `403`. File changes carry
 historical-file `url`s when the bytes are still available.
 
+Every history item, and the `revision` header of a version, carries `content_ref`:
+the content that write was made for (`null` when the write named none). A restore
+carries the reference of the revision it restores.
+
 ### Delete a record
 
 **Endpoint:** `DELETE /cms-api/v1/admin/data/records/{recordId}`
@@ -230,7 +238,7 @@ Returns `{ "data": { "deleted_column_count": 2 } }`.
 > export endpoints below do **not** wrap their payload in the standard
 > `{status, message, error, logged_in, meta, data}` envelope and do **not** go
 > through `ApiResponseFormatter` on success. They return the raw file body
-> (CSV / JSON / ZIP) with a `Content-Disposition: attachment` header so the
+> (CSV / Excel / JSON / ZIP) with a `Content-Disposition: attachment` header so the
 > frontend can read the response as a `blob`. **Error** responses *do* still use
 > the standard envelope. Do not "normalise" these to the envelope — the raw body
 > is intentional. (This is the same pattern as the registration-codes CSV
@@ -240,8 +248,8 @@ Both export endpoints apply the same read permission and per-table access /
 group-filter logic as `GET /admin/data`. Rows are read in stable batches of 500
 through the data query engine ([data-query-engine.md](../../developer/data-query-engine.md))
 and written to the response as they arrive, so the memory an export needs does not
-grow with the table (CSV spools its rows through a temporary buffer to write the
-header once). The files are identical to what the single read produced.
+grow with the table (CSV and Excel spool their rows through a temporary buffer to
+write the header once). The files are identical to what the single read produced.
 
 ### Export a single table
 
@@ -251,15 +259,23 @@ header once). The files are identical to what the single read produced.
 
 | Param | Type | Default | Notes |
 |-------|------|---------|-------|
-| `format` | `csv` \| `json` | `csv` | Output format |
+| `format` | `csv` \| `xlsx` \| `json` | `csv` | Output format |
 | `user_id` | int | _all users_ | Restrict to one user |
 | `language_id` | int | `1` | Translation language |
 | `exclude_deleted` | bool | `true` | Skip soft-deleted rows |
 
 - `format=csv` → `Content-Type: text/csv`, attachment. The header row is the
   **union of all column names** across the table; missing cells are empty.
+- `format=xlsx` → `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+  attachment: one sheet named `Data` with the same header and rows as the CSV.
+  Text stays text (leading zeros kept, nothing becomes a formula); integer and
+  decimal values are numbers. Written without a spreadsheet library.
 - `format=json` → `Content-Type: application/json`, a raw array of row objects
   (not the envelope).
+
+A record that carries a content reference adds the column `_content_ref` (CSV and
+Excel: an empty cell for a record without one; JSON: no such key). A table whose
+records all have none is exported exactly as before.
 
 The download filename is derived from the table's display name (or name).
 

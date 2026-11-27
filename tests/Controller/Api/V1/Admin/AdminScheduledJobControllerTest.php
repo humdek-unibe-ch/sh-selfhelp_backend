@@ -88,6 +88,42 @@ final class AdminScheduledJobControllerTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess($envelope);
 
         self::assertSame($id, $data['id'] ?? null, 'Detail payload must echo the requested job id.');
+        self::assertArrayHasKey('record_ref', $data, 'C26: detail carries record_ref (null when the job has no record).');
+        self::assertNull($data['record_ref'], 'A factory email job without a record trigger has null record_ref.');
+    }
+
+    public function testListAndDetailExposeRecordRef(): void
+    {
+        // A job planned from a record: list and detail both return the same reference.
+        $this->job->setRecordRef('record:42@v3');
+        $this->em->flush();
+
+        $list = $this->assertEnvelopeSuccess($this->jsonRequest(
+            'GET',
+            '/cms-api/v1/admin/scheduled-jobs?page=1&pageSize=50&search=qa_admin_scheduled_job',
+            null,
+            $this->adminToken,
+        ));
+        $jobs = $list['scheduledJobs'] ?? null;
+        self::assertIsArray($jobs);
+        $listed = null;
+        foreach ($jobs as $row) {
+            self::assertIsArray($row);
+            if (($row['id'] ?? null) === $this->job->getId()) {
+                $listed = $row;
+                break;
+            }
+        }
+        self::assertIsArray($listed, 'The seeded job is in the list.');
+        self::assertSame('record:42@v3', $listed['record_ref'] ?? null);
+
+        $detail = $this->assertEnvelopeSuccess($this->jsonRequest(
+            'GET',
+            '/cms-api/v1/admin/scheduled-jobs/' . (int) $this->job->getId(),
+            null,
+            $this->adminToken,
+        ));
+        self::assertSame('record:42@v3', $detail['record_ref'] ?? null);
     }
 
     public function testGetByIdNotFound(): void

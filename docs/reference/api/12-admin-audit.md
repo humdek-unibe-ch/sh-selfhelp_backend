@@ -81,7 +81,7 @@ Retrieve paginated audit logs with comprehensive filtering options.
 }
 ```
 
-**Permissions:** `admin.audit.view`
+**Permissions:** `admin.audit.read`
 
 ### Get Specific Audit Log
 
@@ -130,7 +130,7 @@ Retrieve detailed information about a single audit log entry.
 }
 ```
 
-**Permissions:** `admin.audit.view`
+**Permissions:** `admin.audit.read`
 
 ### Get Audit Statistics
 
@@ -212,7 +212,7 @@ Retrieve summary statistics and analytics from audit data.
 }
 ```
 
-**Permissions:** `admin.audit.view`
+**Permissions:** `admin.audit.read`
 
 ## Data Access Management
 

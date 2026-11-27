@@ -104,4 +104,34 @@ final class MercureTopicResolver
     {
         return rtrim($this->topicPrefix, '/') . '/plugins/state';
     }
+
+    /**
+     * Live-sync topic every visitor (guests included) listens to.
+     *
+     * Carries change notices for data everybody may read: the navigation, the
+     * global values, open pages and the tables behind them. The notice holds
+     * names and ids only ({@see \App\Service\Sync\SyncTag}).
+     */
+    public function syncPublicTopic(): string
+    {
+        return rtrim($this->topicPrefix, '/') . '/sync/public';
+    }
+
+    /** Live-sync topic of one user: their own ACL, their own records. */
+    public function syncUserTopic(int $userId): string
+    {
+        return rtrim($this->topicPrefix, '/') . '/sync/users/' . $userId;
+    }
+
+    /** Live-sync topic of one group: what its members may see changed. */
+    public function syncGroupTopic(int $groupId): string
+    {
+        return rtrim($this->topicPrefix, '/') . '/sync/groups/' . $groupId;
+    }
+
+    /** Live-sync topic of one role: what its holders may edit changed. */
+    public function syncRoleTopic(int $roleId): string
+    {
+        return rtrim($this->topicPrefix, '/') . '/sync/roles/' . $roleId;
+    }
 }

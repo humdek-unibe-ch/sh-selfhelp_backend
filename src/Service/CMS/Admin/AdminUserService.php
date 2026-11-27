@@ -26,6 +26,9 @@ use App\Exception\ServiceException;
 use App\Service\Auth\JWTService;
 use App\Service\Core\UserDataCleanerService;
 use App\Service\Mercure\MercureTopicResolver;
+use App\Plugin\Event\Domain\PluginDomainEventDispatcher;
+use App\Plugin\Event\Domain\UserCreatedEvent;
+use App\Plugin\Event\Domain\UserDeletedEvent;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Psr\Log\LoggerInterface;
@@ -40,7 +43,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AdminUserService extends BaseService
 {
-    private const SYSTEM_USERS = ['admin', 'tpf'];
     private const MAX_PAGE_SIZE = 100;
     private const DEFAULT_PAGE_SIZE = 20;
 
@@ -93,6 +95,7 @@ class AdminUserService extends BaseService
         private readonly MercureTopicResolver $mercureTopics,
         private readonly LoggerInterface $logger,
         private readonly UserDataCleanerService $userDataCleaner,
+        private readonly PluginDomainEventDispatcher $pluginEvents,
     ) {
     }
 
@@ -838,6 +841,11 @@ class AdminUserService extends BaseService
             // Invalidate caches
             $this->invalidateUserCaches((int) $user->getId());
 
+            // Plugin listeners hear about the new user once this transaction has
+            // committed, and never when it rolls back (C24). Single creates, bulk
+            // creates and the CSV import all pass through here.
+            $this->pluginEvents->dispatchAfterCommit(new UserCreatedEvent((int) $user->getId()));
+
             return [
                 'user' => $result,
                 'validation' => $validationResult,
@@ -934,7 +942,7 @@ class AdminUserService extends BaseService
             $user = $this->findUserOrThrow($userId);
 
             // Prevent deletion of system users
-            if (in_array($user->getName(), self::SYSTEM_USERS)) {
+            if ($user->isSystem()) {
                 throw new ServiceException('Cannot delete system users', Response::HTTP_FORBIDDEN);
             }
 
@@ -969,6 +977,9 @@ class AdminUserService extends BaseService
         $this->userDataCleaner->finishAfterCommit($userId, $outcome['cleanup']);
         $this->invalidateUserCaches($userId);
         $this->invalidateUserGroupCaches($userId, $outcome['groupIds']);
+
+        // The user and their data are gone for good: plugin listeners may clean up (C24).
+        $this->pluginEvents->dispatchAfterCommit(new UserDeletedEvent($userId));
 
         return true;
     }
@@ -1282,7 +1293,7 @@ class AdminUserService extends BaseService
         $outcome = $this->executeInTransaction(function () use ($userId) {
             $user = $this->findUserOrThrow($userId);
 
-            if (in_array($user->getName(), self::SYSTEM_USERS, true)) {
+            if ($user->isSystem()) {
                 throw new ServiceException('Cannot clean data of system users', Response::HTTP_FORBIDDEN);
             }
 
@@ -1356,7 +1367,7 @@ class AdminUserService extends BaseService
 
         $targetUser = $this->findUserOrThrow($targetUserId);
 
-        if (in_array($targetUser->getName(), self::SYSTEM_USERS, true)) {
+        if ($targetUser->isSystem()) {
             throw new ServiceException(
                 'Cannot impersonate system users',
                 Response::HTTP_FORBIDDEN
@@ -1642,7 +1653,14 @@ class AdminUserService extends BaseService
     private function setUserRelatedEntities(User $user, array $userData): void
     {
         if (isset($userData['id_languages'])) {
-            $language = $this->entityManager->getRepository(Language::class)->find($userData['id_languages']);
+            $languageId = $this->asInt($userData['id_languages']);
+            if ($languageId === Language::INDEPENDENT_ID) {
+                throw new ServiceException(
+                    'Cannot set a user language to the language-independent row',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+            $language = $this->entityManager->getRepository(Language::class)->find($languageId);
             $user->setLanguage($language);
         }
 
@@ -1773,7 +1791,8 @@ class AdminUserService extends BaseService
             return [
                 'id' => $role->getId(),
                 'name' => $role->getName(),
-                'description' => $role->getDescription()
+                'description' => $role->getDescription(),
+                'is_superuser' => $role->isSuperuser(),
             ];
         }, $user->getUserRoles()->toArray()));
     }
@@ -1805,7 +1824,8 @@ class AdminUserService extends BaseService
             return [
                 'id' => $role->getId(),
                 'name' => $role->getName(),
-                'description' => $role->getDescription()
+                'description' => $role->getDescription(),
+                'is_superuser' => $role->isSuperuser(),
             ];
         }, $user->getUserRoles()->toArray()));
     }
@@ -1837,6 +1857,7 @@ class AdminUserService extends BaseService
             'last_login' => $lastLoginFormatted,
             'status' => $user->getStatus()?->getLookupValue(),
             'blocked' => $user->isBlocked(),
+            'is_system' => $user->isSystem(),
             'receives_notifications' => $user->receivesNotifications(),
             'receives_emails' => $user->receivesEmails(),
             'code' => $validationCode,
@@ -1871,7 +1892,7 @@ class AdminUserService extends BaseService
      */
     private function getValidationCode(User $user): string
     {
-        if (in_array($user->getName(), self::SYSTEM_USERS)) {
+        if ($user->isSystem()) {
             return $this->asString($user->getName());
         }
 

@@ -15,6 +15,22 @@
                     "description": "List of fields associated with the page",
                     "items": { "$ref": "../../../entities/fieldEntity.json" }
                 },
+                "draft_version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The page's draft version (also the response header X-Page-Version). Send it as X-Page-Version on the next write to this page's draft; a stale or missing value is refused with 409 stale_page_version or 400 page_version_required."
+                },
+                "rights": {
+                    "type": "object",
+                    "description": "What the signed-in person may do with this page in the CMS: the route permission and the grant bit on the page (superuser: all). Per caller, never cached with the page.",
+                    "properties": {
+                        "can_update": { "type": "boolean", "description": "admin.page.update and the update grant: edit page settings and sections" },
+                        "can_delete": { "type": "boolean", "description": "admin.page.delete and the delete grant" },
+                        "can_publish": { "type": "boolean", "description": "admin.page_version.publish and the update grant: publish and unpublish" }
+                    },
+                    "required": ["can_update", "can_delete", "can_publish"],
+                    "additionalProperties": false
+                },
                 "routes": {
                     "type": "array",
                     "description": "DB-driven public routes for this page (issue #30), round-tripped by the locked Routes panel",
@@ -36,7 +52,7 @@
                     }
                 }
             },
-            "required": ["page", "fields", "routes"]
+            "required": ["page", "fields", "routes", "rights", "draft_version"]
         }
     },
     "required": ["data"]

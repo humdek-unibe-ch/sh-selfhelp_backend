@@ -10,6 +10,7 @@ namespace App\Service\CMS\Admin;
 
 use App\Entity\Action;
 use App\Entity\Lookup;
+use App\Plugin\ScheduledJob\PluginActionJobTypes;
 use App\Repository\ActionRepository;
 use App\Repository\LookupRepository;
 use App\Service\Cache\Core\CacheService;
@@ -17,6 +18,7 @@ use App\Service\CMS\Admin\AdminActionTranslationService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
+use App\Service\Sync\ResourceReadIndex;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 use App\Exception\ServiceException;
@@ -31,7 +33,37 @@ class AdminActionService extends BaseService
         private readonly AdminActionTranslationService $adminActionTranslationService,
         private readonly CacheService $cache,
         private readonly ActionAttachmentValidator $attachmentValidator,
+        private readonly ActionPluginJobValidator $pluginJobValidator,
+        private readonly ResourceReadIndex $resourceReadIndex,
+        private readonly PluginActionJobTypes $pluginJobTypes,
     ) {
+    }
+
+    /**
+     * The job types that enabled plugins offer to actions (C12), for the action editor.
+     *
+     * Empty maps are returned as objects so that they stay `{}` in the JSON answer.
+     *
+     * @return list<array{type: string, plugin_id: string, label: string, config_schema: array<string, mixed>, resource_fields: array<string, string>|\stdClass}>
+     */
+    public function getPluginJobTypes(): array
+    {
+        $types = [];
+        foreach ($this->pluginJobTypes->all() as $type) {
+            $schema = $type['config_schema'];
+            if (($schema['properties'] ?? null) === []) {
+                $schema['properties'] = new \stdClass();
+            }
+            $types[] = [
+                'type' => $type['type'],
+                'plugin_id' => $type['plugin_id'],
+                'label' => $type['label'],
+                'config_schema' => $schema,
+                'resource_fields' => $type['resource_fields'] === [] ? new \stdClass() : $type['resource_fields'],
+            ];
+        }
+
+        return $types;
     }
 
     /**
@@ -131,6 +163,7 @@ class AdminActionService extends BaseService
                 // Store as JSON text (validated at controller level against schema)
                 $config = $data['config'];
                 $this->assertAttachmentsAllowed($config);
+                $this->pluginJobValidator->assertValid($config);
                 $configJson = is_string($config) ? $config : json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 $action->setConfig($configJson === false ? null : $configJson);
             }
@@ -169,6 +202,8 @@ class AdminActionService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ACTIONS)
                 ->invalidateAllListsInCategory();
+            // The action part of the resource index reads the job configs (C12).
+            $this->resourceReadIndex->invalidate();
 
             $result = $this->formatAction($action);
             if ($translationsResult) {
@@ -216,6 +251,7 @@ class AdminActionService extends BaseService
             if (array_key_exists('config', $data)) {
                 $config = $data['config'];
                 $this->assertAttachmentsAllowed($config);
+                $this->pluginJobValidator->assertValid($config);
                 $configJson = is_string($config) ? $config : json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 $action->setConfig($configJson === false ? null : $configJson);
             }
@@ -256,6 +292,8 @@ class AdminActionService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ACTIONS)
                 ->invalidateAllListsInCategory();
+            // The action part of the resource index reads the job configs (C12).
+            $this->resourceReadIndex->invalidate();
 
             $result = $this->formatAction($action);
             if ($translationsResult) {
@@ -304,6 +342,8 @@ class AdminActionService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ACTIONS)
                 ->invalidateAllListsInCategory();
+            // The deleted action no longer holds any resource (C12).
+            $this->resourceReadIndex->invalidate();
 
             return true;
         } catch (\Throwable $e) {

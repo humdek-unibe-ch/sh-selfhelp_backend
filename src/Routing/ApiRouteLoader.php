@@ -145,10 +145,12 @@ class ApiRouteLoader extends Loader
             
             // Permission names are already parsed from the optimized query
             $permissionNames = $routeData['permission_names'] ?? [];
+            $isPublic = (bool) ($routeData['is_public'] ?? false);
             
-            // Create route options with permissions
+            // Create route options with permissions and the public flag (F09)
             $options = [
-                'permissions' => $permissionNames
+                'permissions' => $permissionNames,
+                'is_public' => $isPublic,
             ];
             
             // Create the route with permissions in options

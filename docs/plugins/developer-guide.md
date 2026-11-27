@@ -5,6 +5,7 @@ the SelfHelp Symfony backend (CMS host). This document is the canonical
 "how to build a SelfHelp plugin" reference. It is paired with:
 
 - `docs/plugins/plugin-manifest.schema.json` (machine-readable manifest schema)
+- `docs/plugins/host-hooks.md` (plugin API 0.2.0 host services, C2–C26)
 - `docs/plugins/multi-repo-agents-md.md` (AGENTS.md rules across repos)
 - `docs/plugins/plugin-repo-agents-md-template.md` (drop-in AGENTS.md for plugin repos)
 - `docs/plugins/architecture.md` (system-level architecture overview)
@@ -64,7 +65,7 @@ A minimal manifest looks like this:
   "id": "sh2-shp-example",
   "name": "Example Plugin",
   "version": "1.0.0",
-  "pluginApiVersion": "0.1.0",
+  "pluginApiVersion": "0.2.0",
   "license": "MPL-2.0",
   "compatibility": {
     "selfhelp": ">=0.1.0",
@@ -108,9 +109,9 @@ Key rules:
   - **minor** (`1.0.x` → `1.1.0`): must ship at least one migration class
     (the installer enforces this even for "no-op" minor bumps).
   - **major** (`1.x` → `2.x`): breaking. Migration optional.
-- `pluginApiVersion` declares the SDK contract version (currently `0.1.0`).
-  Patch/minor mismatches in the SDK never break a plugin. Major SDK bumps
-  do; you must re-test against the new SDK.
+- `pluginApiVersion` declares the SDK contract version (currently `0.2.0`).
+  Keys such as `resourceFields`, `settings`, `rateLimits` and `listens` need
+  `0.2.0` or newer. Major SDK bumps break plugins; re-test against the new SDK.
 - `security.capabilities` is **deny-by-default**. You can only use a
   capability that is listed. If you load an external CDN, you must list
   it under `security.externalHosts` and request the `externalNetworkAccess`
@@ -121,6 +122,64 @@ Key rules:
   "Recommended compatibility ranges" in section 7.
 
 See `plugin-manifest.schema.json` for the full property list.
+
+### Catalogue rows: styles, fields, permissions, lookups (rule 7.8)
+
+Everything a plugin adds to core catalogue tables is declared in the
+manifest and written by the host installer
+(`PluginCatalogueSynchronizer`), tagged with `id_plugins`. A plugin
+migration creates and changes only the plugin's own tables.
+
+```json
+{
+  "styleGroups": [{ "name": "Plugin: Example", "position": 900 }],
+  "fieldTypes": [{ "name": "select-example", "position": 100 }],
+  "fields": [
+    { "name": "example_source", "type": "select-example" },
+    { "name": "example_label", "type": "markdown-inline", "translatable": true, "renamedFrom": ["exampleLabel"] }
+  ],
+  "styles": [
+    {
+      "name": "example-banner",
+      "description": "A banner style contributed by the example plugin.",
+      "canHaveChildren": true,
+      "group": "Plugin: Example",
+      "fields": [
+        { "name": "example_source", "title": "Source", "help": "Where the banner reads from.", "default": "" },
+        { "name": "example_label", "title": "Label" },
+        { "name": "own_entries_only", "title": "Own entries only", "default": "0" }
+      ]
+    }
+  ],
+  "permissions": [{ "key": "example.banners.manage", "description": "Manage banners", "defaultRoles": ["admin"] }],
+  "lookups": { "extends": [{ "typeCode": "exampleStatus", "ownership": "plugin_owned", "entries": [{ "code": "on", "value": "On" }] }] }
+}
+```
+
+How the installer treats them, on install and on every update:
+
+- **Order.** After the plugin's migrations, before the API route sync
+  (routes link to the permissions written here).
+- **Ownership.** A name that core or another plugin already holds is
+  refused, and the install or update fails. Style groups and field types
+  used only by this plugin, and entries of a lookup type core does not
+  know, are adopted, because they had no owner before.
+- **A style's `fields`** is the complete list of its field links: the
+  plugin's own fields or core fields. `css`, `css_mobile`, `condition`,
+  `data_config` and `debug` are global section fields and are not listed.
+  Links missing from the list are removed.
+- **Renames.** `renamedFrom` on a field or style renames the existing row
+  in place. Sections reference styles and field values by id, so they keep
+  their content.
+- **Removal.** Permissions and lookup entries the manifest no longer
+  declares are removed. Styles, fields, field types and style groups are
+  never removed on update, because sections may still use them; purge
+  removes them.
+- **`defaultRoles`** is granted once, when the permission is created.
+  Later changes on the role screen are the admin's.
+- **Sections left out.** When the manifest has no `styleGroups`,
+  `fieldTypes` or `fields`, or a style has no `fields`, that part of the
+  catalogue is left as it is.
 
 ---
 
@@ -220,6 +279,15 @@ Pages contributed under `adminPages` are mounted at
 layout, breadcrumbs, and permission gating; your component renders the
 page body.
 
+Each admin page declares exactly one `permission` in `plugin.json`
+(rule 4.13). It must be the `key` of an entry in the same manifest's
+`permissions` block: the manifest validator refuses any other value with
+`Admin page "<slug>" uses permission "<key>", which the plugin does not
+declare.` The public manifest endpoint (`GET /cms-api/v1/plugins/manifest`)
+returns each page's `slug`, `label` and `permission`, and the host checks
+that permission on the server when the page is opened, not only in the
+menu.
+
 ### Menu items
 
 Menu items are merged into the host menu by the `PluginRuntime`. The
@@ -247,6 +315,26 @@ If your plugin needs rich text, use `api.richTextEditor` rather than
 embedding your own editor. The host provides a Tiptap-backed adapter
 with consistent styling, paste handling, sanitization, and a stable
 serialization format.
+
+### Showing HTML
+
+Before you render any CMS or user HTML (`dangerouslySetInnerHTML`), pass it
+through `api.sanitizeHtml(html, 'inline' | 'block')`. The web host runs its
+own DOMPurify with the rules core pages use and rewrites record file links
+through the web proxy; `inline` keeps inline markup, `block` also keeps
+headings, lists and paragraphs. Do not bundle a sanitizer of your own and do
+not import host internals. Mobile has no `sanitizeHtml` (React Native does not
+render HTML), so the rule there depends on the surface:
+
+- native React Native text: `parseInlineRich` (inline formatting and links) and
+  `stripHtmlToText` (plain text), both exported from `@selfhelp/shared/plugin-sdk`;
+- HTML inside the plugin's own WebView: bundle a sanitizer into the WebView
+  runtime and keep a strict CSP; the host offers none on mobile.
+
+The mobile host services a plugin may call (`upload`, `requestPermission`,
+`openAppSettings`, `getPluginStorage`, renderer 0.4.0) are in
+[mobile-plugins.md](./mobile-plugins.md) and [host-hooks.md](./host-hooks.md)
+(C27 to C30).
 
 ---
 
@@ -358,7 +446,7 @@ admin sees the unmet requirement in the install request UI.
 | Thing                | Versioning rule                                                        |
 | -------------------- | ---------------------------------------------------------------------- |
 | Plugin (`version`)   | SemVer. Patch = no migration. Minor = ships migration. Major = breaking.|
-| SDK (`pluginApiVersion`) | Independent SemVer, currently `0.1.0`. Host honors `host minor >= plugin minor` within the same major (pre-1.0: within major `0`). |
+| SDK (`pluginApiVersion`) | Independent SemVer, currently `0.2.0`. A bare version means at least this version within the same major: on host `0.2.0`, `0.1.0` is accepted, `0.3.0` is refused, `^0.1.0` is refused. Explicit ranges (`^`, `~`, `>=`) keep their SemVer meaning. |
 | Host CMS             | SemVer. Declared via `compatibility.selfhelp` (npm-style range).        |
 | Lock file            | `schemaVersion` is part of the lock JSON. Currently `1.0`.             |
 
@@ -514,6 +602,78 @@ Manifest-driven surfaces consumed without tags or events:
 - **Lookups** — declare `lookups.extends[]` / `lookups.owned[]` in
   the manifest as a static alternative to subscribing to
   `LookupRegistryEvent`.
+
+### Public section endpoints: access and variables (rule 7.7, F109)
+
+A plugin endpoint that serves or accepts data for a section on a page
+(a survey, a map) decides like a core form. Call
+`App\Service\CMS\Effective\PublicSectionAccessService` first:
+
+```php
+$scope = $this->sectionAccess->forSection($pageId, $sectionId, 'surveyjs', $preview);
+$surveyKey = $scope->field('survey_js');          // read settings from the section, never the request
+$variables = $this->sectionAccess->variables($scope, $languageId, $routeParams);
+$definition = $this->interpolation->interpolateArray($definition, $variables);
+```
+
+- `forSection()` refuses (403) a page the caller may not see (page ACL
+  `select`; a guest needs an open page), a section that is not on the
+  page or is hidden by its condition or an ancestor's; 400 a section of
+  another style; 401/403 a preview without edit rights on the page. It
+  acts on the published version for visitors.
+- `variables()` returns what `{{name}}` resolves to in that section on
+  that page for the current user: user and system values, globals,
+  route parameters and the data its and its ancestors' `data_config`
+  load. Replace on text values (`InterpolationService::interpolateArray`),
+  never on serialized JSON. An unknown variable becomes empty, as on the
+  page.
+
+### Data-access resource types (H6)
+
+A plugin can make its own resources (for example each survey) grantable
+per role, next to pages, data tables, assets and groups:
+
+1. Declare the type as an entry of the core `resourceTypes` lookup:
+   `"lookups": { "extends": [{ "typeCode": "resourceTypes", "ownership": "plugin_extendable", "entries": [{ "code": "surveyjs_survey", "value": "Surveys" }] }] }`.
+   The installer writes it, tagged with the plugin.
+2. List the resources: subscribe to `App\Plugin\Event\DataAccessResourcesEvent`
+   and call `addResource($id, $name, $description)` when
+   `$event->resourceTypeCode` is your code. The "Permissions for role"
+   screen shows one entry per type and stores grants in `role_data_access`.
+3. Check a grant like any other:
+   `DataAccessSecurityService::hasPermission($userId, 'surveyjs_survey', $surveyId, DataAccessSecurityService::PERMISSION_UPDATE)`.
+   The admin role passes every check.
+
+Removing the entry from the manifest, or purging the plugin, deletes the
+lookup row; the database removes its grants with it.
+
+### Checking a field value when a section is authored (H7, C8)
+
+A plugin field can point at one of the plugin's resources: a survey section
+stores which survey it shows. Like binding a data table (F07), the editor may
+place only what they may use, checked when the section is saved or imported,
+never when it is shown.
+
+Declare the field in the manifest and the host does the check; there is no
+event to subscribe to (`SectionFieldBindingEvent` is gone):
+
+```json
+{ "styles": [{ "name": "survey-js", "resourceFields": { "survey_id": "surveyjs_survey" } }] }
+```
+
+`resourceFields` maps a field of that style to a resource type of the same
+manifest (a `lookups.extends` entry of `resourceTypes`). On every section save
+and import the host reads each such field. The value must be the positive whole
+number id of an item the editor holds the **view** grant on; the superuser
+passes. Anything else answers 403 `resource_not_bindable` and writes nothing.
+An empty value clears the binding and passes. System actors (no signed-in user)
+pass. The check is one public method,
+`App\Plugin\Resource\ResourceBindingGuard::assertBindable($type, $value, $userId)`.
+
+The fields named in `resourceFields` are also what the host follows for live
+updates: when you call `PluginResourceServiceInterface::changed()` the editors
+of every page that holds the item, and (when `$published` is true) its
+visitors, are told to reload it.
 
 Field renderers, page-lifecycle hooks, and other surfaces from
 earlier proposals are **not** consumed by the host. Do not register

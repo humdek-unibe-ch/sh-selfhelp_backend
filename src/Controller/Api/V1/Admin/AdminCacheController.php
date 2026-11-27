@@ -75,7 +75,7 @@ class AdminCacheController extends AbstractController
     {
         try {
 
-            foreach (CacheService::ALL_CATEGORIES as $category) {
+            foreach ($this->cacheService->allCategories() as $category) {
                 $this->cacheService->withCategory($category)->invalidateCategory();
             }
             $this->statsService->resetStats();
@@ -114,7 +114,7 @@ class AdminCacheController extends AbstractController
             $category = $requestData['category'];
 
             // Validate category exists
-            if (!is_string($category) || !in_array($category, CacheService::ALL_CATEGORIES)) {
+            if (!is_string($category) || !in_array($category, $this->cacheService->allCategories(), true)) {
                 return $this->responseFormatter->formatError(
                     'Invalid cache category',
                     Response::HTTP_BAD_REQUEST

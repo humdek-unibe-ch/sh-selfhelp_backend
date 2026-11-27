@@ -17,6 +17,7 @@ use App\Repository\ScheduledJobRepository;
 use App\Entity\ScheduledJobRecipient;
 use App\Entity\ScheduledJobReminder;
 use App\Entity\User;
+use App\Plugin\ScheduledJob\PluginRecurringJobs;
 use App\Plugin\ScheduledJob\PluginScheduledJobDeliveryAwareInterface;
 use App\Plugin\ScheduledJob\PluginScheduledJobDeliveryGate;
 use App\Plugin\ScheduledJob\PluginScheduledJobRegistry;
@@ -27,6 +28,7 @@ use App\Service\CMS\Admin\AssetStorageService;
 use App\Service\CMS\CmsPreferenceService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Attribute\AutowireServiceClosure;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Address;
@@ -40,6 +42,9 @@ use Symfony\Component\Mime\Address;
  */
 class JobSchedulerService extends BaseService
 {
+    /**
+     * @param \Closure(): PluginRecurringJobs $recurringJobs gives the recurring-job service (C25) when it is first needed
+     */
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly TransactionService $transactionService,
@@ -56,6 +61,10 @@ class JobSchedulerService extends BaseService
         private readonly MailHtmlRenderer $mailHtmlRenderer,
         private readonly AssetRepository $assetRepository,
         private readonly AssetStorageService $assetStorage,
+        private readonly ScheduledJobWakeSignal $wakeSignal,
+        // A closure, not the service: PluginRecurringJobs creates its jobs through this class (C25).
+        #[AutowireServiceClosure(PluginRecurringJobs::class)]
+        private readonly \Closure $recurringJobs,
     ) {
     }
 
@@ -142,6 +151,8 @@ class JobSchedulerService extends BaseService
                 ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
                 ->invalidateAllListsInCategory();
 
+            $this->wakeSchedulerWhenDue($job);
+
             return $job;
         } catch (\Throwable $e) {
             $this->logger->error('Failed to schedule job', [
@@ -150,6 +161,21 @@ class JobSchedulerService extends BaseService
             ]);
 
             return false;
+        }
+    }
+
+    /**
+     * Ring the scheduler's doorbell for a job that is due now or earlier (contract C13).
+     *
+     * The signal is pushed after the commit that creates the job (at once when no
+     * transaction is open) and never when that transaction rolls back. A job that is
+     * due later waits for its time as before. This is the one place jobs are created, so
+     * it is the one place that wakes the scheduler.
+     */
+    private function wakeSchedulerWhenDue(ScheduledJob $job): void
+    {
+        if ($job->getDateToBeExecuted() <= new \DateTimeImmutable('now', new \DateTimeZone('UTC'))) {
+            $this->wakeSignal->pushAfterCommit();
         }
     }
 
@@ -208,6 +234,101 @@ class JobSchedulerService extends BaseService
      */
     public function executeJob(int $jobId, string $transactionBy): ScheduledJob|false
     {
+        $claimed = false;
+        $result = $this->runJob($jobId, $transactionBy, $claimed);
+
+        // A recurring job queues its next run after every run it won, whatever the outcome (C25).
+        if ($claimed) {
+            $this->queueNextRecurringRun($jobId);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Mark a job as failed with a reason, for a run that was stopped from outside: the
+     * child process of a job ran over the timeout of its type (contract C22) and was killed.
+     *
+     * A killed run leaves no trace of its own: its transaction (the claim included) is rolled
+     * back, so the job is queued again. This writes the end of the story: status `failed`,
+     * the time, the reason in the transaction log (`Job executed: failed (timeout)`), and for a
+     * recurring job the next run. A job that is already over (done, failed, skipped, cancelled,
+     * deleted) is left alone.
+     *
+     * @param string $reason a short word, for example `timeout`
+     *
+     * @return bool true when this call marked the job as failed
+     */
+    public function failJob(int $jobId, string $reason, string $transactionBy): bool
+    {
+        $marked = false;
+        try {
+            $this->em->beginTransaction();
+
+            $marked = $this->scheduledJobRepository->markFailedIfPending($jobId, new \DateTime('now', new \DateTimeZone('UTC')));
+            if ($marked) {
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_UPDATE,
+                    $transactionBy,
+                    'scheduled_jobs',
+                    $jobId,
+                    false,
+                    'Job executed: failed (' . $reason . ')'
+                );
+                $this->invalidateJobCache($jobId);
+            }
+            $this->em->commit();
+        } catch (\Throwable $e) {
+            $this->em->rollback();
+            $this->logger->error('Failed to mark job as failed', ['jobId' => $jobId, 'reason' => $reason, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+
+        if ($marked) {
+            $this->queueNextRecurringRun($jobId);
+        }
+
+        return $marked;
+    }
+
+    /**
+     * Queue the next run of a recurring plugin job after a run of it ended (C25).
+     * Nothing for any other job; a failure here never changes the outcome of the run.
+     */
+    private function queueNextRecurringRun(int $jobId): void
+    {
+        try {
+            // Read through the connection, not the entity manager: a handler that failed on a
+            // database error may have closed the manager, and the next run is still due.
+            $row = $this->em->getConnection()->fetchAssociative(
+                "SELECT jt.lookup_code AS job_type, sj.config AS config
+                   FROM scheduled_jobs sj
+             INNER JOIN lookups jt ON jt.id = sj.id_job_types AND jt.type_code = 'jobTypes'
+                  WHERE sj.id = :id",
+                ['id' => $jobId]
+            );
+            if ($row === false || !is_string($row['job_type'] ?? null) || !is_string($row['config'] ?? null)) {
+                return;
+            }
+
+            $config = json_decode($row['config'], true);
+            $name = is_array($config) ? ($config['recurring'] ?? null) : null;
+            if (is_string($name) && $name !== '') {
+                ($this->recurringJobs)()->requeueAfterRun($row['job_type'], $name);
+            }
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to queue the next run of a recurring job', ['jobId' => $jobId, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Claim and execute one job (see {@see executeJob()}).
+     *
+     * @param bool $claimed set to true once this call won the claim, so the caller knows a run took place
+     */
+    private function runJob(int $jobId, string $transactionBy, bool &$claimed): ScheduledJob|false
+    {
         try {
             $this->em->beginTransaction();
 
@@ -219,15 +340,16 @@ class JobSchedulerService extends BaseService
             // Atomically claim the job (queued -> running, guarded by current
             // status) so overlapping scheduler ticks or manual triggers can never
             // execute the same job twice. A lost claim is not an error.
-            $claimed = $this->scheduledJobRepository
+            $won = $this->scheduledJobRepository
                 ->claimQueuedJobForExecution($jobId, new \DateTime('now', new \DateTimeZone('UTC')));
-            if (!$claimed) {
+            if (!$won) {
                 $this->em->rollback();
                 $this->logger->info('Scheduled job already claimed or not queued; skipping execution', [
                     'jobId' => $jobId,
                 ]);
                 return false;
             }
+            $claimed = true;
             // Reflect the claimed running state + date_started in the managed entity.
             $this->em->refresh($job);
 
@@ -504,6 +626,12 @@ class JobSchedulerService extends BaseService
                 $scheduledJob->setDataRow($jobData['dataRow']);
             }
 
+            // C26: which record version triggered the job (`record:<id>@v<n>`); null when none.
+            if (array_key_exists('record_ref', $jobData)) {
+                $recordRef = $jobData['record_ref'];
+                $scheduledJob->setRecordRef(is_string($recordRef) ? $recordRef : null);
+            }
+
             $this->em->persist($scheduledJob);
             $this->em->flush();
 
@@ -551,6 +679,12 @@ class JobSchedulerService extends BaseService
 
         if (array_key_exists('action_job_type', $jobData)) {
             $config['action_job_type'] = $jobData['action_job_type'];
+        }
+
+        // A plugin job: its own config (C12: `plugin_config`, `record_id`, `data_table_id`, `trigger`;
+        // C13/C25: what the plugin or the recurring entry gave) first, so a key of the host above wins.
+        if (isset($jobData['plugin_job_config']) && is_array($jobData['plugin_job_config'])) {
+            $config = array_merge($this->asAssocArray($jobData['plugin_job_config']), $config);
         }
 
         $job->setConfig($config);

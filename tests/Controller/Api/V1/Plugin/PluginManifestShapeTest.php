@@ -94,17 +94,22 @@ final class PluginManifestShapeTest extends TestCase
 
         $source = (string) file_get_contents(self::CONTROLLER_PATH);
 
-        // Locate the `$plugins[] = [ ... ];` array literal and
+        // Locate the plugin item array literal (`$entry = [ ... ];`, appended
+        // as `$plugins[] = $entry;`) and
         // collect every `'fieldName' =>` key inside it. This catches
         // both `'enabled' => $plugin->isEnabled()` and
         // `'capabilities' => $capabilities`-style entries (which use
         // local variables and would be missed by a `\$plugin->`-
         // anchored regex).
         $emitted = [];
-        if (preg_match('/\$plugins\[\]\s*=\s*\[(?P<body>.+?)\];/s', $source, $arrayMatch)) {
+        if (preg_match('/\$entry\s*=\s*\[(?P<body>.+?)\n\s*\];/s', $source, $arrayMatch)) {
             if (preg_match_all("/'([a-zA-Z][a-zA-Z0-9_]*)'\s*=>/", $arrayMatch['body'], $matches)) {
                 $emitted = array_values(array_unique($matches[1]));
             }
+        }
+        // Optional keys added after the literal (`$entry['compatibility'] = ...`).
+        if (preg_match_all("/\\\$entry\['([a-zA-Z][a-zA-Z0-9_]*)'\]\s*=/", $source, $optional)) {
+            $emitted = array_values(array_unique(array_merge($emitted, $optional[1])));
         }
         sort($emitted);
 
@@ -123,6 +128,27 @@ final class PluginManifestShapeTest extends TestCase
                 $extra === [] ? '-' : implode(', ', $extra),
             ),
         );
+    }
+
+    /**
+     * Rule 4.13 / contract C4: every admin page in the payload carries the
+     * one permission that opens it, and the controller copies it from the
+     * manifest.
+     */
+    public function testAdminPagesCarryTheirPermission(): void
+    {
+        $adminPages = self::asArray($this->pluginItemProps()['adminPages'] ?? null, 'plugin items must advertise `adminPages`.');
+        self::assertSame('array', $adminPages['type'] ?? null);
+        $page = self::asArray($adminPages['items'] ?? null);
+        $required = self::asArray($page['required'] ?? null);
+        self::assertContains('permission', $required);
+        self::assertContains('slug', $required);
+        self::assertFalse($page['additionalProperties'] ?? null);
+        self::assertSame('string', $this->jsonGet($page, 'properties', 'permission', 'type'));
+
+        $source = (string) file_get_contents(self::CONTROLLER_PATH);
+        self::assertStringContainsString("'adminPages' => \$this->adminPages(\$manifestArray),", $source);
+        self::assertStringContainsString("'permission' => \$permission,", $source);
     }
 
     /**

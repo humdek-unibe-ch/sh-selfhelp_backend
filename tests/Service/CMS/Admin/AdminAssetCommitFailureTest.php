@@ -61,6 +61,7 @@ final class AdminAssetCommitFailureTest extends QaKernelTestCase
             $this->service(CacheService::class),
             $this->service(AssetAccessService::class),
             $this->storage,
+            $this->service(\App\Service\Sync\ChangeNoticeService::class),
         );
     }
 

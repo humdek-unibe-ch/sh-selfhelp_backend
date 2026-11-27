@@ -7,6 +7,7 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Entity\NavigationMenu;
 use App\Entity\NavigationMenuItem;
@@ -56,7 +57,7 @@ class AdminNavigationService extends BaseService
     /**
      * @return array<string, mixed>
      */
-    public function getAdminOverview(int $languageId = 1): array
+    public function getAdminOverview(int $languageId = Language::INDEPENDENT_ID): array
     {
         $menus = [];
         foreach ($this->listSystemMenuKeys() as $key) {
@@ -861,6 +862,6 @@ class AdminNavigationService extends BaseService
 
     private function resolveDefaultLanguageId(): int
     {
-        return $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        return $this->cmsPreferenceService->getEffectiveDefaultLanguageId();
     }
 }

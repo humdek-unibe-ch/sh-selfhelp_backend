@@ -25,6 +25,7 @@ use App\Service\CMS\DataQuery\LegacyFilterTranslator;
 use App\Service\CMS\DataService;
 use App\Tests\Support\Factories\DataGridFactory;
 use App\Tests\Support\Factories\DataTableFactory;
+use App\Tests\Support\InteractsWithCmsDefaultLanguage;
 use App\Tests\Support\QaKernelTestCase;
 use Doctrine\DBAL\Connection;
 use App\Service\Core\LookupService;
@@ -47,6 +48,8 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('form-list')]
 final class FormListQueryTest extends QaKernelTestCase
 {
+    use InteractsWithCmsDefaultLanguage;
+
     private DataQueryEngine $engine;
     private DataGridFactory $grid;
     private Connection $db;
@@ -66,6 +69,12 @@ final class FormListQueryTest extends QaKernelTestCase
         $this->ownerOne = $this->userId(QaBaselineFixture::QA_USER_EMAIL);
         $this->ownerTwo = $this->userId(QaBaselineFixture::QA_EDITOR_EMAIL);
         $this->world();
+    }
+
+    protected function tearDown(): void
+    {
+        $this->forgetCmsDefaultLanguageCaches();
+        parent::tearDown();
     }
 
     // -- typed sorting -----------------------------------------------------------
@@ -469,8 +478,9 @@ final class FormListQueryTest extends QaKernelTestCase
 
     // -- language ----------------------------------------------------------------
 
-    public function testTheRequestedLanguageWinsAndTheDefaultLanguageIsTheFallback(): void
+    public function testTheRequestedLanguageWinsAndTheIndependentCellIsTheFallback(): void
     {
+        $this->writeCmsDefaultLanguage(null);
         [$tableId, $ids] = $this->languageTable();
         $english = $this->engine->run(new DataQuery($tableId, languageId: 3, limit: null));
         // The stored procedure returned the larger of the two texts ("zzz"); the requested language wins.
@@ -481,7 +491,54 @@ final class FormListQueryTest extends QaKernelTestCase
         $german = $this->engine->run(new DataQuery($tableId, languageId: 2, limit: null));
         self::assertSame('zzz', $this->cell($german, $ids['both'], 'label'));
         self::assertSame('only-default', $this->cell($german, $ids['default'], 'label'));
-        self::assertNull($this->cell($german, $ids['english'], 'label'), 'No cell in German or in the default language.');
+        self::assertNull($this->cell($german, $ids['english'], 'label'), 'No cell in German or in the language-independent row.');
+    }
+
+    public function testLanguageFallbackOrderIsRequestedThenIndependentThenCmsDefault(): void
+    {
+        $this->writeCmsDefaultLanguage(2);
+        $tableId = $this->grid->table('qa_fl_lang_fb_' . bin2hex(random_bytes(4)), ['label' => 'text']);
+        $onlyGerman = $this->grid->row($tableId, $this->ownerOne, ['label' => [2 => 'NurDeutsch']]);
+        $independentAndGerman = $this->grid->row($tableId, $this->ownerOne, ['label' => [1 => 'AllLang', 2 => 'Deutsch']]);
+        $englishAndGerman = $this->grid->row($tableId, $this->ownerOne, ['label' => [2 => 'DE', 3 => 'EN']]);
+
+        $english = $this->engine->run(new DataQuery($tableId, languageId: 3, limit: null));
+        self::assertSame('NurDeutsch', $this->cell($english, $onlyGerman, 'label'), 'L missing → skip independent → CMS default (2)');
+        self::assertSame('AllLang', $this->cell($english, $independentAndGerman, 'label'), 'L missing → independent wins over CMS default');
+        self::assertSame('EN', $this->cell($english, $englishAndGerman, 'label'), 'Requested language wins');
+
+        $this->writeCmsDefaultLanguage(null);
+        $withoutDefault = $this->engine->run(new DataQuery($tableId, languageId: 3, limit: null));
+        self::assertNull($this->cell($withoutDefault, $onlyGerman, 'label'), 'CMS default unset: D step is skipped');
+
+        $this->writeCmsDefaultLanguage(2);
+        $filter = new DataFilterGroup(DataFilterGroup::MODE_AND, [new DataFilter('label', DataFilter::OP_EQ, 'NurDeutsch')]);
+        $matched = $this->engine->run(new DataQuery($tableId, filter: $filter, languageId: 3, limit: null));
+        self::assertSame([$onlyGerman], array_map(fn (array $row): int => self::coerceInt($row['record_id']), $matched->rows));
+
+        $sorted = $this->engine->run(new DataQuery($tableId, sorts: [new DataSort('label')], languageId: 3, limit: null));
+        self::assertSame(
+            [$independentAndGerman, $englishAndGerman, $onlyGerman],
+            array_map(fn (array $row): int => self::coerceInt($row['record_id']), $sorted->rows),
+            'Sort uses the same L → independent → D value the visitor sees'
+        );
+    }
+
+    public function testCachedResultIsNotReusedAfterCmsDefaultLanguageChanges(): void
+    {
+        $tableId = $this->grid->table('qa_fl_lang_cache_' . bin2hex(random_bytes(4)), ['label' => 'text']);
+        $onlyGerman = $this->grid->row($tableId, $this->ownerOne, ['label' => [2 => 'NurDeutsch']]);
+
+        $this->writeCmsDefaultLanguage(2);
+        $first = $this->engine->run(new DataQuery($tableId, languageId: 3, limit: null));
+        self::assertSame('NurDeutsch', $this->cell($first, $onlyGerman, 'label'));
+
+        // Change the CMS default without clearing the data_tables category: the
+        // engine must still recompute because D is part of the cache key.
+        $this->writeCmsDefaultLanguage(null, keepResults: true);
+
+        $second = $this->engine->run(new DataQuery($tableId, languageId: 3, limit: null));
+        self::assertNull($this->cell($second, $onlyGerman, 'label'), 'A new CMS default must not reuse the previous cached page');
     }
 
     public function testFilterAndSortUseTheEffectiveLanguage(): void

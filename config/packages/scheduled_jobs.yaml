@@ -1,0 +1,13 @@
+# Scheduled jobs: the wake signal of the scheduler (contract C13).
+#
+# A job that is due now or earlier pushes one entry onto this Redis list after
+# its commit; `app:scheduled-jobs:wait` blocks on it, so the scheduler starts
+# the job within about two seconds instead of at the next tick.
+parameters:
+    selfhelp.scheduled_jobs.wake_key: 'selfhelp:scheduled_jobs:wake'
+
+when@test:
+    parameters:
+        # One list per test database (TEST_TOKEN, like the database name suffix), so
+        # parallel test runs on one Redis never wake or drain each other's lists.
+        selfhelp.scheduled_jobs.wake_key: 'selfhelp:scheduled_jobs:wake:test%env(default::TEST_TOKEN)%'

@@ -139,22 +139,26 @@ final class NavigationSearchIntegrationTest extends QaWebTestCase
         $pageId = $pageData['id'] ?? null;
         self::assertIsInt($pageId);
 
-        $otherLanguageId = $this->findSecondLanguageId();
-        if ($otherLanguageId === null) {
-            self::markTestSkipped('QA baseline has a single language');
+        // Language 1 is the language-independent "all": a title stored under it is not what the page
+        // tree renders (the tree falls back to the default content language, then to the keyword), so
+        // both languages of this test are content languages.
+        $contentLanguageIds = $this->findContentLanguageIds(2);
+        if (count($contentLanguageIds) < 2) {
+            self::markTestSkipped('QA baseline has fewer than two content languages');
         }
+        [$otherLanguageId, $currentLanguageId] = $contentLanguageIds;
 
-        $this->setPageTitleTranslation($pageId, 'qa_nav_xlang_current_title');
+        $this->setPageTitleTranslationForLanguage($pageId, $currentLanguageId, 'qa_nav_xlang_current_title');
         $this->setPageTitleTranslationForLanguage($pageId, $otherLanguageId, 'qa_nav_xlang_other_marker');
 
         /** @var NavigationSearchService $searchService */
         $searchService = self::getContainer()->get(NavigationSearchService::class);
         // Query typed in the OTHER language must find the page even though the
-        // search runs with language 1; the hit renders the current-language title.
+        // search runs in the current language; the hit renders the current-language title.
         $results = $searchService->searchPageMetadataOnly(
             'qa_nav_xlang_other_marker',
             LookupService::PAGE_ACCESS_TYPES_WEB,
-            1,
+            $currentLanguageId,
             20,
         );
 
@@ -362,6 +366,20 @@ final class NavigationSearchIntegrationTest extends QaWebTestCase
         $id = $em->getConnection()->fetchOne('SELECT id FROM languages WHERE id <> 1 ORDER BY id LIMIT 1');
 
         return is_numeric($id) ? (int) $id : null;
+    }
+
+    /**
+     * The ids of the content languages (everything but the language-independent language 1), lowest first.
+     *
+     * @return list<int>
+     */
+    private function findContentLanguageIds(int $limit): array
+    {
+        /** @var EntityManagerInterface $em */
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $ids = $em->getConnection()->fetchFirstColumn('SELECT id FROM languages WHERE id <> 1 ORDER BY id LIMIT ' . $limit);
+
+        return array_map(static fn (mixed $id): int => (int) (is_numeric($id) ? $id : 0), $ids);
     }
 
     private function searchIndexTableExists(): bool

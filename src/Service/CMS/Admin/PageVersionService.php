@@ -11,6 +11,8 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Page;
 use App\Entity\PageVersion;
 use App\Entity\User;
+use App\Plugin\Event\Domain\PagePublishedEvent;
+use App\Plugin\Event\Domain\PluginDomainEventDispatcher;
 use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\PageVersionRepository;
 use App\Repository\SectionRepository;
@@ -18,9 +20,11 @@ use App\Repository\SectionsFieldsTranslationRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\NavigationCacheInvalidator;
+use App\Service\Sync\ChangeNoticeService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
+use App\Service\Core\UserContextAwareService;
 use App\Service\Core\LookupService;
 use App\Service\Auth\UserContextService;
 use App\Util\JsonNormalizer;
@@ -59,6 +63,9 @@ class PageVersionService extends BaseService
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CacheService $cache,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly ChangeNoticeService $notices,
+        private readonly PluginDomainEventDispatcher $pluginEvents,
     ) {
     }
 
@@ -150,6 +157,9 @@ class PageVersionService extends BaseService
      */
     public function publishVersion(int $pageId, int $versionId): PageVersion
     {
+        // Publishing needs the update grant on this page, besides the route permission.
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
         try {
             $this->entityManager->beginTransaction();
 
@@ -193,6 +203,13 @@ class PageVersionService extends BaseService
             $this->entityManager->commit();
             $this->invalidatePublishedSettingsCaches($pageId);
 
+            // Plugin listeners hear about the published page once it is committed
+            // and the caches are fresh, never when a surrounding transaction rolls
+            // back (C24). This is the only door that publishes a version, so the
+            // dispatch is not repeated in createAndPublishVersion(); unpublishing
+            // sends nothing.
+            $this->pluginEvents->dispatchAfterCommit(new PagePublishedEvent($pageId, $version->getVersionNumber()));
+
             return $version;
         } catch (\Exception $e) {
             $this->entityManager->rollback();
@@ -218,6 +235,9 @@ class PageVersionService extends BaseService
         ?array $metadata = null,
         ?int $languageId = null
     ): PageVersion {
+        // Publishing needs the update grant on this page, besides the route permission.
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
         // Create the version
         $version = $this->createVersion($pageId, $versionName, $metadata, $languageId);
 
@@ -234,6 +254,9 @@ class PageVersionService extends BaseService
      */
     public function unpublishPage(int $pageId): void
     {
+        // Unpublishing needs the update grant on this page, besides the route permission.
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
         try {
             $this->entityManager->beginTransaction();
 
@@ -418,6 +441,9 @@ class PageVersionService extends BaseService
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
         $this->cache->withCategory(CacheService::CATEGORY_PAGES)->invalidateAllListsInCategory();
         $this->navigationCacheInvalidator->invalidateForPage($pageId);
+
+        // Live sync: the published page and the menu changed for everyone who may see the page.
+        $this->notices->pagePublishedChanged($pageId);
     }
 
     /**
@@ -658,6 +684,15 @@ class PageVersionService extends BaseService
      */
     public function deleteVersion(int $versionId): void
     {
+        // Deleting a version changes the page's history: it needs the update grant
+        // on the version's own page (not the page named in the URL), checked before
+        // the transaction so a refusal stays a 403.
+        $versionPageId = $this->getVersionById($versionId)->getPage()?->getId();
+        if ($versionPageId === null) {
+            $this->throwNotFound("Page not found for version {$versionId}");
+        }
+        $this->userContextAwareService->checkAdminAccessById($versionPageId, 'update');
+
         try {
             $this->entityManager->beginTransaction();
 

@@ -12,21 +12,26 @@ namespace App\Tests\Controller\Api\V1\Admin;
 use App\Entity\DataAccessAudit;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Tests\Support\Factories\RoleFactory;
+use App\Tests\Support\Factories\UserFactory;
 use App\Tests\Support\QaWebTestCase;
 use App\Tests\Support\Security\PermissionMatrixProvider;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
  * Coverage for the admin data-access audit API (plan Phase 6 — audit logs).
  *
  * The audit endpoints expose the data-access security trail and are protected
- * by the admin-only `admin.audit.view` permission. These tests assert the
+ * by the admin-only `admin.audit.read` permission. These tests assert the
  * read contract as qa.admin plus the negative-permission matrix (security).
  */
 final class AdminAuditControllerTest extends QaWebTestCase
 {
     use PermissionMatrixProvider;
+
+    private const AUDIT_READ_EMAIL = 'qa.audit.read@selfhelp.test';
 
     public function testGetDataAccessLogsReturnsPaginatedEnvelope(): void
     {
@@ -111,5 +116,26 @@ final class AdminAuditControllerTest extends QaWebTestCase
     public function testAuditLogsEnforceAdminOnlyMatrix(): void
     {
         $this->assertAdminOnlyMatrix('GET', '/cms-api/v1/admin/audit/data-access');
+    }
+
+    #[Group('security')]
+    public function testAuditReadPermissionAllowsList(): void
+    {
+        $em = $this->service(EntityManagerInterface::class);
+        $roles = new RoleFactory($em);
+        $users = new UserFactory(
+            $em,
+            $this->service(UserPasswordHasherInterface::class),
+            $this->service(LookupService::class)
+        );
+        $role = $roles->createRole('qa_audit_read_role');
+        $roles->grantPermission($role, 'admin.access');
+        $roles->grantPermission($role, 'admin.audit.read');
+        $users->createUser(self::AUDIT_READ_EMAIL, 'QA Audit Read', roles: [$role]);
+
+        $token = $this->loginAs(self::AUDIT_READ_EMAIL);
+        $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/admin/audit/data-access', null, $token)
+        );
     }
 }

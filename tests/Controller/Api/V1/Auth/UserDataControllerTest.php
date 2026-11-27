@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Tests\Controller\Api\V1\Auth;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\Service\JSON\JsonSchemaValidationService;
 use App\Tests\Support\QaWebTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -31,7 +32,7 @@ final class UserDataControllerTest extends QaWebTestCase
     /** @var list<string> */
     private const REQUIRED_KEYS = [
         'id', 'email', 'name', 'user_name', 'blocked',
-        'acl_version', 'language', 'timezone', 'roles', 'permissions', 'groups',
+        'acl_version', 'acl_stamp', 'language', 'timezone', 'roles', 'permissions', 'groups',
         'receives_notifications', 'receives_emails',
     ];
 
@@ -63,6 +64,26 @@ final class UserDataControllerTest extends QaWebTestCase
         // qa.admin holds the production admin role + real perms; admin rights
         // come from the role, there is no admin group.
         self::assertContains('admin', $this->names($data['roles']), 'qa.admin must carry the admin role.');
+        // C4 (rule 4.11, F10): every role item carries `is_superuser`, and the
+        // superuser role is recognised by the flag, not by its name.
+        $superuserRoles = 0;
+        foreach (self::asArray($data['roles']) as $role) {
+            $role = self::asArray($role);
+            self::assertArrayHasKey('is_superuser', $role, 'user-data role items must carry is_superuser.');
+            self::assertIsBool($role['is_superuser']);
+            if ($role['is_superuser'] === true) {
+                ++$superuserRoles;
+            }
+        }
+        self::assertSame(1, $superuserRoles, 'qa.admin must carry exactly one superuser role.');
+
+        // The whole response passes its schema (response validation is off in
+        // the test env, so check it here).
+        /** @var JsonSchemaValidationService $schemaValidator */
+        $schemaValidator = self::getContainer()->get(JsonSchemaValidationService::class);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), false);
+        self::assertIsObject($body);
+        self::assertSame([], $schemaValidator->validate($body, 'responses/auth/user_data'));
         self::assertIsArray($data['groups']);
         self::assertIsArray($data['permissions']);
         self::assertNotEmpty($data['permissions'], 'qa.admin must have a non-empty permission set.');

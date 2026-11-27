@@ -70,10 +70,12 @@ final class PluginInstaller
         private readonly PluginMigrationScanner $migrationScanner,
         private readonly PluginMigrationsRunner $migrationsRunner,
         private readonly PluginApiRouteSynchronizer $apiRouteSynchronizer,
+        private readonly PluginCatalogueSynchronizer $catalogueSynchronizer,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
         private readonly PluginCacheInvalidator $cacheInvalidator,
+        private readonly PluginDependencyGuard $dependencyGuard,
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
     }
@@ -103,6 +105,9 @@ final class PluginInstaller
                     ['compatibility' => $compatibility]
                 );
             }
+
+            // C21: required dependencies installed, enabled and in range; no enabled conflict.
+            $this->dependencyGuard->assertCanActivate($manifest);
 
             try {
                 $capabilities = $this->capabilityValidator->validate($manifest, $resolved);
@@ -274,6 +279,12 @@ final class PluginInstaller
             // own the permission rows; the host owns the route rows
             // so disable / uninstall / purge stay symmetric across
             // every plugin. See {@see PluginApiRouteSynchronizer}.
+            // Write the styles, fields, field types, style groups,
+            // permissions and lookups the manifest declares (rule 7.8).
+            // Before the route sync: routes link to these permissions.
+            $catalogue = $this->catalogueSynchronizer->sync($plugin, $manifest);
+            $this->recorder->appendLog($operation, 'plugin-catalogue-sync', $catalogue, 83);
+
             $this->apiRouteSynchronizer->sync($plugin, $manifest);
             $this->recorder->appendLog($operation, 'plugin-api-routes-sync', [
                 'routes' => count($manifest->getApiRoutes()),

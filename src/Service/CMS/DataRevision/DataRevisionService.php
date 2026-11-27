@@ -189,6 +189,7 @@ final class DataRevisionService extends BaseService
             $transactionId,
             null,
             false,
+            contentRef: $context->contentRef,
         );
 
         $entries = [];
@@ -252,6 +253,7 @@ final class DataRevisionService extends BaseService
             $transactionId,
             $context->restoredFromVersion,
             $checkpoint,
+            contentRef: $context->contentRef,
         );
 
         $entries = [];
@@ -399,7 +401,7 @@ final class DataRevisionService extends BaseService
 
     private function headerSelect(string $changedFieldsExpression): string
     {
-        return 'SELECT r.version, r.created_at, r.restored_from_version, r.is_checkpoint,'
+        return 'SELECT r.version, r.created_at, r.restored_from_version, r.is_checkpoint, r.content_ref,'
             . ' op.lookup_code AS operation, src.lookup_code AS source,'
             . ' r.id_users, COALESCE(NULLIF(u.name, \'\'), u.user_name) AS user_name,'
             . ' r.id_impersonating_users, COALESCE(NULLIF(iu.name, \'\'), iu.user_name) AS impersonator_name,'
@@ -431,7 +433,23 @@ final class DataRevisionService extends BaseService
             'restored_from_version' => $row['restored_from_version'] !== null ? $this->asInt($row['restored_from_version']) : null,
             'changed_fields' => $this->asInt($row['changed_fields']),
             'is_checkpoint' => (bool) $row['is_checkpoint'],
+            'content_ref' => $this->asStringOrNull($row['content_ref'] ?? null),
         ];
+    }
+
+    /**
+     * The content reference one revision was written with (contract C19), null when that write
+     * named none or the revision does not exist. A restore reads it to apply the reference of the
+     * state it brings back.
+     */
+    public function contentRefOf(int $recordId, int $version): ?string
+    {
+        $ref = $this->connection()->fetchOne(
+            'SELECT content_ref FROM data_revisions WHERE id_data_rows = :id AND version = :version',
+            ['id' => $recordId, 'version' => $version],
+        );
+
+        return $this->asStringOrNull($ref === false ? null : $ref);
     }
 
     /**
@@ -690,11 +708,12 @@ final class DataRevisionService extends BaseService
         ?int $restoredFromVersion,
         bool $checkpoint,
         bool $withActor = true,
+        ?string $contentRef = null,
     ): int {
         $this->connection()->executeStatement(
             'INSERT INTO data_revisions (id_data_rows, id_data_tables, version, created_at, id_users, id_impersonating_users,'
-            . ' id_operations, id_sources, id_transactions, restored_from_version, is_checkpoint, schema_version)'
-            . ' VALUES (:row, :tbl, :version, :at, :actor, :impersonator, :operation, :source, :tx, :restored, :checkpoint, :schema)',
+            . ' id_operations, id_sources, id_transactions, restored_from_version, is_checkpoint, schema_version, content_ref)'
+            . ' VALUES (:row, :tbl, :version, :at, :actor, :impersonator, :operation, :source, :tx, :restored, :checkpoint, :schema, :ref)',
             [
                 'row' => $recordId,
                 'tbl' => $tableId,
@@ -708,6 +727,7 @@ final class DataRevisionService extends BaseService
                 'restored' => $restoredFromVersion,
                 'checkpoint' => $checkpoint ? 1 : 0,
                 'schema' => self::SCHEMA_VERSION,
+                'ref' => $contentRef,
             ],
         );
 

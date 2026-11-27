@@ -243,7 +243,7 @@ class PromptTemplateService
      */
     private function renderLanguageContract(): array
     {
-        $languages = $this->languageRepository->findAllExceptInternal();
+        $languages = $this->languageRepository->findRealLanguages();
 
         $defaultLanguageId = null;
         try {
@@ -265,7 +265,7 @@ class PromptTemplateService
             }
         }
 
-        // Degenerate install with only the internal `all` language: skip the
+        // Degenerate install with only the language-independent `all` row: skip the
         // block so the prompt stays valid.
         if ($locales === []) {
             return [];

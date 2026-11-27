@@ -109,6 +109,7 @@ final class PluginApiRouteSynchronizer
             }
 
             $this->normaliseMethods($pluginId, $name, $raw['methods'] ?? []);
+            $this->assertRouteAccessDeclaration($name, $raw);
 
             $key = $this->routeKey($name, $version);
             if (isset($seen[$key])) {
@@ -177,6 +178,7 @@ final class PluginApiRouteSynchronizer
             $route->setRequirements($decl['requirements']);
             $route->setParams($decl['params']);
             $route->setVersion($decl['version']);
+            $route->setIsPublic($decl['is_public']);
 
             $route->getPermissions()->clear();
             foreach ($decl['permissions'] as $permission) {
@@ -231,6 +233,7 @@ final class PluginApiRouteSynchronizer
      *     params: array<string,mixed>|null,
      *     version: string,
      *     permissions: list<Permission>,
+     *     is_public: bool,
      * }>
      */
     private function normalize(Plugin $plugin, PluginManifest $manifest): array
@@ -267,6 +270,7 @@ final class PluginApiRouteSynchronizer
             }
 
             $methods = $this->normaliseMethods($pluginId, $name, $raw['methods'] ?? []);
+            $this->assertRouteAccessDeclaration($name, $raw);
 
             $requirements = $this->normaliseAssocStringArray($raw['requirements'] ?? null);
             $params = null;
@@ -276,7 +280,8 @@ final class PluginApiRouteSynchronizer
                     $params[(string) $paramKey] = $paramValue;
                 }
             }
-            $permissions = $this->resolvePermissions($pluginId, $name, $raw);
+            $isPublic = $this->isManifestRoutePublic($raw);
+            $permissions = $isPublic ? [] : $this->resolvePermissions($pluginId, $name, $raw);
 
             $key = $this->routeKey($name, $version);
             if (isset($seen[$key])) {
@@ -298,6 +303,7 @@ final class PluginApiRouteSynchronizer
                 'params' => $params,
                 'version' => $version,
                 'permissions' => $permissions,
+                'is_public' => $isPublic,
             ];
         }
 
@@ -488,6 +494,39 @@ final class PluginApiRouteSynchronizer
     }
 
     /**
+     * A route needs at least one permission or `public: true`, never both (C3 / F09).
+     *
+     * @param array<string,mixed> $raw
+     */
+    private function assertRouteAccessDeclaration(string $routeName, array $raw): void
+    {
+        $permissionNames = $this->extractPermissionNames($raw);
+        $isPublic = $this->isManifestRoutePublic($raw);
+
+        if ($isPublic && $permissionNames !== []) {
+            throw new \InvalidArgumentException(sprintf(
+                'Route "%s" cannot be public and declare permissions.',
+                $routeName
+            ));
+        }
+
+        if (!$isPublic && $permissionNames === []) {
+            throw new \InvalidArgumentException(sprintf(
+                'Route "%s" has no permission and is not marked public.',
+                $routeName
+            ));
+        }
+    }
+
+    /**
+     * @param array<string,mixed> $raw
+     */
+    private function isManifestRoutePublic(array $raw): bool
+    {
+        return array_key_exists('public', $raw) && $raw['public'] === true;
+    }
+
+    /**
      * Accept either a single `permission` string (manifest shorthand
      * for the common one-permission case) or a `permissions` array.
      * Both shapes resolve to `Permission` entities looked up by name;
@@ -500,18 +539,7 @@ final class PluginApiRouteSynchronizer
      */
     private function resolvePermissions(string $pluginId, string $routeName, array $raw): array
     {
-        $names = [];
-        if (isset($raw['permissions']) && is_array($raw['permissions'])) {
-            foreach ($raw['permissions'] as $name) {
-                if (is_string($name) && trim($name) !== '') {
-                    $names[] = trim($name);
-                }
-            }
-        }
-        if (isset($raw['permission']) && is_string($raw['permission']) && trim($raw['permission']) !== '') {
-            $names[] = trim($raw['permission']);
-        }
-        $names = array_values(array_unique($names));
+        $names = $this->extractPermissionNames($raw);
 
         $out = [];
         $repo = $this->em->getRepository(Permission::class);

@@ -24,14 +24,14 @@ class LanguageController extends AbstractController
     }
 
     /**
-     * Get all languages except 1 (ID = 1)
-     * Always returns the default language first, followed by other languages
+     * Real languages only (excludes the language-independent row).
+     * Always returns the CMS default language first when configured, followed by other languages.
      * 
      * @return JsonResponse
      */
     public function getAllLanguages(): JsonResponse
     {
-        $languages = $this->languageService->getAllNonInternalLanguages();
+        $languages = $this->languageService->getRealLanguages();
         return $this->apiResponseFormatter->formatSuccess($languages, 'responses/languages/get_languages');
     }
 }

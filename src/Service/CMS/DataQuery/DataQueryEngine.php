@@ -9,7 +9,9 @@ declare(strict_types=1);
 
 namespace App\Service\CMS\DataQuery;
 
+use App\Entity\Language;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use Doctrine\DBAL\ArrayParameterType;
@@ -33,8 +35,10 @@ use Doctrine\ORM\EntityManagerInterface;
  *
  * Semantics (frozen, tested in FormListQueryTest):
  *  - Language: a cell in the requested language wins; a missing one falls back
- *    to the default language (id 1). The legacy procedures returned the larger
- *    of the two texts when both existed; that is corrected here.
+ *    to the language-independent cell ({@see Language::INDEPENDENT_ID}), then
+ *    to the CMS default language when that is set and differs. The legacy
+ *    procedures returned the larger of the two texts when both existed; that
+ *    is corrected here.
  *  - Types: comparisons and sorting read the text of a cell as the column's
  *    declared type (text, number, date, datetime, boolean). A value that cannot
  *    be read as that type is treated like a missing one and sorts last.
@@ -46,15 +50,14 @@ use Doctrine\ORM\EntityManagerInterface;
  *    the query keeps them.
  *
  * Results are cached per table: any write to the table bumps the table scope,
- * so a cached page never outlives a change of its data. Queries that depend on
- * group grants are not cached.
+ * so a cached page never outlives a change of its data. The CMS default
+ * language id is part of every cache key, so a preference change cannot serve
+ * a stale fallback. Queries that depend on group grants are not cached.
  */
 class DataQueryEngine extends BaseService
 {
     /** Part of every cache key; raise it when the shape of a cached result changes. */
-    private const ENGINE_VERSION = 2; // 2: strict dates and times, instants with a zone are compared in UTC
-
-    private const DEFAULT_LANGUAGE = 1;
+    private const ENGINE_VERSION = 3; // 3: L → independent → CMS-default cell fallback
 
     /** Row fields a filter or sort may name besides the table's columns. */
     private const ROW_FIELDS = [
@@ -73,6 +76,7 @@ class DataQueryEngine extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly LookupService $lookupService,
         private readonly CacheService $cache,
+        private readonly CmsPreferenceService $cmsPreferenceService,
     ) {
     }
 
@@ -85,7 +89,7 @@ class DataQueryEngine extends BaseService
             return $this->execute($query);
         }
 
-        $key = 'dq_' . self::ENGINE_VERSION . '_' . sha1(serialize($query));
+        $key = 'dq_' . self::ENGINE_VERSION . '_' . sha1(serialize($query) . $this->cacheKeyDefaultSuffix());
         /** @var array{rows: list<array<string, mixed>>, total: int|null} $cached */
         $cached = $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
@@ -122,7 +126,7 @@ class DataQueryEngine extends BaseService
     public function facet(DataQuery $query, string $column, int $limit = 50): array
     {
         $limit = max(1, min($limit, DataQueryLimits::MAX_LIST_VALUES));
-        $key = 'dqf_' . self::ENGINE_VERSION . '_' . sha1(serialize([$query, $column, $limit]));
+        $key = 'dqf_' . self::ENGINE_VERSION . '_' . sha1(serialize([$query, $column, $limit]) . $this->cacheKeyDefaultSuffix());
         $compute = function () use ($query, $column, $limit): array {
             $columns = $this->columnsFor($query);
             if (!isset($columns[$column])) {
@@ -153,6 +157,230 @@ class DataQueryEngine extends BaseService
             ->getList($key, $compute);
 
         return $values;
+    }
+
+    /**
+     * Group the records a query matches and compute numbers per group (contract C17,
+     * {@see AggregateSpec}): counts, sums, averages, minimums and maximums, optionally per value of
+     * up to two columns and per calendar period of a date column.
+     *
+     * The records are the ones `run()` would read: the same table, owner scope, deleted records,
+     * filters and search (the sort and the page window do not apply). The answer is typed values,
+     * never raw rows: numbers are `int` or `float`, a yes/no column is `bool`, a date is
+     * `YYYY-MM-DD`, a date with time is `YYYY-MM-DD HH:MM:SS` (UTC); `null` stands for "no value".
+     * A cell that cannot be read as the type of its column counts as no value, like in a filter.
+     * Rows are ordered by the group values, values missing last. The result is not cached; a caller
+     * that asks often keeps it in a cache category of its own.
+     *
+     * @return list<array<string, mixed>> one row per group: the group-by keys, the bucket under the key of its column, then the metrics under their names
+     *
+     * @throws \InvalidArgumentException when the spec does not fit the columns of the table (unknown column, `sum` of a text column, ...)
+     * @throws DataQueryException when the query itself is invalid or the data has more groups than `maxGroups`
+     */
+    public function aggregate(DataQuery $query, AggregateSpec $spec): array
+    {
+        $columns = $this->columnsFor($query);
+        $this->assertAggregateSpecFits($spec, $columns);
+
+        $plan = $this->plan($query, $columns, forCount: true);
+
+        /** @var array<string, array{key: string, type: string}> $groups alias => the key it is shown under, and its value type */
+        $groups = [];
+        $select = [];
+        foreach ($spec->groupBy as $index => $key) {
+            $ref = $this->reference($key, $plan, $columns);
+            $select[] = $this->aggregateOperand($ref) . ' AS g' . $index;
+            $groups['g' . $index] = ['key' => $key, 'type' => $ref['type']];
+        }
+        if ($spec->dateBucket !== null) {
+            $ref = $this->reference($spec->dateBucket['column'], $plan, $columns);
+            $typed = $this->aggregateOperand($ref);
+            $select[] = $this->bucketExpression($typed, $spec->dateBucket['unit']) . ' AS gb';
+            $groups['gb'] = ['key' => $spec->dateBucket['column'], 'type' => LookupService::DATA_COL_VALUE_TYPES_DATE];
+            // A record without a readable date belongs to no period.
+            $plan->where[] = '(' . $typed . ' IS NOT NULL)';
+        }
+
+        /** @var list<string> $metricTypes the value type of each metric's column (text for a plain count) */
+        $metricTypes = [];
+        foreach ($spec->metrics as $index => $metric) {
+            $type = LookupService::DATA_COL_VALUE_TYPES_NUMBER;
+            if ($metric['column'] === null) {
+                $select[] = 'COUNT(*) AS m' . $index;
+            } else {
+                $ref = $this->reference($metric['column'], $plan, $columns);
+                $type = $ref['type'];
+                $select[] = strtoupper($metric['fn']) . '(' . $this->aggregateOperand($ref) . ') AS m' . $index;
+            }
+            $metricTypes[$index] = $type;
+        }
+
+        $sql = 'SELECT ' . implode(', ', $select) . ' FROM data_rows r' . $plan->joinSql() . ' WHERE ' . $plan->whereSql();
+        if ($groups !== []) {
+            $order = [];
+            foreach (array_keys($groups) as $alias) {
+                $order[] = '(' . $alias . ' IS NULL) ASC';
+                $order[] = $alias . ' ASC';
+            }
+            // One more than allowed, so that "too many" can be told from "exactly the limit".
+            $sql .= ' GROUP BY ' . implode(', ', array_keys($groups)) . ' ORDER BY ' . implode(', ', $order)
+                . ' LIMIT ' . ($spec->maxGroups + 1);
+        }
+
+        $rows = $this->connection()->fetchAllAssociative($sql, $plan->params, $plan->types);
+        if (count($rows) > $spec->maxGroups) {
+            throw new DataQueryException(
+                sprintf('The aggregation has more than %d groups; group by less or raise maxGroups (at most %d).', $spec->maxGroups, AggregateSpec::MAX_GROUPS_LIMIT),
+                ['max_groups' => $spec->maxGroups]
+            );
+        }
+
+        $result = [];
+        foreach ($rows as $row) {
+            $out = [];
+            foreach ($groups as $alias => $group) {
+                $out[$group['key']] = $this->aggregateValue($row[$alias] ?? null, $group['type']);
+            }
+            foreach ($spec->metrics as $index => $metric) {
+                $value = $row['m' . $index] ?? null;
+                $out[$metric['as']] = match ($metric['fn']) {
+                    AggregateSpec::FN_COUNT => $this->asInt($value),
+                    AggregateSpec::FN_AVG => $value === null ? null : (float) $this->asString($value),
+                    AggregateSpec::FN_SUM => $this->numberOf($value),
+                    default => $this->aggregateValue($value, $metricTypes[$index]),
+                };
+            }
+            $result[] = $out;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check an aggregation spec against the columns of the table.
+     *
+     * @param array<string, array{id: int, type: string}> $columns
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function assertAggregateSpecFits(AggregateSpec $spec, array $columns): void
+    {
+        $typeOf = function (string $key) use ($columns): string {
+            if (isset(self::ROW_FIELDS[$key])) {
+                return self::ROW_FIELDS[$key]['type'];
+            }
+            if (isset($columns[$key])) {
+                return $columns[$key]['type'];
+            }
+
+            throw new \InvalidArgumentException(sprintf('Unknown column "%s".', $key));
+        };
+
+        foreach ($spec->groupBy as $key) {
+            $typeOf($key);
+        }
+
+        if ($spec->dateBucket !== null) {
+            $type = $typeOf($spec->dateBucket['column']);
+            if (!in_array($type, [LookupService::DATA_COL_VALUE_TYPES_DATE, LookupService::DATA_COL_VALUE_TYPES_DATETIME], true)) {
+                throw new \InvalidArgumentException(sprintf('The date bucket needs a date or date-time column; "%s" is %s.', $spec->dateBucket['column'], $type));
+            }
+        }
+
+        foreach ($spec->metrics as $metric) {
+            if ($metric['column'] === null) {
+                continue;
+            }
+            $type = $typeOf($metric['column']);
+            $allowed = match ($metric['fn']) {
+                AggregateSpec::FN_SUM, AggregateSpec::FN_AVG => [LookupService::DATA_COL_VALUE_TYPES_NUMBER],
+                AggregateSpec::FN_MIN, AggregateSpec::FN_MAX => [
+                    LookupService::DATA_COL_VALUE_TYPES_NUMBER,
+                    LookupService::DATA_COL_VALUE_TYPES_DATE,
+                    LookupService::DATA_COL_VALUE_TYPES_DATETIME,
+                ],
+                default => null,
+            };
+            if ($allowed !== null && !in_array($type, $allowed, true)) {
+                throw new \InvalidArgumentException(sprintf(
+                    '"%s" needs a column of type %s; "%s" is %s.',
+                    $metric['fn'],
+                    implode(', ', $allowed),
+                    $metric['column'],
+                    $type
+                ));
+            }
+        }
+    }
+
+    /**
+     * The value of a column as an aggregation reads it: the typed value (NULL when missing or
+     * unreadable). For grouping and counting, text is trimmed and empty text is "no value".
+     *
+     * @param array{text: string, type: string, system: bool} $ref
+     */
+    private function aggregateOperand(array $ref): string
+    {
+        $this->assertKnownType($ref['type']);
+        $textual = in_array($ref['type'], [LookupService::DATA_COL_VALUE_TYPES_TEXT, LookupService::DATA_COL_VALUE_TYPES_FILE], true);
+        if ($textual) {
+            return 'NULLIF(TRIM(' . $ref['text'] . "), '')";
+        }
+
+        // A system field is already typed; a cell is text that is read as the declared type.
+        return $ref['system'] ? $ref['text'] : $this->typedExpression($ref['text'], $ref['type']);
+    }
+
+    /**
+     * The first day of the calendar period (UTC) that a typed date or datetime falls into.
+     */
+    private function bucketExpression(string $typed, string $unit): string
+    {
+        $day = 'DATE(' . $typed . ')';
+
+        return match ($unit) {
+            AggregateSpec::UNIT_DAY => $day,
+            AggregateSpec::UNIT_WEEK => 'DATE_SUB(' . $day . ', INTERVAL WEEKDAY(' . $day . ') DAY)',
+            AggregateSpec::UNIT_MONTH => 'DATE_SUB(' . $day . ', INTERVAL (DAYOFMONTH(' . $day . ') - 1) DAY)',
+            AggregateSpec::UNIT_YEAR => 'MAKEDATE(YEAR(' . $day . '), 1)',
+            default => throw new \InvalidArgumentException(sprintf('Unknown date bucket unit "%s".', $unit)),
+        };
+    }
+
+    /**
+     * A value from an aggregation row as the PHP value its type names.
+     */
+    private function aggregateValue(mixed $value, string $type): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return match ($type) {
+            LookupService::DATA_COL_VALUE_TYPES_NUMBER => $this->numberOf($value),
+            LookupService::DATA_COL_VALUE_TYPES_BOOLEAN => $this->asInt($value) === 1,
+            default => $this->asString($value),
+        };
+    }
+
+    /**
+     * A SQL decimal as `int` when it has no fraction, else `float`; null stays null.
+     */
+    private function numberOf(mixed $value): int|float|null
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $text = $this->asString($value);
+        if (str_contains($text, '.')) {
+            $text = rtrim(rtrim($text, '0'), '.');
+        }
+        if (preg_match('/^-?[0-9]{1,18}$/D', $text) === 1) {
+            return (int) $text;
+        }
+
+        return (float) $text;
     }
 
     /**
@@ -350,7 +578,7 @@ class DataQueryEngine extends BaseService
     {
         $this->assertBounds($query);
 
-        $plan = new QueryPlan($this->effectiveLanguage($query), $query->timezone);
+        $plan = new QueryPlan($this->effectiveLanguage($query), $query->timezone, $this->cmsDefaultLanguageId());
         $plan->where[] = 'r.id_data_tables = ' . $plan->bind($query->tableId, ParameterType::INTEGER);
 
         $this->addOwnerScope($plan, $query);
@@ -393,7 +621,29 @@ class DataQueryEngine extends BaseService
 
     private function effectiveLanguage(DataQuery $query): int
     {
-        return $query->languageId > 0 ? $query->languageId : self::DEFAULT_LANGUAGE;
+        return $query->languageId > 0 ? $query->languageId : Language::INDEPENDENT_ID;
+    }
+
+    /**
+     * CMS default language for the L → independent → D fallback. Null when unset
+     * or when it would equal the language-independent row.
+     */
+    private function cmsDefaultLanguageId(): ?int
+    {
+        $default = $this->cmsPreferenceService->getDefaultLanguageId();
+        if ($default === null || $default === Language::INDEPENDENT_ID) {
+            return null;
+        }
+
+        return $default;
+    }
+
+    /** Suffix so a cached result is never reused after the CMS default language changes. */
+    private function cacheKeyDefaultSuffix(): string
+    {
+        $default = $this->cmsDefaultLanguageId();
+
+        return '|d:' . ($default ?? 'none');
     }
 
     private function addOwnerScope(QueryPlan $plan, DataQuery $query): void
@@ -611,7 +861,8 @@ class DataQueryEngine extends BaseService
 
     /**
      * The text of a column for each row: the cell of the requested language, else
-     * the cell of the default language. Each cell is one primary-key lookup.
+     * the language-independent cell, else the CMS default language. Each cell is
+     * one primary-key lookup.
      */
     private function cellText(QueryPlan $plan, int $columnId): string
     {
@@ -624,15 +875,26 @@ class DataQueryEngine extends BaseService
         $plan->joins[] = ' LEFT JOIN data_cells ' . $requested . ' ON ' . $requested . '.id_data_rows = r.id AND '
             . $requested . '.id_data_cols = ' . $columnId . ' AND ' . $requested . '.id_languages = ' . $plan->languageId;
 
-        if ($plan->languageId === self::DEFAULT_LANGUAGE) {
+        if ($plan->languageId === Language::INDEPENDENT_ID) {
             return $plan->cellExpressions[$columnId] = $requested . '.value';
         }
 
-        $fallback = 'd' . $index;
-        $plan->joins[] = ' LEFT JOIN data_cells ' . $fallback . ' ON ' . $fallback . '.id_data_rows = r.id AND '
-            . $fallback . '.id_data_cols = ' . $columnId . ' AND ' . $fallback . '.id_languages = ' . self::DEFAULT_LANGUAGE;
+        $independent = 'i' . $index;
+        $plan->joins[] = ' LEFT JOIN data_cells ' . $independent . ' ON ' . $independent . '.id_data_rows = r.id AND '
+            . $independent . '.id_data_cols = ' . $columnId . ' AND ' . $independent . '.id_languages = ' . Language::INDEPENDENT_ID;
 
-        return $plan->cellExpressions[$columnId] = 'IF(' . $requested . '.id_data_rows IS NOT NULL, ' . $requested . '.value, ' . $fallback . '.value)';
+        $cmsDefault = $plan->cmsDefaultLanguageId;
+        if ($cmsDefault === null || $cmsDefault === $plan->languageId) {
+            return $plan->cellExpressions[$columnId] = 'IF(' . $requested . '.id_data_rows IS NOT NULL, '
+                . $requested . '.value, ' . $independent . '.value)';
+        }
+
+        $default = 'c' . $index;
+        $plan->joins[] = ' LEFT JOIN data_cells ' . $default . ' ON ' . $default . '.id_data_rows = r.id AND '
+            . $default . '.id_data_cols = ' . $columnId . ' AND ' . $default . '.id_languages = ' . $cmsDefault;
+
+        return $plan->cellExpressions[$columnId] = 'IF(' . $requested . '.id_data_rows IS NOT NULL, ' . $requested . '.value, '
+            . 'IF(' . $independent . '.id_data_rows IS NOT NULL, ' . $independent . '.value, ' . $default . '.value))';
     }
 
     private function assertKnownType(string $type): void
@@ -643,6 +905,8 @@ class DataQueryEngine extends BaseService
             LookupService::DATA_COL_VALUE_TYPES_DATE,
             LookupService::DATA_COL_VALUE_TYPES_DATETIME,
             LookupService::DATA_COL_VALUE_TYPES_BOOLEAN,
+            // File cells name uploaded files: compared and sorted as text.
+            LookupService::DATA_COL_VALUE_TYPES_FILE,
         ];
         if (!in_array($type, $known, true)) {
             throw new DataQueryException(sprintf('Unknown value type "%s".', $type));
@@ -767,7 +1031,8 @@ class DataQueryEngine extends BaseService
 
         $values = [];
         if ($columnIds !== []) {
-            $languages = $language === self::DEFAULT_LANGUAGE ? [self::DEFAULT_LANGUAGE] : [$language, self::DEFAULT_LANGUAGE];
+            $cmsDefault = $this->cmsDefaultLanguageId();
+            $languages = $this->fallbackLanguageIds($language, $cmsDefault);
             $cells = $this->connection()->fetchAllAssociative(
                 'SELECT c.id_data_rows AS rid, c.id_data_cols AS cid, c.id_languages AS lid, c.`value` AS cell_value'
                 . ' FROM data_cells c WHERE c.id_data_rows IN (:ids) AND c.id_data_cols IN (:cols) AND c.id_languages IN (:langs)',
@@ -778,9 +1043,10 @@ class DataQueryEngine extends BaseService
                 $rid = $this->asInt($cell['rid']);
                 $key = $columnIds[$this->asInt($cell['cid'])];
                 $lid = $this->asInt($cell['lid']);
-                // The requested language wins over the default language.
-                if (!isset($values[$rid][$key]) || $lid === $language) {
-                    $values[$rid][$key] = ['value' => $cell['cell_value'], 'language' => $lid];
+                $priority = $this->languageFallbackPriority($lid, $language, $cmsDefault);
+                $existing = $values[$rid][$key]['priority'] ?? 0;
+                if ($priority > $existing) {
+                    $values[$rid][$key] = ['value' => $cell['cell_value'], 'priority' => $priority];
                 }
             }
         }
@@ -887,6 +1153,43 @@ class DataQueryEngine extends BaseService
         }
 
         return $meta;
+    }
+
+    /**
+     * Language ids to load for a visitor read: requested, then independent, then CMS default.
+     *
+     * @return list<int>
+     */
+    private function fallbackLanguageIds(int $language, ?int $cmsDefault): array
+    {
+        if ($language === Language::INDEPENDENT_ID) {
+            return [Language::INDEPENDENT_ID];
+        }
+
+        $languages = [$language, Language::INDEPENDENT_ID];
+        if ($cmsDefault !== null && $cmsDefault !== $language) {
+            $languages[] = $cmsDefault;
+        }
+
+        return $languages;
+    }
+
+    /**
+     * Higher wins when several cells exist for one column: requested > independent > CMS default.
+     */
+    private function languageFallbackPriority(int $languageId, int $requested, ?int $cmsDefault): int
+    {
+        if ($languageId === $requested) {
+            return 3;
+        }
+        if ($languageId === Language::INDEPENDENT_ID) {
+            return 2;
+        }
+        if ($cmsDefault !== null && $languageId === $cmsDefault) {
+            return 1;
+        }
+
+        return 0;
     }
 
     private function connection(): Connection

@@ -34,11 +34,18 @@ interface PluginRealtimePublisherInterface
      *                                      pass the topic's validator
      *                                      when one is registered.
      * @param array{
-     *   audience?: 'permission'|'broadcast'|'admins',
+     *   audience?: 'permission'|'broadcast'|'admins'|'user',
      *   topicParams?: array<string,string|int>,
      *   event?: string,
      *   private?: bool,
-     * } $options
+     * } $options `audience: 'user'` sends the update to one user: `topicParams`
+     *            is then exactly `['userId' => <positive user id>]`, the update
+     *            is always private, and only that user's subscriber token
+     *            carries the topic. It throws `\InvalidArgumentException`
+     *            without a positive `userId` (or with another topic
+     *            parameter); `userId` is reserved for this audience.
+     *
+     * @throws \InvalidArgumentException for a misuse of the `user` audience
      */
     public function publish(string $pluginId, string $topicKey, array $payload, array $options = []): void;
 

@@ -50,9 +50,9 @@ final class ProfileServiceTest extends QaKernelTestCase
     {
         $user = $this->user(QaBaselineFixture::QA_GUEST_EMAIL);
 
-        // Make the managed entity look like a system account ('tpf'); DAMA rolls
-        // this back. deleteAccount() re-reads the managed user and must refuse.
-        $user->setName('tpf');
+        // Mark the managed entity as a system account; DAMA rolls this back.
+        // deleteAccount() re-reads the managed user and must refuse.
+        $user->setIsSystem(true);
         $this->em->flush();
 
         $this->expectException(\InvalidArgumentException::class);

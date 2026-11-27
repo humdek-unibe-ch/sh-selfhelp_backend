@@ -74,7 +74,7 @@ final class FormListCurrentFileTest extends QaWebTestCase
         $w = $this->world('qa_lcf_member_ok', openAccess: false, filesPublic: true, publish: true);
         $page = $this->em->find(Page::class, $w['viewPage']->getId());
         self::assertInstanceOf(Page::class, $page);
-        $this->pages->grantGroupAcl($page, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+        $this->pages->grantGroupAcl($page, $this->subjectGroup());
         $token = $this->loginAsQaUser();
 
         [$response, $body] = $this->currentFile($token, $page, $w['view'], $w['record'], $w['doc']);

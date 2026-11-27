@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller\Api\V1\Frontend;
 
+use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\DataTable;
 use App\Entity\Field;
 use App\Entity\Group;
@@ -17,6 +18,7 @@ use App\Entity\Page;
 use App\Entity\Section;
 use App\Entity\SectionsFieldsTranslation;
 use App\Entity\SectionsHierarchy;
+use App\Entity\User;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Admin\PageVersionService;
@@ -25,6 +27,8 @@ use App\Tests\Support\Factories\PageSectionFactory;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group as PhpUnitGroup;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 /**
  * F05: a condition hides a section from the page, so it must also refuse the
@@ -219,11 +223,24 @@ final class FormConditionRecheckTest extends QaWebTestCase
 
     // -- helpers ----------------------------------------------------------------
 
+    /**
+     * Publishing needs the update grant (`PageVersionService::publishVersion`), so the service call
+     * runs as the signed-in QA admin; the token is dropped again so the requests that follow
+     * carry only their own bearer token.
+     */
     private function publish(Page $page): void
     {
-        $versions = $this->service(PageVersionService::class);
-        $version = $versions->createVersion((int) $page->getId());
-        $versions->publishVersion((int) $page->getId(), (int) $version->getId());
+        $tokens = $this->service(TokenStorageInterface::class);
+        $admin = $this->service(EntityManagerInterface::class)->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
+        self::assertInstanceOf(User::class, $admin);
+        $tokens->setToken(new UsernamePasswordToken($admin, 'main', $admin->getRoles()));
+        try {
+            $versions = $this->service(PageVersionService::class);
+            $version = $versions->createVersion((int) $page->getId());
+            $versions->publishVersion((int) $page->getId(), (int) $version->getId());
+        } finally {
+            $tokens->setToken(null);
+        }
         $this->pages->invalidatePageScopedCaches();
     }
 
@@ -243,7 +260,7 @@ final class FormConditionRecheckTest extends QaWebTestCase
     {
         $group = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $group);
-        $this->pages->grantGroupAcl($page, $group, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $group);
     }
 
     private function setCondition(Section $section, string $condition): void

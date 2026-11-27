@@ -2,6 +2,12 @@ doctrine:
     dbal:
         url: '%env(resolve:DATABASE_URL)%'
 
+        # The connection can hold work back until the outermost transaction
+        # has committed (App\Doctrine\AfterCommitConnection, used by the plugin
+        # domain events of contract C24). It behaves like the stock connection
+        # in every other respect.
+        wrapper_class: App\Doctrine\AfterCommitConnection
+
         # IMPORTANT: You MUST configure your server version,
         # either here or in the DATABASE_URL env var (see .env file)
         #server_version: '16'

@@ -39,6 +39,13 @@ class ActionImmediateExecutorService
                 continue;
             }
 
+            // C12/C13: a job of a plugin type is never run inside this request. It is a queued
+            // `scheduled_jobs` row like any other; the wake signal pushed when it was created lets the
+            // scheduler start it within seconds, and the plugin's own time limit applies (C22).
+            if ($job->getJobType()->getPlugin() !== null) {
+                continue;
+            }
+
             $this->jobSchedulerService->executeJob((int) $job->getId(), $transactionBy);
         }
     }

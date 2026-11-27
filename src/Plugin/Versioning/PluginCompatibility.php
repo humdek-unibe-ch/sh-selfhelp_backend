@@ -43,10 +43,31 @@ final class PluginCompatibility
         return $coreRange === null || trim($coreRange) === '' || SemverHelper::satisfies($coreVersion, $coreRange);
     }
 
-    /** True when $pluginApiVersion satisfies $apiRange (empty/null range = unconstrained). */
+    /**
+     * True when $pluginApiVersion satisfies $apiRange (empty/null range = unconstrained).
+     *
+     * A BARE version (`x.y.z`: no operator, no `||`, no space) is a minimum, not an exact match: the plugin
+     * needs "at least this, same major", so the host is accepted when its major equals the declared major and
+     * its version is greater than or equal to the declared one. Pre-1.0 the major is `0`, so `0.1.0` is accepted
+     * on host `0.2.0` and `0.3.0` is not. This is the rule `isPluginApiCompatible` of `@selfhelp/shared` applies
+     * in the web runtime (decision R1-D2, 2026-11-27). An explicit range (`^`, `~`, `>=`, `||`, ...) keeps its
+     * semver meaning through {@see SemverHelper::satisfies()}.
+     */
     public static function pluginApiSatisfied(string $pluginApiVersion, ?string $apiRange): bool
     {
-        return $apiRange === null || trim($apiRange) === '' || SemverHelper::satisfies($pluginApiVersion, $apiRange);
+        if ($apiRange === null || trim($apiRange) === '') {
+            return true;
+        }
+
+        if (preg_match('/^\d+\.\d+\.\d+$/', $apiRange) === 1) {
+            $declared = SemverHelper::parse($apiRange);
+            $host = SemverHelper::parse($pluginApiVersion);
+            if ($declared !== null && $host !== null) {
+                return $host['major'] === $declared['major'] && SemverHelper::compare($pluginApiVersion, $apiRange) >= 0;
+            }
+        }
+
+        return SemverHelper::satisfies($pluginApiVersion, $apiRange);
     }
 
     /**

@@ -154,8 +154,8 @@ class CmsAppWizardService extends BaseService
         }
         $formFieldLabel = $this->asString($input['form_field_label'] ?? '') ?: ucfirst(str_replace('_', ' ', $formFieldName));
 
-        // Multi-field builder: a normalized list of {name, style, label}. Falls
-        // back to the single legacy field so existing callers are unaffected.
+        // Multi-field builder: a normalized list of {name, style, label, translatable}.
+        // Falls back to the single legacy field so existing callers are unaffected.
         $formFields = $this->parseFormFields($input['form_fields'] ?? null, $formFieldName, $formFieldLabel);
 
         // Draft/published status field (default on). Editors prepare as draft,
@@ -164,7 +164,13 @@ class CmsAppWizardService extends BaseService
         if ($withStatus && $createForm) {
             $names = array_column($formFields, 'name');
             if (!in_array('status', $names, true)) {
-                $formFields[] = ['name' => 'status', 'style' => 'select', 'label' => 'Status', 'kind' => 'status'];
+                $formFields[] = [
+                    'name' => 'status',
+                    'style' => 'select',
+                    'label' => 'Status',
+                    'translatable' => false,
+                    'kind' => 'status',
+                ];
             }
         }
 
@@ -449,9 +455,8 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Resolve the content locales (everything except the internal `all`
-     * language) and the property locale (the internal language id 1, used for
-     * non-translatable fields like a link URL).
+     * Resolve the content locales (real languages only) and the property locale
+     * ({@see Language::INDEPENDENT_LOCALE}, used for non-translatable fields like a link URL).
      *
      * @return array{0: list<string>, 1: string}
      */
@@ -467,7 +472,7 @@ class CmsAppWizardService extends BaseService
             if ($locale === null || $locale === '') {
                 continue;
             }
-            if ((int) $language->getId() === 1) {
+            if ((int) $language->getId() === Language::INDEPENDENT_ID) {
                 $propertyLocale = $locale;
                 continue;
             }
@@ -491,7 +496,7 @@ class CmsAppWizardService extends BaseService
      * multiple / files_public flags.
      *
      * @param mixed $raw
-     * @return list<array{name: string, style: string, label: string, kind?: string}>
+     * @return list<array{name: string, style: string, label: string, translatable: bool, kind?: string}>
      */
     private function parseFormFields(mixed $raw, string $legacyName, string $legacyLabel): array
     {
@@ -510,12 +515,25 @@ class CmsAppWizardService extends BaseService
                     $this->throwBadRequest(sprintf('Form field style "%s" is not supported.', $style));
                 }
                 $label = $this->asString($entry['label'] ?? '') ?: ucfirst(str_replace('_', ' ', $name));
+                $translatable = ($entry['translatable'] ?? false) === true;
+                if ($translatable && !in_array($style, ['text-input', 'textarea'], true)) {
+                    $this->throwBadRequest(sprintf(
+                        'Form field "%s" of type "%s" cannot be translatable.',
+                        $name,
+                        $style
+                    ));
+                }
                 $kind = match ($style) {
                     'image' => 'image',
                     'files' => 'files',
                     default => null,
                 };
-                $field = ['name' => $name, 'style' => in_array($style, ['image', 'files'], true) ? 'file-input' : $style, 'label' => $label];
+                $field = [
+                    'name' => $name,
+                    'style' => in_array($style, ['image', 'files'], true) ? 'file-input' : $style,
+                    'label' => $label,
+                    'translatable' => $translatable,
+                ];
                 if ($kind !== null) {
                     $field['kind'] = $kind;
                 }
@@ -524,7 +542,7 @@ class CmsAppWizardService extends BaseService
         }
 
         if ($fields === []) {
-            $fields[] = ['name' => $legacyName, 'style' => 'text-input', 'label' => $legacyLabel];
+            $fields[] = ['name' => $legacyName, 'style' => 'text-input', 'label' => $legacyLabel, 'translatable' => false];
         }
 
         $names = array_column($fields, 'name');
@@ -775,7 +793,7 @@ class CmsAppWizardService extends BaseService
     /**
      * The inputs of the list-as-form: one child section per field.
      *
-     * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
+     * @param list<array{name: string, style: string, label: string, translatable?: bool, kind?: string}> $formFields
      * @param list<string> $contentLocales
      * @return list<array<string, mixed>>
      */
@@ -787,6 +805,9 @@ class CmsAppWizardService extends BaseService
                 'name' => $this->propertyField($field['name'], $propertyLocale),
                 'label' => $this->contentField($field['label'], $contentLocales),
             ];
+            if (($field['translatable'] ?? false) === true) {
+                $fields['translatable'] = $this->propertyField('1', $propertyLocale);
+            }
             $kind = $field['kind'] ?? null;
             if ($field['style'] === 'select' && ($kind === 'status' || $field['name'] === 'status')) {
                 $fields['options'] = $this->propertyField(
@@ -869,7 +890,7 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * @param list<array{name: string, style: string, label: string, kind?: string}> $formFields
+     * @param list<array{name: string, style: string, label: string, translatable?: bool, kind?: string}> $formFields
      * @param list<string> $contentLocales
      * @return list<array<string, mixed>>
      */
@@ -977,8 +998,8 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Non-translatable (display=0) field value, written under the internal
-     * property locale only.
+     * Non-translatable (display=0) field value, written under the
+     * language-independent property locale only.
      *
      * @return array<string, array{content: string}>
      */

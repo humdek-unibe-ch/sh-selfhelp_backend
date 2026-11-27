@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-11-26.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -98,6 +98,96 @@ Creates the main notification plus reminder child jobs.
 ### `notification_with_reminder_for_diary`
 
 Same as above, plus reminder validity window metadata used to clean reminders once the target form is completed.
+
+### Any other `job_type`
+
+Any other `job_type` is a **plugin job**: a job type that an *enabled* plugin offers to actions (a `scheduledJobs[]`
+entry with `actionPlannable: true` in its manifest). See [Plugin Job Types](#plugin-job-types).
+
+## Plugin Job Types
+
+A plugin that does work after a record is saved (call a service, build a report, send a message of its own kind)
+declares a job type in its manifest. The editor then offers the type as a job, builds the job's form from the type's
+schema, and the runtime plans the job like any other. The job is a normal `scheduled_jobs` row; the plugin's job
+handler runs it when it is due.
+
+### List the types
+
+**Endpoint:** `GET /cms-api/v1/admin/actions/plugin-job-types`
+
+Permission `admin.action.read` (route `admin_actions_plugin_job_types_get`). Response schema:
+`config/schemas/api/v1/responses/admin/actions/plugin_job_types.json`. Only types of **enabled** plugins that declare
+`actionPlannable: true` are listed.
+
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "type": "example_note_job",
+      "plugin_id": "example-plugin",
+      "label": "Add a note to an item",
+      "config_schema": {
+        "type": "object",
+        "properties": {
+          "item_id": { "type": "integer", "title": "Item" },
+          "note": { "type": "string", "title": "Note", "maxLength": 200, "format": "variable-text" }
+        },
+        "required": ["item_id"]
+      },
+      "resource_fields": { "item_id": "example_item" }
+    }
+  ]
+}
+```
+
+- `type` is the value to put in the job's `job_type`.
+- `config_schema` is a flat JSON Schema (`type: object`, `properties`, `required`) of the job's `plugin_config`. A
+  string property with `format: variable-text` may hold `{{variables}}`.
+- `resource_fields` maps a property of `plugin_config` to the resource type of the plugin item it holds. The editor
+  may bind only an item they are allowed to view.
+
+### Use a type in an action
+
+Put the type in `job_type` and the values in `plugin_config`. The other fields (`job_name`, `schedule_time`,
+conditions, repetition) are the same as for a core job.
+
+```json
+{
+  "job_name": "Note for the item owner",
+  "job_type": "example_note_job",
+  "plugin_config": { "item_id": 12, "note": "Hello {{recipient.name}}" },
+  "schedule_time": { "job_schedule_types": "immediately" }
+}
+```
+
+### What is checked when the action is saved
+
+`POST /admin/actions` and `PUT /admin/actions/{actionId}` check every job whose type is not a core type. Nothing is
+stored when a check fails.
+
+| Status | `error` | Meaning |
+| --- | --- | --- |
+| 400 | `unknown_job_type` | No enabled plugin offers the type. `data.job_type` and `data.path` name the job. |
+| 400 | `invalid_plugin_job_config` | `plugin_config` breaks the schema of the type (wrong type, missing required property, a property the type does not declare). `data.path` is the first failing path, for example `blocks.0.jobs.0.plugin_config.priority`; `data.errors` lists all failures as `{ path, message }`. |
+| 403 | `resource_not_bindable` | A property listed in `resource_fields` names a plugin item the person saving may not view. The superuser may bind any item. |
+
+Core job types are not checked against plugins.
+
+### What is planned when a record is saved
+
+For each recipient the runtime plans one scheduled job whose `type` is the plugin's job type:
+
+- `plugin_config` is copied from the action. A property with `format: variable-text` has its `{{variables}}` resolved
+  (`{{recipient.*}}`, `{{record.<field>}}`, `{{system.*}}`); every other property is passed on as saved.
+- The job's config also holds `record_id`, `data_table_id` and `trigger` (the trigger type that fired).
+- Scheduling, repetition, target groups, the action, block and job conditions, and the cleanup flags work as for core
+  jobs. A reminder is always a core job.
+- If the plugin was disabled or removed after the action was saved, nothing is planned for the job; it never falls
+  back to a core job.
+
+The scheduler hands the job to the plugin's `PluginScheduledJobHandlerInterface` when it is due. A job that is due at
+once wakes the scheduler, see [Scheduled Jobs and Action Runtime](../../developer/11-scheduled-jobs.md#wake-signal-immediate-jobs-start-at-once).
 
 ## Scheduling Options
 

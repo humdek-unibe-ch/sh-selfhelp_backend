@@ -15,6 +15,7 @@ use App\Repository\RoleDataAccessRepository;
 use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
+use App\Service\Sync\ChangeNoticeService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -34,9 +35,6 @@ class DataAccessSecurityService
     public const PERMISSION_UPDATE = 4;  // 0100
     public const PERMISSION_DELETE = 8;  // 1000
 
-    /** The role that passes every check; found by name (F10). */
-    public const ADMIN_ROLE_NAME = 'admin';
-
     public function __construct(
         private RoleDataAccessRepository $roleDataAccessRepository,
         private UserRepository $userRepository,
@@ -44,7 +42,8 @@ class DataAccessSecurityService
         private EntityManagerInterface $entityManager,
         private CacheService $cache,
         private RequestStack $requestStack,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private ChangeNoticeService $notices,
     ) {
     }
 
@@ -243,24 +242,32 @@ class DataAccessSecurityService
     }
 
     /**
-     * Check if user has admin role
+     * Whether the user holds a superuser role (`roles.is_superuser`).
+     * Kept as {@see userHasAdminRole} for call-site stability; the check is
+     * by flag, not by the role name "admin" (F10).
      */
     public function userHasAdminRole(int $userId): bool
     {
-        // Check cache first
+        return $this->userIsSuperuser($userId);
+    }
+
+    /**
+     * Whether the user holds a role with `is_superuser` (F10).
+     */
+    public function userIsSuperuser(int $userId): bool
+    {
         return $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getItem("user_has_admin_role", function () use ($userId) {
-                // Use Doctrine QueryBuilder to check if user has admin role
+            ->getItem("user_is_superuser", function () use ($userId) {
                 $qb = $this->entityManager->createQueryBuilder();
                 $count = $qb->select('COUNT(r.id)')
                     ->from(User::class, 'u')
                     ->innerJoin('u.roles', 'r')
                     ->where('u.id = :userId')
-                    ->andWhere('r.name = :adminRole')
+                    ->andWhere('r.isSuperuser = :superuser')
                     ->setParameter('userId', $userId)
-                    ->setParameter('adminRole', self::ADMIN_ROLE_NAME)
+                    ->setParameter('superuser', true)
                     ->getQuery()
                     ->getSingleScalarResult();
 
@@ -288,6 +295,17 @@ class DataAccessSecurityService
         foreach ($usersWithRole as $user) {
             $this->invalidateUserPermissions((int) $user->getId());
         }
+
+        // F250: a changed grant (a page, table or asset right) reaches the open admin of
+        // every holder. One bump of the role's own version (the access stamp folds it in,
+        // so holders notice on their next API reply) and one notice to the role topic,
+        // not a write per holder. A plain UPDATE: it needs no entity and no flush, and
+        // it belongs to whatever transaction the caller is in.
+        $this->entityManager->getConnection()->executeStatement(
+            'UPDATE roles SET acl_version = :version WHERE id = :id',
+            ['version' => bin2hex(random_bytes(16)), 'id' => $roleId],
+        );
+        $this->notices->roleAclChanged($roleId);
     }
 
 

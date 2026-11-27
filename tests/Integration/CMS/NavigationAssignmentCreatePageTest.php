@@ -29,7 +29,7 @@ final class NavigationAssignmentCreatePageTest extends QaWebTestCase
         $admin = $this->loginAsQaAdmin();
         /** @var PageRepository $pageRepo */
         $pageRepo = self::getContainer()->get(PageRepository::class);
-        foreach ([self::KEYWORD, self::KEYWORD . '_parent'] as $keyword) {
+        foreach ([self::KEYWORD, self::KEYWORD . '_parent', self::KEYWORD . '_labels'] as $keyword) {
             $page = $pageRepo->findOneBy(['keyword' => $keyword]);
             if ($page instanceof Page) {
                 $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $page->getId(), null, $admin);
@@ -37,6 +37,53 @@ final class NavigationAssignmentCreatePageTest extends QaWebTestCase
         }
 
         parent::tearDown();
+    }
+
+    public function testCreatePageRejectsNavigationAssignmentLabels(): void
+    {
+        // F270 / F275: labels were accepted by the schema but never applied; page
+        // items take the page title. Sending labels must fail request validation
+        // with 400 (not 500) and create no page.
+        $admin = $this->loginAsQaAdmin();
+        $keyword = self::KEYWORD . '_labels';
+
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
+            'keyword' => $keyword,
+            'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB,
+            'headless' => false,
+            'openAccess' => true,
+            'url' => '/' . $keyword,
+            'navigationAssignments' => [
+                [
+                    'menuKey' => LookupService::NAVIGATION_MENU_KEY_WEB_HEADER,
+                    'labels' => ['en' => 'Should not be accepted'],
+                ],
+            ],
+        ], $admin);
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $envelope['status'] ?? null, json_encode($envelope) ?: 'expected 400');
+        self::assertSame('Request validation failed', $envelope['error'] ?? null);
+        $validation = $envelope['validation'] ?? null;
+        self::assertIsArray($validation);
+        $schemaErrors = $validation['errors'] ?? null;
+        self::assertIsArray($schemaErrors);
+        $joined = implode("\n", array_map(
+            static function (mixed $e): string {
+                if (is_string($e)) {
+                    return $e;
+                }
+                $encoded = json_encode($e);
+
+                return is_string($encoded) ? $encoded : '';
+            },
+            $schemaErrors,
+        ));
+        self::assertStringContainsString('labels', $joined);
+        self::assertStringContainsString('additional properties', $joined);
+
+        /** @var PageRepository $pageRepo */
+        $pageRepo = self::getContainer()->get(PageRepository::class);
+        self::assertNull($pageRepo->findOneBy(['keyword' => $keyword]), 'schema refusal must not create the page');
     }
 
     public function testCreatePageWithNavigationAssignmentsCreatesMenuItems(): void
@@ -77,6 +124,9 @@ final class NavigationAssignmentCreatePageTest extends QaWebTestCase
 
         self::assertContains(LookupService::NAVIGATION_MENU_KEY_WEB_HEADER, $menuKeys);
         self::assertContains(LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER, $menuKeys);
+        foreach ($items as $item) {
+            self::assertNull($item->getLabel(), 'Page menu items take the page title; no free-form label (F270).');
+        }
 
         // The admin pages list must surface the membership badges so the
         // admin navbar can group pages by menu instead of listing them as

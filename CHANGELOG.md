@@ -1,3 +1,513 @@
+# v0.1.52
+
+## Plugin host hooks (resources, live sync, render, cache, jobs, settings)
+
+- Added: plugin items: `PluginResourceServiceInterface` (`changed`, `deleted`,
+  `grantCreator`, `rightsFor`, `pinnedVersion`), `res:<type>:<id>` change
+  notices with `ResourceReadIndex`, a resource cache scope
+  (`CacheService::withResourceScope`), plugin cache categories
+  (`cacheCategories`), `ResourceBindingGuard` (403 `resource_not_bindable`),
+  `ResourceGrantService::revokeAll`.
+- Added: manifest keys of `pluginApiVersion` 0.2.0: `styles[].resourceFields`,
+  `cacheCategories`, `settings`, `rateLimits`, `jsonLogicOperations`, `listens`,
+  `recurringJobs`, `scheduledJobs[].label`, `.actionPlannable`, `.configSchema`,
+  `.resourceFields`, `.timeoutSeconds`. Host default `selfhelp.plugin_api_version`
+  is `0.2.0`.
+- Added: plugin dependencies, conflicts and unique names are enforced (409
+  `plugin_dependency_missing`, `plugin_dependents_enabled`, `plugin_conflict`,
+  `plugin_manifest_collision`).
+- Added: five read-only domain events for plugins (`record.saved`,
+  `record.deleted`, `user.created`, `user.deleted`, `page.published`), delivered
+  after the commit by `PluginDomainEventDispatcher`; `AfterCommitConnection`.
+- Added: a plugin permission implies the read permission of the same plugin
+  area; the plugin resources list holds only items the caller may view, each
+  with `can_assign`.
+- Changed: uninstall remembers a plugin's catalogue rows and a reinstall takes
+  them back with the same ids (F248).
+- Fixed: deleting a page, group, data table or asset removes its role grants; a
+  migration removes the orphans (F280).
+- Removed: `SectionFieldBindingEvent` (the core checks `resourceFields`) and its
+  test subscriber.
+- Fixed: `content_ref` is a reserved key, so a form field of that name can no
+  longer overwrite the reference a data row keeps.
+- Fixed: a failure reading the enabled plugins no longer escapes the commit of
+  a change; it is logged and the event is not delivered.
+- Fixed: updating a plugin to a version outside the range an enabled dependent
+  requires is refused with 409 `plugin_dependents_enabled` (`data.dependents`).
+- Fixed: `GET /plugins/manifest` sends `featureFlags: {}` for a plugin without
+  flags (was `[]`, which broke the response schema).
+- Fixed: two first saves of one plugin setting at the same time no longer end
+  in a 500; the last value is kept.
+- Fixed: the plugin operation and health routes send the `data` of a
+  `ServiceException`.
+- Changed: a bare `pluginApiVersion` (`0.1.0`) means at least this version
+  within the same major; explicit ranges keep their SemVer meaning. Docs
+  updated (`topicKey` in the realtime example).
+- Render: plugin style resolvers fill `section.plugin` after the page cache; a
+  throw becomes `plugin_error: "resolver_failed"` on that section only (C6).
+- Sync: page `depends_on` lists `res:<type>:<id>` from section `resourceFields`
+  and from resolvers (filtered).
+- Admin: `GET /admin/resources/{type}/{id}/usage` (C7, `admin.access`).
+- Actions can plan jobs of a plugin's own job types:
+  `GET /admin/actions/plugin-job-types` lists the types a plugin marked
+  `actionPlannable`; an action job holds `plugin_config` (checked against the
+  type's `config_schema` and against the editor's view of the items it names);
+  a record save plans a `scheduled_jobs` row of that type with `record_id`,
+  `record_ref`, `data_table_id` and `trigger` (C12).
+- A job that is due now wakes the scheduler: after the commit the host pushes
+  one entry onto a Redis list and `app:scheduled-jobs:wait` ends its wait; the
+  interval tick stays as the fallback. Plugins can queue jobs with
+  `PluginJobQueueInterface::queueNow` and `queueAt` (C13).
+- `app:scheduled-jobs:execute-due --concurrency=<1..32>` runs due jobs in child
+  processes (`execute-one`), each with the time limit of its job type
+  (`scheduledJobs[].timeoutSeconds`, default 120 s); a job over its limit is
+  marked failed with `timeout`. The Docker scheduler reads
+  `SCHEDULED_JOBS_CONCURRENCY` (default 4) (C22).
+- Recurring plugin jobs (`recurringJobs` in the manifest): the host keeps
+  exactly one queued job per entry and queues the next one after every run,
+  also after a failed or timed-out run; disabling or uninstalling the plugin
+  removes the queued job (C25).
+- Plugin settings and secrets: manifest `settings[]`, table `plugin_settings`
+  keyed by the plugin id, secrets encrypted with libsodium under a key derived
+  from `APP_SECRET`, routes `GET` and `PUT /admin/plugins/{pluginId}/settings`
+  (`admin.plugins.manage`), `PluginSettingsInterface`, and an environment
+  variable named by `envOverride` that wins. Uninstall keeps the values; purge
+  deletes them (C14).
+- `DataQueryEngine::aggregate()` with `AggregateSpec`: count, sum, avg, min and
+  max per group, up to two group keys and a day, week, month or year bucket,
+  with the same filters and access as a read; more than `maxGroups` groups is
+  refused with 400 `max_groups` (C17).
+- Realtime to one user: `publish()` with `audience: 'user'` and
+  `topicParams['userId']`; the topic is private and only that user's subscriber
+  token (`GET /auth/events`, `pluginTopics`) contains it (C18).
+- Records remember the content they were written for: `data_rows.content_ref`
+  and `data_revisions.content_ref` hold `page:<id>@v<n>` or `page:<id>@draft`
+  for core forms and `res:<type>:<id>@v<n>` for plugins
+  (`RecordWriteContext::withContentRef()`). The data browser, the record
+  history and the exports (`_content_ref`) show it. Old records stay NULL.
+- `PluginResourceServiceInterface::pinnedVersion()` tells a plugin which item
+  version a participant's unfinished record was begun on.
+- Every record save, delete, restore and quick action raises `record.saved` or
+  `record.deleted` for listening plugins after the commit.
+- Plugins: `PluginUserScopeInterface` tells a plugin which users a caller
+  manages (`mayManage`, `managedUserIds`) (C20).
+- Plugins: `PluginRecordWriterInterface::saveFor` writes a record of the generic
+  store for another user into a table under the plugin's prefix; the history
+  names the signed-in user and the new door `plugin`; a caller who does not
+  manage the owner gets 403 `user_not_managed` (C20).
+- Plugins: the host raises `user.created`, `user.deleted` and `page.published`
+  after the commit, never on rollback (C24).
+- Plugins: rate limits declared in the manifest (`rateLimits`) are enforced with
+  `PluginRateLimiterInterface::consume`; a spent limit answers 429
+  `rate_limited` with `meta.retry_after` and a `Retry-After` header (C15).
+- Plugins: pure JSON Logic operations `<namespace>.<operation>` declared in the
+  manifest (`jsonLogicOperations`) work in section, action, reminder and job
+  conditions while the plugin is enabled (C16). The public
+  `GET /cms-api/v1/plugins/manifest` lists them.
+- Jobs and record events carry `record_ref` (`record:<id>@v<n>`):
+  `scheduled_jobs.record_ref`, plugin job config, and `RecordSavedEvent` /
+  `RecordDeletedEvent` (`recordRef`). Jobs without a record leave it null.
+  Helper `VersionRef` (C26).
+- Compatibility: `supports.frontend` raised to `>=0.1.79 <0.2.0`.
+
+## Folded from the SurveyJS upgrade merge (was Unreleased)
+
+**The register page falls back like the other system pages.** It was missing
+from `PageService::FALLBACK_CHECK_KEYWORDS`, so a register page without its
+`register` section left visitors at a dead end instead of the web app's
+built-in screen (`should_fallback`).
+
+**Fixes from the pre-PR review of the SurveyJS upgrade.**
+
+- Data columns of value type `file` can be sorted and filtered (as text);
+  before, the query engine refused the type.
+- A style key the manifest leaves out (`description`, `canHaveChildren`)
+  keeps its value on update (plugins still seed styles in migrations, rule 7.8
+  is a target).
+- "Download all" reads the file-typed columns once per table instead of once
+  per cell.
+- Excel export: a text cell over Excel's 32,767 characters is cut with a mark
+  (Excel reported the file as damaged).
+- Documented limit: `PageService::variablesForSection()` gives the first row's
+  variables under an entry list or loop (the plugin call names no row).
+
+**Excel export of data tables (SurveyJS upgrade wave 4, H5).** The single and
+bulk export endpoints accept `format=xlsx` next to `csv` and `json`, for every
+data table: one sheet with the CSV's header and rows; text stays text, numbers
+are numbers. Written with ZipArchive, no new dependency.
+
+**Plugin extension points for public section endpoints and data access
+(SurveyJS upgrade, wave 3).**
+
+- `PublicSectionAccessService::forSection()` (H4): a plugin endpoint decides
+  like a core form (rule 7.7, F109): page ACL or open page, section on the
+  effective page and not hidden by a condition, expected style; returns the
+  section's stored fields. `variables()` (H1, through the new
+  `PageService::variablesForSection()`) returns the variables that section
+  sees on its page, computed by processing only its ancestors and itself.
+- Plugin data-access resource types (H6): the `resourceTypes` lookup is now
+  `plugin_extendable`, so a plugin declares its type in `lookups.extends` and
+  the installer writes it. New event `DataAccessResourcesEvent` lists a type's
+  resources; new admin routes `GET /admin/data-access/plugin-resource-types`
+  and `.../{typeCode}/resources` (`admin.role.read`, migration
+  `Version20261117103339`). Grants are stored and checked like page grants;
+  the lookup row's `ON DELETE CASCADE` removes them on purge.
+
+**The plugin installer writes a plugin's catalogue rows from its manifest (rule
+7.8, F112).** `PluginCatalogueSynchronizer` runs on install and update, after
+the plugin's migrations and before the route sync. It writes the style groups,
+field types, fields, styles with their field lists, permissions
+(`defaultRoles` granted once, on creation) and lookup entries the manifest
+declares, all tagged with `id_plugins`. Migration `Version20261117095959` adds
+`id_plugins` to `field_types` and `style_groups`; purge now also deletes those.
+
+# v0.1.51
+
+## Language-independent row (id 1): one meaning, one constant
+
+- `Language::INDEPENDENT_ID` / `INDEPENDENT_LOCALE` name the seeded row that
+  holds values the same in every language. It is not a language and is no
+  longer used as the CMS default.
+- Data reads fall back visitor language → independent → CMS default language
+  (`DataQueryEngine`, F190). The CMS default id is part of the query cache key.
+- `PageService::determineLanguageId` never returns id 1 or a hard-coded 2: it
+  uses the lowest real language when nothing else is set.
+- Writes that set a user's language or the CMS default to id 1 answer 400.
+- "Default language" has one resolution, `CmsPreferenceService::getEffectiveDefaultLanguageId()`:
+  the CMS setting, else the lowest real language. Navigation, search, conditions,
+  option labels and action translations no longer fall back to id 1.
+- Action emails for a recipient without a language use that resolution too
+  (global values and subject/body translations), not id 1.
+- Admin data reads and deletes without a `language_id`, and property
+  translations in page exports, name the row by `Language::INDEPENDENT_ID`.
+- Index `idx_data_rows_id_users` for user cleanup (F91).
+
+# v0.1.50
+
+## Live sync follow-ups: idle lock end, lock for delete and publish
+
+- After the edit lock ends by idle (15 minutes without a draft write), the holder's
+  next `POST .../lock` answers `409 lock_idle_ended` with the free status; resume
+  through take-over (or a deliberate draft write). Others may take the free lock
+  as before. The idle mark lives at most 24 hours in the same cache pool.
+- Callers with only `admin.page.delete` or the version publish/delete rights
+  respect another's lock: those five routes answer `409 page_locked` while
+  someone else holds it (no version header required). A successful page delete
+  removes the lease. `GET .../lock` is readable for them (update or delete grant);
+  acquire, release and take-over still need `admin.page.update` and the update grant.
+- QA personas `qa.pagedelete@selfhelp.test` and `qa.pagepublish@selfhelp.test`
+  (roles `qa_page_delete`, `qa_page_publish`) with grants on content page `qa-events`.
+- Page create (`POST /admin/pages`) answers 400 when the request fails its JSON
+  Schema (F275); previously the catch-all turned that refusal into 500.
+- Frontend floor raised to `>=0.1.77` (handles `lock_idle_ended` and lock status
+  for delete/publish callers).
+- Cache: group page-ACL writes clear only the members' user scopes (plus group
+  and page), not every permissions list (F260 / F27).
+- Cache: a data write no longer bumps the writer's user scope; table-scoped
+  reads already cover form records (F269).
+- Auth: `UserContextService` implements `ResetInterface` and does not keep a
+  memoized guest after login (F265).
+- Tests: race-test CLI boots the test kernel with `.env.test.local` (F266);
+  ClockMock covers service namespaces (F267); composer process timeout disabled
+  so Golden finishes through composer (F272).
+- API: create-page navigation assignments no longer accept unused `labels`
+  (F270).
+
+# v0.1.49
+
+## Live sync: change notices, access stamp, page sync block
+
+An open screen follows a change made elsewhere without polling. Full reference:
+`docs/developer/31-live-sync-change-notices.md`.
+
+- New Mercure event `changed` (private, `{"v":1,"tags":[...]}`, names and ids
+  only) on four new topics: `<prefix>/sync/public`, `/sync/users/<id>`,
+  `/sync/groups/<id>`, `/sync/roles/<id>`. `acl-changed` and the old topics stay.
+  One service (`ChangeNoticeService`) decides who gets which tag; notices of a
+  request, command, queue message or scheduled job are merged per topic and sent
+  once after the commit (`ChangeNoticeFlushListener`; the job runner flushes after
+  every job and drops the notices of a job that threw, F136/F211).
+- Notices are sent for: publish, unpublish and version publish of a page;
+  section saves in the admin; data record writes (`DataService`, to the owner,
+  to roles with a grant on the table, to groups that see a published page that
+  reads the table, and to `public` for open-access pages); navigation changes;
+  global values; asset changes; group and role access changes; a user's groups
+  and roles. Data a plugin keeps outside the data store does not update live.
+- `GET /auth/events` now also answers guests (200 with `syncTopics: [public]`
+  and `null` private topics, no longer 401) and returns `syncTopics` for
+  signed-in users (user, groups, roles, public). The token's subscribe claim
+  equals the list. Response schema `auth/events.json` updated.
+- Groups and roles got `acl_version` (migration `Version20261120103240`
+  generated from the entities, with a round-trip test). A group or role change
+  raises that version once and sends one message to the group or role topic; it
+  no longer rewrites `users.acl_version` for every member or holder (F250: role
+  grant changes now reach the open admin of every holder). Per-user cache scopes
+  are still cleared.
+- `X-Acl-Stamp` response header on every API reply to a signed-in caller (first
+  16 hex characters of SHA-256 over the user's, groups' and roles' `acl_version`);
+  `GET /auth/user-data` returns the same value as `acl_stamp`. CORS exposes the
+  header. Guests get none.
+- Page payloads (published and draft) carry `sync: {depends_on, valid_until}`:
+  the tags the page depends on (`page:<id>` or `page_draft:<id>`, `table:<id>`
+  per data table it reads, `global_values`) and the UTC moment time alone can
+  change the result. The page cache never keeps an entry past `valid_until`
+  (F06): conditions and texts that read the clock now bound the cache lifetime.
+  Response schema `frontend/get_page.json` updated.
+- A page view is counted only when the request carries `X-Page-View: 1` (F135);
+  revalidation, prefetch and live refetch no longer count. `X-Page-View` is an
+  allowed CORS request header.
+- `ACLService::addGroupAcl` no longer bumps the permissions category generation
+  (F27).
+
+## Page draft version and edit lock
+
+Two editors on one page no longer overwrite each other. Full reference:
+`docs/developer/31-live-sync-change-notices.md`, `docs/reference/api/04-admin-pages-sections.md`.
+
+- **BREAKING for the page editor:** every write to a page's draft (page update
+  and delete, every section write, import into a page, restore from version,
+  publish, unpublish, publish a version, delete a version) must send
+  `X-Page-Version`. Missing or malformed: `400 page_version_required`. Not the
+  current version: `409 stale_page_version` with `{page_id, current_version}`
+  and nothing written. The current version: the write runs and a 2xx answer
+  carries `X-Page-Version` one higher. The version is claimed with one
+  conditional `UPDATE`, so of two writes on the same version exactly one runs;
+  a failed write gives the claim back. `pages.draft_version` (migration
+  `Version20261120115909`, with a round-trip test) starts at 1.
+  `GET /admin/pages/{page_id}` returns `draft_version` and the header.
+  `supports.frontend` is raised to `>=0.1.76` (frontend 0.1.76 sends the
+  header); the compatibility matrix is updated.
+- Edit lock: `GET`, `POST`, `DELETE /admin/pages/{page_id}/lock` and
+  `POST /admin/pages/{page_id}/lock/take-over`, all `admin.page.update` plus
+  the update grant on the page (migration adds the four `api_routes` rows;
+  `api-routes.json` and `permissions.md` re-exported; response schema
+  `responses/admin/pages/page_lock.json`). One holder per page; the lease is an
+  entry in the new `cache.page_edit_lock` pool (not a table), ends 120 s after
+  the last renewal or 15 minutes after the holder's last draft write. A draft
+  write by someone else: `409 page_locked` with the holder's name; a write
+  while nobody holds the lock takes it. Take-over makes the caller the holder.
+  Acquire, take-over, release and an ended lease send `page_lock:<id>` to the
+  roles that edit the page; a draft write sends `page_draft:<id>`.
+- `PageDraftWriteGuardListener` enforces both on the routes in
+  `PageDraftWriteRoutes::NAMES`; `PageDraftWriteRoutesTest` fails when a write
+  route of a page is missing from the list. CORS allows and exposes
+  `X-Page-Version`.
+- Tests: `PageDraftVersionTest`, `PageEditLockTest` (ClockMock, Mercure
+  recorder, permission matrix, schema contract); `QaWebTestCase::jsonRequest()`
+  adds the current `X-Page-Version` to page writes (`NO_PAGE_VERSION` opts out)
+  and clears the lock pool in `setUp`.
+
+## Access housekeeping
+
+- A migration run now clears the API route lists and the permission cache by
+  itself (`MigrationsCacheInvalidationListener` on `onMigrationsMigrated`), so
+  renamed permissions and re-linked routes are effective at once after a
+  manager update, a fresh install or `app:test:reset-db`; `app:test:reset-db`
+  prints that it cleared them (F216).
+- `CallerHoldingsService` implements `ResetInterface`, so a long-running
+  process (Messenger worker) no longer answers from holdings read before a
+  role change (F211).
+- CI: the `security` group step runs with `memory_limit=2G`, so
+  `AssetBundleTest` no longer depends on the runner's default (F217).
+
+## Grant pickers
+
+- `GET /admin/permissions` now also passes for `admin.role.update` (migration
+  `Version20261120083532`), so a role editor without `admin.permission.read`
+  sees permission names and `can_assign` in the role form (F224). The generated
+  `api-routes.json` and `permissions.md` are re-exported.
+- Role items (`GET /admin/roles` and `GET /admin/roles/{roleId}`) carry a new
+  per-caller boolean `fully_held`: the caller holds every permission and every
+  grant bit of the role (rule 4.6f), added after the cache read. The asset role
+  pickers use it to disable roles the caller may not hand out (F219).
+- QA persona `qa.roleupdate@selfhelp.test` (role `qa_role_update`: `admin.access`,
+  `admin.role.read`, `admin.role.update`); `QA_FIXTURE_VERSION` is
+  `2026_11_20_001`.
+- Test `RoleGrantSaveKeepsUnseenGrantsTest` pins that a role grant save by a
+  manager who sees only some of the role's items is refused (403) and drops
+  nothing, while the admin role saves the whole set (F229).
+
+# v0.1.48
+
+## Roles and group access limited by what the caller holds; one read right per admin area
+
+Handing out access is limited by what the caller holds everywhere, not only when
+roles are given to users. A scoped admin manages roles and groups inside their
+own rights; only the superuser role goes beyond. Every core admin screen opens
+with one read permission of its area; a role that gets any right of an area also
+gets the area's read right.
+
+### Permission names and route rights (C1)
+
+- `admin.settings` removed; split into `admin.language.read` and
+  `admin.language.update` (holders of the old name get both).
+- `admin.audit.view` → `admin.audit.read`; `admin.mobile_preview.view` →
+  `admin.mobile_preview.read` (same holders and route links).
+- New `admin.section.read` for every role that holds `admin.section.delete`.
+- Route permissions: language GETs need `.read`, language writes need `.update`;
+  audit GETs need `admin.audit.read`; unused-sections GET needs
+  `admin.section.read` (deletes stay on `admin.section.delete`); data-access
+  GETs need only `admin.role.read`, the grant write needs only
+  `admin.role.update`.
+
+### Read implied (C2)
+
+For a core permission `admin.<area>.<action>` (three segments, action not
+`read`), if `admin.<area>.read` exists it is the implied read. On every role
+permission write the server adds it; removing an area's `.read` removes the
+area's other rights. A replace list that holds an area right but not its read
+ends with both. Migration repairs existing roles.
+
+### Role and permission items (C3)
+
+After the shared cache read, role items carry `can_update` / `can_delete` and
+permission items carry `can_assign` / `implied_read` for the caller (rule 4.11,
+rule 3 reading 8).
+
+Group items in `GET /admin/groups` carry `can_update` / `can_delete` for the
+caller the same way (rule 4.11): the route right (`admin.group.update` /
+`admin.group.delete`) and the update / delete bit on that group; the superuser
+both. Added after the cached list is read, never cached with it. A view-only
+grant on a group therefore draws no Edit or Delete control (F239 walk).
+
+### Refusals (C4)
+
+All answer `403` with a named reason: rights the caller does not hold; changing
+or deleting a role above them; `permission_ids` without `admin.role.permissions`;
+group page visibility without update on the group or on a changed page; reading
+a group without read on it.
+
+### Rules
+
+- **4.6f:** a non-superuser may create, change or delete a role only when
+  everything in it (permissions and grant bits), before and after, is held by
+  the caller; putting `permission_ids` needs `admin.role.permissions`.
+- **4.6g:** changing which pages a group sees needs update on the group and on
+  every page whose visibility is added or removed; reading a group needs read
+  on it.
+- **4.13:** one read permission opens each core admin area; other rights of the
+  area assume it (by name for core `admin.*`).
+- Asset managing roles follow 4.6f with the asset counted as held: the caller
+  holds the asset they upload or manage, but a managing role they do not fully
+  hold is refused with `403` (so a non-admin editor can still upload).
+
+### Page rights and publishing (F234)
+
+- `GET /admin/pages/{page_id}` returns `rights` (`can_update`, `can_delete`,
+  `can_publish`) for the caller: the route permission and the grant on that
+  page; the superuser all. Added after the cached page is read, never cached
+  with it. Schema `responses/admin/pages/get_page_fields` requires it.
+- Publishing and unpublishing a page (`POST .../versions/publish`,
+  `.../versions/{version_id}/publish`, `.../versions/unpublish`) now need the
+  update grant on that page, like every other page write. Before, the route
+  permission alone was enough for any page.
+- Deleting a page version (`DELETE .../versions/{version_id}`, route permission
+  `admin.page_version.delete`) now needs the update grant on the version's own
+  page, checked before the transaction so a refusal is a `403` (F235).
+- The permission `admin.page.insert` is removed (migration
+  `Version20261119150228`): no route or check ever used it. `admin.page.update`
+  covers editing a page and adding, moving and removing its sections.
+- Importing sections into a page or a section and restoring sections from a
+  version need `admin.page.update` instead of `admin.page.export` (migration
+  `Version20261119150622`, F237). Exporting keeps `admin.page.export`. Clear the
+  API route cache after migrating (`php bin/console cache:clear-api-routes`).
+- Whoever creates a group can manage it: the creator's roles that hold
+  `admin.group.create` get full access on the new group (like pages and
+  assets, rule 6b). Before, a non-admin could not see the group they created
+  (F240).
+- Permission catalogue cleanup (migration `Version20261119151821`): reading an
+  action's translations needs `admin.action.read` (roles that held
+  `admin.action_translation.read` get it); `admin.action_translation.read`,
+  `admin.page_version.create`, `admin.page_version.unpublish`,
+  `admin.user.unblock` and `admin.cms_preferences.update` are removed. None of
+  the four last ones guarded a route: unpublishing needs
+  `admin.page_version.publish`, unblocking `admin.user.block`, preferences are
+  edited on their configuration page.
+
+### Access check tooling (F239)
+
+- `php bin/console app:access:export` writes two generated, committed files:
+  `docs/reference/access/api-routes.json` (every core route with its methods,
+  public flag and permissions, plus every core permission with its description)
+  and `docs/reference/permissions.md` (the permission catalogue: each permission
+  with its routes and the admin screens that open with it, read from the
+  frontend's `docs/reference/admin-screens.json`). `--check` writes nothing and
+  exits 1 when a file is stale, the screens file is missing, or a core
+  permission guards no route and opens no screen (rule 4.14). `--frontend-dir`
+  or `SELFHELP_FRONTEND_DIR` points at the frontend checkout.
+- `AccessCatalogueFreshnessTest` (group `security`) runs the same three checks
+  in `backend-tests`; the workflow checks out the same-named frontend branch,
+  else `main`. The frontend compares its route declarations with
+  `api-routes.json` in its own CI.
+- Restricted QA personas for the access walk: one read-only user per core
+  `admin.<area>.read` (`qa.read.<area>@selfhelp.test`, role `qa_read_<area>`,
+  holding only `admin.access` and that read right) and `qa.readupdate@selfhelp.test`
+  (role `qa_read_update`: every core read and update right, and only the view
+  bit on the QA page, data table and group `qa_access_group`). Created through
+  the role services as `qa.admin`; `QA_FIXTURE_VERSION` is `2026_11_19_001`.
+
+### Compatibility
+
+- `release-manifest.json`: `supports.frontend` is raised to `>=0.1.75 <0.2.0`.
+- Pairs with frontend `supports.core` `>=0.1.48` and `@selfhelp/shared` 1.27.0.
+- `selfhelp_cms_version_default` is `0.1.48`.
+- Migration `Version20261119085933`.
+
+# v0.1.47
+
+## Access cleanup (F03, F01, F14, F15, F02, F09, F10, F13)
+
+- Group page ACL keeps only `acl_select` (see the page and use its forms). Columns
+  `acl_insert` / `acl_update` / `acl_delete` are removed; `get_user_acl` matches.
+- Creating a page grants full data-access on that page to the caller's roles that
+  hold `admin.page.create` (admin role never stored), including import and wizard.
+- Creating a form's data table also grants full access to roles that can edit the
+  form's page (`admin.page.update` plus the page update bit).
+- `ACLService::hasAccess` no longer caches a yes/no answer; it reads cached ACL rows.
+- Guest and signed-in form submit share the same validation path (proven by test).
+- Public API routes are declared with `api_routes.is_public`. A route with neither
+  permissions nor the flag is refused (401 guest / 403 signed in). Plugin manifests
+  may set `"public": true` on a route (never together with a permission).
+- Full-access roles use `roles.is_superuser`; built-in accounts use `users.is_system`
+  (no more matching on the names `admin` / `tpf`).
+- Unexpected errors in public controllers answer a generic message and are logged;
+  typed user-facing errors keep their text.
+- Plugin admin pages (rule 4.13, F197): the manifest validator refuses an
+  `adminPages[].permission` that is not one of the plugin's own `permissions` keys.
+  `GET /plugins/manifest` now returns `adminPages` (`slug`, `label`, `permission`,
+  optional `icon`) per plugin so the frontend can check the page permission on the
+  server.
+- `GET /auth/user-data` role items carry `is_superuser`, so clients read the
+  superuser role from the flag, never from its name.
+- `app:create-admin-user --role` has no default: without it the command assigns the
+  role with `is_superuser`; any given value, `admin` included, is a plain name lookup.
+- Tests: forced-error test per public controller family (form submit, page read,
+  navigation, login, profile update), round-trip tests for the two new migrations.
+
+## Compatibility
+
+- `release-manifest.json`: `supports.frontend` is raised to `>=0.1.74 <0.2.0`.
+- Pairs with frontend `supports.core` `>=0.1.47`.
+- `selfhelp_cms_version_default` is `0.1.47`.
+
+# v0.1.46
+
+## CMS app scaffold: translatable text fields
+
+- `POST /admin/cms-apps/{id}/scaffold` accepts optional `form_fields[].translatable`
+  (boolean). Allowed `true` only for `text-input` and `textarea`; other styles answer
+  `400` with `Form field "<name>" of type "<style>" cannot be translatable.` and create
+  nothing.
+- When set, the wizard writes the input section's existing `translatable` property as
+  `1` (one cell per language in the same row). Missing or `false` leaves the style default.
+
+## Compatibility
+
+- `release-manifest.json`: `supports.frontend` is raised to `>=0.1.73 <0.2.0`
+  (the first frontend that sends `translatable` from the scaffold wizard).
+- Pairs with frontend `supports.core` `>=0.1.46`.
+- `selfhelp_cms_version_default` is `0.1.46`.
+
 # v0.1.45
 
 ## Entry List with Form is its own form

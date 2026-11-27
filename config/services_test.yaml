@@ -11,6 +11,10 @@ services:
     # lets golden tests assert exactly what was published (by topic).
     App\Tests\Support\MercureTestRecorder:
         public: true
+        # The real hub: used only when the browser (e2e) stack sets SELFHELP_E2E_REAL_HUB=1
+        # (frontend `scripts/e2e-stack.mjs`), so live-sync updates reach open pages there.
+        arguments:
+            $forwardTo: '@mercure.hub.default'
 
     Symfony\Component\Mercure\HubInterface:
         alias: App\Tests\Support\MercureTestRecorder
@@ -23,6 +27,48 @@ services:
     # host enforces receivesEmails() on plugin jobs. It claims a qa_-scoped job type
     # so it never shadows a real one.
     App\Tests\Support\Plugin\QaDeliveryAwarePluginJobHandler:
+        autoconfigure: true
+        autowire: true
+        public: true
+
+    # H6: a plugin listing the resources of its data-access resource type, so
+    # AdminPluginResourceTypeControllerTest drives the real event dispatch.
+    App\Tests\Support\Plugin\QaResourceTypeSubscriber:
+        autoconfigure: true
+        autowire: true
+
+    # The two services a plugin calls (contract C3 and C24). Nothing in the host injects
+    # them, so the compiled container drops them unless they are public; tests fetch them by id.
+    App\Plugin\Resource\PluginResourceServiceInterface:
+        alias: App\Plugin\Resource\PluginResourceService
+        public: true
+
+    App\Plugin\Event\Domain\PluginDomainEventDispatcher:
+        autowire: true
+        public: true
+
+    # C8: the public bind check. Only the section guard injects it today, so the compiled
+    # container inlines it; ResourceBindingGuardTest fetches it by id.
+    App\Plugin\Resource\ResourceBindingGuard:
+        autowire: true
+        public: true
+
+    # C24: a plugin listener that records every domain event it is handed, so
+    # PluginDomainEventDispatcherTest proves who gets which event and when.
+    App\Tests\Support\Plugin\QaDomainEventListener:
+        autoconfigure: true
+        autowire: true
+        public: true
+
+    # C24: a listener that always throws, to prove a failing plugin never breaks the write
+    # that raised the event, nor the other listeners.
+    App\Tests\Support\Plugin\QaThrowingDomainEventListener:
+        autoconfigure: true
+        autowire: true
+        public: true
+
+    # C6: QA style resolver for PluginStyleResolverTest (style qa-item-block of QaItemPluginFixture).
+    App\Tests\Support\Plugin\QaItemStyleResolver:
         autoconfigure: true
         autowire: true
         public: true

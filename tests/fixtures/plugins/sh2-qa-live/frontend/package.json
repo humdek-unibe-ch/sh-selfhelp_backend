@@ -1,0 +1,7 @@
+{
+  "name": "@selfhelp/sh2-qa-live-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Source reference for the hand-written dist/plugin.esm.js (e2e uses dist only).",
+  "license": "MPL-2.0"
+}

@@ -7,6 +7,7 @@
 
 namespace App\Service\CMS\Common;
 
+use App\Entity\Language;
 use App\Entity\Section;
 use App\Repository\StylesFieldRepository;
 use App\Service\CMS\DataService;
@@ -39,7 +40,7 @@ class SectionUtilityService
      * @param int $languageId Language ID for data retrieval
      * @return list<array<string, mixed>> Hierarchical structure of sections
      */
-    public function buildNestedSections(array $sections, bool $applyData = false, int $languageId = 1): array
+    public function buildNestedSections(array $sections, bool $applyData = false, int $languageId = Language::INDEPENDENT_ID): array
     {
         // Create a map of sections by ID for quick lookup
         $sectionsById = [];
@@ -297,7 +298,7 @@ class SectionUtilityService
      * @param array<string, mixed> $interpolationContext
      * @return array<array-key, mixed> Retrieved data or empty array if failed
      */
-    public function retrieveData(array $dataConfig, array $params = [], int $languageId = 1, array $interpolationContext = []): array
+    public function retrieveData(array $dataConfig, array $params = [], int $languageId = Language::INDEPENDENT_ID, array $interpolationContext = []): array
     {
         $parsedConfig = $this->parseParams($dataConfig, $params);
         if (!$parsedConfig) {
@@ -725,7 +726,7 @@ class SectionUtilityService
      * @param int $languageId Language ID for data retrieval
      * @return array<string, mixed> Array of variable names to their actual values
      */
-    private function getGlobalAndSystemVariableValues(int $languageId = 1): array
+    private function getGlobalAndSystemVariableValues(int $languageId = Language::INDEPENDENT_ID): array
     {
         // Use the unified variable resolver service
         /** @var array<string, mixed> $variables */
@@ -744,7 +745,7 @@ class SectionUtilityService
      *   ({{route.*}} scope) — used by the form-record edit mode to resolve
      *   `load_record_from` into a concrete record id.
      */
-    public function applySectionData(array &$section, int $languageId = 1, array $routeParams = []): void
+    public function applySectionData(array &$section, int $languageId = Language::INDEPENDENT_ID, array $routeParams = []): void
     {
         $section['section_data'] = [];
 

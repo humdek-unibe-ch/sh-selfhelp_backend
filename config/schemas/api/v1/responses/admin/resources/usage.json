@@ -1,0 +1,44 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Resource Usage",
+    "description": "Where a plugin resource is used (contract C7): pages and actions that hold the item, limited to what the caller may see. Data-level schema (F254: validate the response data directly).",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["pages", "actions", "hidden_count"],
+    "properties": {
+        "pages": {
+            "type": "array",
+            "description": "Pages the caller may read in the admin that hold the item, sorted by keyword.",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "keyword", "title", "draft_uses", "published_uses"],
+                "properties": {
+                    "id": { "type": "integer", "minimum": 1 },
+                    "keyword": { "type": "string" },
+                    "title": { "type": ["string", "null"] },
+                    "draft_uses": { "type": "boolean" },
+                    "published_uses": { "type": "boolean" }
+                }
+            }
+        },
+        "actions": {
+            "type": "array",
+            "description": "Actions that hold the item in a job config. Present only when the caller holds admin.action.read.",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "name"],
+                "properties": {
+                    "id": { "type": "integer", "minimum": 1 },
+                    "name": { "type": "string" }
+                }
+            }
+        },
+        "hidden_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Usages the caller may not see (pages without read, or actions without admin.action.read)."
+        }
+    }
+}

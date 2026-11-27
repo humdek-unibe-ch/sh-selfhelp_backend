@@ -114,20 +114,6 @@ class FormValidationService extends BaseService
     }
 
     /**
-     * Validate page access for anonymous users
-     * This is a special validation for public form submissions
-     *
-     * @param int $pageId The page ID
-     * @param int $sectionId The section ID to validate
-     * @return array<string, mixed> Validation result with page and section info
-     * @throws ServiceException If page is not accessible
-     */
-    public function validatePublicPageAccess(int $pageId, int $sectionId, bool $preview = false): array
-    {
-        return $this->resultOf($this->authorize(FormListGuard::OP_CREATE, $pageId, $sectionId, $preview));
-    }
-
-    /**
      * Authorize one write to a form section (or one delete through a delete action) and resolve
      * everything the write is checked against.
      *

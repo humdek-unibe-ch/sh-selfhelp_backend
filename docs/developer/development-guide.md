@@ -305,7 +305,7 @@ All API responses follow a consistent JSON envelope structure:
 ### ACL Stored Procedure
 ```sql
 CALL get_user_acl(userId, pageId)
--- Returns: acl_select, acl_insert, acl_update, acl_delete
+-- Returns: acl_select (see the page)
 ```
 
 ## Transaction Logging

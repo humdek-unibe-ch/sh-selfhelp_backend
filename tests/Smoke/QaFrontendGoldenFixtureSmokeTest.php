@@ -105,27 +105,22 @@ final class QaFrontendGoldenFixtureSmokeTest extends QaKernelTestCase
         self::assertNotSame('', (string) $this->fieldContent($formSection, 'alert_success'),
             'The form must seed a non-empty alert_success so the success alert renders.');
 
-        // The subject group ACL row grants select + insert.
+        // The subject group ACL row grants see (and so form use).
         $subjectGroup = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subjectGroup);
         $acl = $this->em->getRepository(PageAclGroup::class)
             ->findOneBy(['group' => $subjectGroup, 'page' => $page]);
         self::assertInstanceOf(PageAclGroup::class, $acl, 'subject group must have an ACL row on qa-feedback.');
-        self::assertTrue($acl->getAclSelect(), 'subject must be able to view qa-feedback.');
-        self::assertTrue($acl->getAclInsert(), 'subject must be able to submit qa-feedback.');
+        self::assertTrue($acl->getAclSelect(), 'subject must be able to view and use qa-feedback.');
 
-        // End-to-end permission: qa.user (subject member) resolves view + submit.
+        // End-to-end permission: qa.user (subject member) resolves page access.
         $qaUser = $this->em->getRepository(User::class)
             ->findOneBy(['email' => QaBaselineFixture::QA_USER_EMAIL]);
         self::assertInstanceOf(User::class, $qaUser);
         $aclService = $this->service(ACLService::class);
         self::assertTrue(
-            $aclService->hasAccess((int) $qaUser->getId(), $pageId, 'select'),
-            'qa.user must resolve select access to qa-feedback through the subject group.'
-        );
-        self::assertTrue(
-            $aclService->hasAccess((int) $qaUser->getId(), $pageId, 'insert'),
-            'qa.user must resolve insert access to qa-feedback through the subject group.'
+            $aclService->hasAccess((int) $qaUser->getId(), $pageId),
+            'qa.user must resolve page access to qa-feedback through the subject group.'
         );
     }
 

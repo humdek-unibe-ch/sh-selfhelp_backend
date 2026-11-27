@@ -8,16 +8,17 @@
 
 namespace App\Controller\Api\V1\Admin;
 
+use App\Exception\ServiceException;
 use App\Repository\RoleDataAccessRepository;
+use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminDataAccessService;
+use App\Service\CMS\Admin\PluginResourceTypeService;
 use App\Service\Core\ApiResponseFormatter;
-use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Admin Data Access Controller
@@ -31,8 +32,36 @@ class AdminDataAccessController extends AbstractController
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
         private readonly AdminDataAccessService $adminDataAccessService,
         private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
+        private readonly JsonSchemaValidationService $jsonSchemaValidationService,
+        private readonly UserContextService $userContextService,
+        private readonly PluginResourceTypeService $pluginResourceTypes,
     ) {
+    }
+
+    /**
+     * Data-access resource types that enabled plugins add (H6), shown on the
+     * "Permissions for role" screen next to pages, data tables and groups.
+     */
+    public function getPluginResourceTypes(): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->pluginResourceTypes->listTypes(),
+            'responses/admin/data_access/plugin_resource_types'
+        );
+    }
+
+    /**
+     * The resources of one plugin resource type (for example every survey),
+     * contributed by the plugin through DataAccessResourcesEvent. A caller who
+     * is not a superuser sees only the items they hold the view grant on, each
+     * with `can_assign` (contract C9, F232).
+     */
+    public function getPluginResources(string $typeCode): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->pluginResourceTypes->listResources($typeCode, $this->requireCallerId()),
+            'responses/admin/data_access/plugin_resources'
+        );
     }
 
     /**
@@ -72,10 +101,7 @@ class AdminDataAccessController extends AbstractController
 
             return $this->responseFormatter->formatSuccess(array_values($grouped), 'responses/admin/data_access/roles_with_permissions');
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                'Failed to retrieve roles with permissions: ' . $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -87,6 +113,7 @@ class AdminDataAccessController extends AbstractController
     public function setRolePermissions(Request $request, int $roleId): JsonResponse
     {
         try {
+            $callerId = $this->requireCallerId();
             $data = json_decode($request->getContent(), false);
 
             if (!$data instanceof \stdClass) {
@@ -114,7 +141,7 @@ class AdminDataAccessController extends AbstractController
             $permissions = is_array($permissionsRaw)
                 ? array_values(array_filter($permissionsRaw, static fn ($p): bool => $p instanceof \stdClass))
                 : [];
-            $result = $this->adminDataAccessService->setRolePermissions($roleId, $permissions);
+            $result = $this->adminDataAccessService->setRolePermissions($callerId, $roleId, $permissions);
 
             return $this->responseFormatter->formatSuccess(
                 [
@@ -126,10 +153,7 @@ class AdminDataAccessController extends AbstractController
                 Response::HTTP_OK
             );
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                'Failed to set role permissions: ' . $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -144,10 +168,17 @@ class AdminDataAccessController extends AbstractController
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/data_access/effective_permissions');
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                'Failed to retrieve effective permissions: ' . $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
+    }
+
+    private function requireCallerId(): int
+    {
+        $userId = $this->userContextService->getCurrentUser()?->getId();
+        if ($userId === null) {
+            throw new ServiceException('User not authenticated', Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $userId;
     }
 }

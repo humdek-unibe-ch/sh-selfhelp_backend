@@ -51,7 +51,10 @@ final class AssetManagingRolesTest extends QaWebTestCase
     private const CREATOR_ROLE = 'qa_asset_creator_role';
     private const READER_ROLE = 'qa_asset_reader_role';
     private const PEER_ROLE = 'qa_asset_peer_role';
+    /** Holds the asset permissions plus one the uploader does not hold: rule 4.6f refuses it as a target. */
+    private const WIDER_ROLE = 'qa_asset_wider_role';
     private const ASSET_PERMISSIONS = ['admin.asset.read', 'admin.asset.create', 'admin.asset.update', 'admin.asset.delete'];
+    private const C4_CHANGE_OR_DELETE = 'You can only change or delete a role whose rights you all hold.';
 
     protected function setUp(): void
     {
@@ -70,6 +73,11 @@ final class AssetManagingRolesTest extends QaWebTestCase
         }
         // The reader role may look at assets but not create them.
         $roles->grantPermission($reader, 'admin.asset.read');
+        $wider = $roles->createRole(self::WIDER_ROLE);
+        foreach (self::ASSET_PERMISSIONS as $permission) {
+            $roles->grantPermission($wider, $permission);
+        }
+        $roles->grantPermission($wider, 'admin.user.read');
 
         $users->createUser(self::MULTI_EMAIL, 'QA Asset Multi', roles: [$creator, $reader]);
         $users->createUser(self::PEER_EMAIL, 'QA Asset Peer', roles: [$peer]);
@@ -97,6 +105,92 @@ final class AssetManagingRolesTest extends QaWebTestCase
         // An explicit list is taken as it is, whatever the uploader's own roles.
         $explicit = $this->upload($multi, 'qa-roles-explicit.png', ['role_ids' => (string) $this->roleId(self::READER_ROLE)]);
         self::assertSame([self::READER_ROLE], $this->roleNames($explicit));
+    }
+
+    /**
+     * Rule 4.6f on the target roles (decided 2026-11-19: the asset itself counts
+     * as held, the roles do not). A role the caller does not fully hold cannot
+     * be put on a new asset, and the refusal leaves no row, no file, no grant.
+     */
+    public function testAnUploadNamingARoleTheCallerDoesNotFullyHoldIsRefusedAndLeavesNothing(): void
+    {
+        $multi = $this->token(self::MULTI_EMAIL);
+        $wider = $this->roleId(self::WIDER_ROLE);
+        $creator = $this->roleId(self::CREATOR_ROLE);
+        $storage = $this->service(AssetStorageService::class);
+        $assetsBefore = $this->entityManager()->getRepository(Asset::class)->count([]);
+        $filesBefore = $this->filesOnDisk($storage->storageRoot());
+        $grantsBefore = $this->entityManager()->getRepository(RoleDataAccess::class)->count([]);
+
+        $this->client->request('POST', '/cms-api/v1/admin/assets', ['role_ids' => $creator . ',' . $wider], ['file' => $this->tempFile('qa-roles-wider.png')], $this->bearer($multi));
+        $this->assertRefusedByRoleHold(self::C4_CHANGE_OR_DELETE);
+
+        $entityManager = $this->entityManager();
+        $entityManager->clear();
+        self::assertSame($assetsBefore, $entityManager->getRepository(Asset::class)->count([]), 'No asset row remains');
+        self::assertSame($filesBefore, $this->filesOnDisk($storage->storageRoot()), 'No stored file remains');
+        self::assertSame($grantsBefore, $entityManager->getRepository(RoleDataAccess::class)->count([]), 'No grant remains');
+    }
+
+    public function testAnUploadNamingOnlyTheUploadersOwnRolesIsAccepted(): void
+    {
+        $multi = $this->token(self::MULTI_EMAIL);
+        $asset = $this->upload($multi, 'qa-roles-own-list.png', ['role_ids' => $this->roleId(self::CREATOR_ROLE) . ',' . $this->roleId(self::READER_ROLE)]);
+
+        self::assertSame([self::CREATOR_ROLE, self::READER_ROLE], $this->roleNames($asset));
+    }
+
+    public function testEditingTheManagingRolesAddsAndRemovesOnlyRolesTheCallerFullyHolds(): void
+    {
+        $multi = $this->token(self::MULTI_EMAIL);
+        $admin = $this->loginAsQaAdmin();
+        $creator = $this->roleId(self::CREATOR_ROLE);
+        $wider = $this->roleId(self::WIDER_ROLE);
+
+        // Adding the wider role is refused; nothing changes.
+        $own = $this->upload($multi, 'qa-roles-edit-own.png', ['name' => 'qa edit before']);
+        $ownId = $this->asInt($own['id']);
+        $this->client->request('POST', '/cms-api/v1/admin/assets/' . $ownId, ['name' => 'qa edit after', 'role_ids' => $creator . ',' . $wider], [], $this->bearer($multi));
+        $this->assertRefusedByRoleHold(self::C4_CHANGE_OR_DELETE);
+        $unchanged = $this->assetData($admin, $ownId);
+        self::assertSame('qa edit before', $unchanged['name']);
+        self::assertSame([self::CREATOR_ROLE], $this->roleNames($unchanged));
+
+        // An asset the wider role also manages: dropping that role is refused too.
+        $shared = $this->upload($admin, 'qa-roles-edit-shared.png', ['role_ids' => $creator . ',' . $wider]);
+        $sharedId = $this->asInt($shared['id']);
+        self::assertSame([self::CREATOR_ROLE, self::WIDER_ROLE], $this->roleNames($shared));
+        $this->client->request('POST', '/cms-api/v1/admin/assets/' . $sharedId, ['role_ids' => (string) $creator], [], $this->bearer($multi));
+        $this->assertRefusedByRoleHold(self::C4_CHANGE_OR_DELETE);
+        self::assertSame([self::CREATOR_ROLE, self::WIDER_ROLE], $this->roleNames($this->assetData($admin, $sharedId)));
+
+        // Keeping the list as it is changes no role and is accepted.
+        $this->postEdit($multi, $sharedId, ['alt' => 'qa kept', 'role_ids' => $creator . ',' . $wider]);
+
+        // The caller may still delete the asset: the clean-up of its grants is not a role change.
+        $this->client->request('DELETE', '/cms-api/v1/admin/assets/' . $sharedId, [], [], $this->bearer($multi));
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), (string) $this->client->getResponse()->getContent());
+    }
+
+    public function testFolderAccessNamesOnlyRolesTheCallerFullyHolds(): void
+    {
+        $multi = $this->token(self::MULTI_EMAIL);
+        $admin = $this->loginAsQaAdmin();
+        $creator = $this->roleId(self::CREATOR_ROLE);
+        $wider = $this->roleId(self::WIDER_ROLE);
+
+        $folder = $this->asInt($this->asArray($this->asList(
+            $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/admin/asset-folders', ['name' => 'qa-roles-access-folder'], $admin))
+        )[0] ?? null)['id']);
+        $asset = $this->upload($multi, 'qa-roles-in-folder.png', ['folder_id' => (string) $folder]);
+        $id = $this->asInt($asset['id']);
+
+        $this->assertEnvelope403($this->jsonRequest('POST', '/cms-api/v1/admin/asset-folders/' . $folder . '/access', ['role_ids' => [$creator, $wider]], $multi));
+        self::assertStringContainsString(self::C4_CHANGE_OR_DELETE, $this->asString($this->decode($this->client->getResponse())['error'] ?? ''));
+        self::assertSame([self::CREATOR_ROLE], $this->roleNames($this->assetData($admin, $id)), 'The refusal changed nothing');
+
+        $result = $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/admin/asset-folders/' . $folder . '/access', ['role_ids' => [$creator]], $multi));
+        self::assertSame(['updated' => 1], $result);
     }
 
     public function testAnEmptyManagingRoleListIsRefusedUnlessTheCallerIsAdmin(): void
@@ -287,6 +381,24 @@ final class AssetManagingRolesTest extends QaWebTestCase
         $response = $this->client->getResponse();
         self::assertSame(400, $response->getStatusCode(), (string) $response->getContent());
         self::assertStringContainsString('at least one managing role', $this->asString($this->decode($response)['error'] ?? ''));
+    }
+
+    private function assertRefusedByRoleHold(string $text): void
+    {
+        $response = $this->client->getResponse();
+        self::assertSame(403, $response->getStatusCode(), (string) $response->getContent());
+        self::assertStringContainsString($text, $this->asString($this->decode($response)['error'] ?? ''));
+    }
+
+    /**
+     * @return list<string> names of the files in the asset storage directory
+     */
+    private function filesOnDisk(string $directory): array
+    {
+        $names = array_values(array_diff(scandir($directory) ?: [], ['.', '..']));
+        sort($names);
+
+        return $names;
     }
 
     private function token(string $email): string

@@ -3,7 +3,7 @@
 Audience: Plugin authors and backend developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-23.
+Last verified: 2026-11-27 (host services, renderer 0.4.0).
 Source of truth: Plugin layer code and the schemas under this folder.
 
 The SelfHelp mobile app (Expo / React Native) consumes plugins
@@ -23,7 +23,7 @@ web frontend. Mobile plugins are **opt-in** per plugin via the
     "pluginApi": ">=0.1.0 <0.2.0",
     "reactNative": "^0.83",
     "expoSdk": "^55",
-    "mobile": ">=0.1.0 <0.2.0"
+    "mobile": ">=0.2.0"
   },
   "mobile": {
     "package": "@humdek/sh2-shp-survey-js-mobile",
@@ -43,7 +43,10 @@ its normal package entrypoint; there is no manifest `entryPoint`,
 `supportsOffline`, or `minExpoSdk` field.
 
 The `compatibility.mobile` range declares which mobile renderer
-contract versions the plugin supports. The mobile app and the
+contract versions the plugin supports. Declare an open lower bound
+(`>=0.2.0`), not a closed range: a range such as `>=0.1.0 <0.2.0` blocks
+every later renderer contract, and a caret range on `0.x` (`^0.3.0`) does
+not match `0.4.0`. The mobile app and the
 `selfhelp-mobile-preview` image advertise their renderer contract as
 `mobileRendererVersion`; the SelfHelp Manager blocks a preview image
 when a plugin's `compatibility.mobile`, `compatibility.reactNative`, or
@@ -65,6 +68,35 @@ The shared SDK enforces three rules for `mobile` plugins:
    `Pressable`, `TextInput`, `RichTextEditor`). Plugins must not
    import `react-native-*` directly; that breaks code-splitting and
    the web preview.
+
+## Host services on mobile
+
+A plugin reaches the backend and the device only through the host services
+bridge (`getMobileHostServices()` from `@selfhelp/shared/plugin-sdk`). It never
+imports a native module of the app, never asks the system for a permission
+itself and keeps no secret on the device. Every member below is optional: a
+plugin feature-detects it (`if (host.upload)`) because an older app binary does
+not have it. The members marked 0.4.0 need `compatibility.mobile` `>=0.4.0`.
+
+| Member | Renderer | What the host does |
+| --- | --- | --- |
+| `request` | 0.2.0 | An authenticated JSON request (token, client headers, one 401 refresh). An absolute path is refused. |
+| `navigate` | 0.3.0 | Routes an in-content redirect through the app's navigation. |
+| `upload` | 0.4.0 | The same, as `multipart/form-data` with files given by `uri` or `base64`. One 25 MB limit per request. Answers `invalid_upload` or `file_too_large` without sending. |
+| `requestPermission` | 0.4.0 | Asks the system for `'microphone'` or `'camera'` and answers `granted`, `denied` (may ask again) or `blocked` (the system will not ask again). |
+| `openAppSettings` | 0.4.0 | Opens the app's system settings so a user can change a `blocked` permission. Does nothing in the web preview. |
+| `getPluginStorage` | 0.4.0 | A key-value store per server, user (guest `0`) and plugin for drafts and view state: 256 KB in total, `plugin_storage_full` over it. Emptied on logout, server switch and a rejected refresh. Not encrypted: no secrets. |
+
+Examples and the exact rules are in [host-hooks.md](./host-hooks.md) (C27 to C30).
+The iOS purpose texts for microphone and camera name forms and surveys, so the
+stores accept a plugin asking for them. Recording inside a plugin's own WebView
+also needs WebView and CSP settings in the plugin itself.
+
+**HTML.** React Native does not render HTML. For native text use
+`parseInlineRich` and `stripHtmlToText` from `@selfhelp/shared/plugin-sdk`. For
+HTML inside the plugin's own WebView, bundle a sanitizer into the WebView
+runtime and keep a strict CSP; the host offers no sanitizer on mobile. The web
+part uses `api.sanitizeHtml` and never bundles one. See `concepts/plugins.md`.
 
 ## Realtime on mobile
 

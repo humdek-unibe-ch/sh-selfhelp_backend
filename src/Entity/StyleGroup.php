@@ -13,6 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: "App\Repository\StyleGroupRepository")]
 #[ORM\Table(name: 'style_groups')]
+#[ORM\Index(name: 'idx_style_groups_id_plugins', columns: ['id_plugins'])]
 #[ORM\UniqueConstraint(name: 'uq_style_groups_name', columns: ['name'])]
 class StyleGroup
 {
@@ -37,6 +38,27 @@ class StyleGroup
 
     #[ORM\Column(name: 'position', type: 'integer', nullable: true)]
     private ?int $position = null;
+
+    /**
+     * Plugin that declared this row in its manifest. NULL = core-owned.
+     * Written by the plugin installer ({@see \App\Plugin\Lifecycle\PluginCatalogueSynchronizer});
+     * `ON DELETE SET NULL` like styles and fields, purge deletes the rows.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
+
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
+    {
+        $this->plugin = $plugin;
+
+        return $this;
+    }
 
     public function getId(): ?int
     {

@@ -96,17 +96,18 @@ class AdminGroupController extends AbstractController
                 );
             }
 
-            // Check if user has permission to read this specific group
-            // Admin users bypass permission checks
-            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
-                if (!$this->dataAccessSecurityService->hasPermission(
-                    $currentUserId,
-                    LookupService::RESOURCE_TYPES_GROUP,
-                    $groupId,
-                    DataAccessSecurityService::PERMISSION_READ
-                )) {
-                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
-                }
+            // Read grant on the group (rule 4.6g); check before the shared cache read.
+            // Superuser bypasses via hasPermission.
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $groupId,
+                DataAccessSecurityService::PERMISSION_READ
+            )) {
+                return $this->responseFormatter->formatError(
+                    'Access denied: you cannot read group ' . $groupId,
+                    Response::HTTP_FORBIDDEN
+                );
             }
 
             $group = $this->adminGroupService->getGroupById($groupId);
@@ -222,6 +223,28 @@ class AdminGroupController extends AbstractController
     public function getGroupAcls(int $groupId): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            // Read grant on the group (rule 4.6g); check before the shared cache read.
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $groupId,
+                DataAccessSecurityService::PERMISSION_READ
+            )) {
+                return $this->responseFormatter->formatError(
+                    'Access denied: you cannot read group ' . $groupId,
+                    Response::HTTP_FORBIDDEN
+                );
+            }
+
             $acls = $this->adminGroupService->getGroupAcls($groupId);
             return $this->responseFormatter->formatSuccess(['acls' => $acls]);
         } catch (\Exception $e) {
@@ -238,9 +261,22 @@ class AdminGroupController extends AbstractController
     public function updateGroupAcls(int $groupId, Request $request): JsonResponse
     {
         try {
+            $userId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($userId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $data = $this->validateRequest($request, 'requests/admin/update_group_acls', $this->jsonSchemaValidationService);
-            
-            $acls = $this->adminGroupService->updateGroupAcls($groupId, $this->asListOfArrays($data['acls'] ?? null));
+
+            $acls = $this->adminGroupService->updateGroupAcls(
+                $userId,
+                $groupId,
+                $this->asListOfArrays($data['acls'] ?? null)
+            );
 
             // Permissions cache is automatically invalidated by the service
 

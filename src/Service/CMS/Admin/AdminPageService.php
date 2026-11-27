@@ -24,12 +24,16 @@ use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\NavigationAssignmentService;
 use App\Service\CMS\NavigationCacheInvalidator;
+use App\Service\Sync\ChangeNoticeService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\UserContextAwareService;
+use App\Service\Security\CallerHoldingsService;
+use App\Service\Security\CreatorGrantService;
 use App\Service\Security\DataAccessSecurityService;
+use App\Service\Security\ResourceGrantService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -63,10 +67,55 @@ class AdminPageService extends BaseService
         private readonly PageParentRouteSyncService $pageParentRouteSyncService,
         private readonly NavigationAssignmentService $navigationAssignmentService,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly ChangeNoticeService $notices,
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly CmsAppService $cmsAppService,
+        private readonly CreatorGrantService $creatorGrants,
+        private readonly CallerHoldingsService $callerHoldings,
+        private readonly ResourceGrantService $resourceGrants,
     ) {
+    }
+
+    /** Route permission each page right needs, besides the grant bit on the page. */
+    private const RIGHT_PERMISSIONS = [
+        'can_update' => 'admin.page.update',
+        'can_delete' => 'admin.page.delete',
+        'can_publish' => 'admin.page_version.publish',
+    ];
+
+    /** Grant bit on the page each right needs: publishing changes what visitors see, so it needs update. */
+    private const RIGHT_GRANT_BITS = [
+        'can_update' => DataAccessSecurityService::PERMISSION_UPDATE,
+        'can_delete' => DataAccessSecurityService::PERMISSION_DELETE,
+        'can_publish' => DataAccessSecurityService::PERMISSION_UPDATE,
+    ];
+
+    /**
+     * What the signed-in person may do with this page in the CMS, by the two
+     * checks an editor needs (concepts "The three checks"): the route
+     * permission and the grant bit on this page. The superuser may do all.
+     * Per caller, so it is added after the cached page is read and never
+     * cached with it. Only drawing: every write still checks on its own.
+     *
+     * @return array{can_update: bool, can_delete: bool, can_publish: bool}
+     */
+    public function pageRightsForCurrentUser(int $pageId): array
+    {
+        $user = $this->userContextAwareService->getCurrentUser();
+        $userId = $user !== null ? (int) $user->getId() : 0;
+        $pagesTypeId = (int) $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_PAGES);
+
+        $rights = ['can_update' => false, 'can_delete' => false, 'can_publish' => false];
+        if ($userId <= 0 || $pagesTypeId <= 0) {
+            return $rights;
+        }
+        foreach (self::RIGHT_PERMISSIONS as $right => $permission) {
+            $rights[$right] = $this->callerHoldings->holdsPermission($userId, $permission)
+                && $this->callerHoldings->holdsGrantBits($userId, $pagesTypeId, $pageId, self::RIGHT_GRANT_BITS[$right]);
+        }
+
+        return $rights;
     }
 
     /**
@@ -233,15 +282,16 @@ class AdminPageService extends BaseService
                 // nothing is added, and that is not an error. Admins need no
                 // group: the admin role bypasses page ACLs (ACLService::hasAccess).
                 foreach ($groupRepo->findBy(['addToNewPages' => true]) as $defaultGroup) {
-                    $this->aclService->addGroupAcl($page, $defaultGroup, true, false, false, false, $this->entityManager);
+                    $this->aclService->addGroupAcl($page, $defaultGroup, $this->entityManager);
                     $grantedGroupIds[(int) $defaultGroup->getId()] = true;
                 }
             }
             // CMS application pages stay admin/editor-only: no default reader
             // groups are added; the author grants editor groups explicitly.
 
-            // Author-selected groups: full CRUD on cms-app pages (they are the
-            // app's editors), read-only on public pages (they are viewers).
+            // Author-selected groups: select only on every surface. Editing the
+            // page in the CMS comes from the creator's role grants (F14), not
+            // from group ACL bits (F03: one right, see).
             foreach ($accessGroups as $groupId) {
                 if (isset($grantedGroupIds[$groupId])) {
                     continue;
@@ -250,17 +300,17 @@ class AdminPageService extends BaseService
                 if (!$group) {
                     $this->throwNotFound("Group with ID {$groupId} not found");
                 }
-                $this->aclService->addGroupAcl(
-                    $page,
-                    $group,
-                    true,
-                    $isCmsSurface,
-                    $isCmsSurface,
-                    $isCmsSurface,
-                    $this->entityManager
-                );
+                $this->aclService->addGroupAcl($page, $group, $this->entityManager);
                 $grantedGroupIds[$groupId] = true;
             }
+
+            // F14: the caller's roles that hold admin.page.create get full
+            // data-access on the new page (admin role is never stored).
+            $this->creatorGrants->grantCallerRolesHolding(
+                'admin.page.create',
+                LookupService::RESOURCE_TYPES_PAGES,
+                (int) $page->getId(),
+            );
 
 
             if (is_array($navigationAssignments) && $navigationAssignments !== []) {
@@ -320,6 +370,9 @@ class AdminPageService extends BaseService
             }
 
             $this->entityManager->commit();
+
+            // Live sync: a new page changes the menu of the groups that see it.
+            $this->notices->navigationChanged();
 
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
@@ -531,6 +584,16 @@ class AdminPageService extends BaseService
                 ->invalidateAllListsInCategory();
             $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
 
+            // Live sync: URL, open access, headless and page fields are live, not versioned,
+            // so the page and the menu changed for everyone who may see it.
+            $this->notices->pagePublishedChanged((int) $page->getId());
+
+            // The global values live in a field of the `sh-global-values` page: every page
+            // that interpolates `{{globals.*}}` has to be read again by everybody.
+            if ($page->getKeyword() === 'sh-global-values') {
+                $this->notices->globalValuesChanged();
+            }
+
             // Check if this is the CMS preferences page
             if ($page->getKeyword() == CmsPreferenceService::SH_CMS_PREFERENCES_KEYWORD) {
                 // Clear ALL cache categories when CMS preferences are updated
@@ -630,6 +693,9 @@ class AdminPageService extends BaseService
             $this->entityManager->remove($page);
             $this->entityManager->flush();
 
+            // The grant rows have no foreign key to the page (F280): they go with it.
+            $revokedRoleIds = $this->resourceGrants->revokeAll(LookupService::RESOURCE_TYPES_PAGES, $pageIdForLog);
+
             if ($formerCmsApp !== null && $formerCmsApp->getId() !== null) {
                 $this->cmsAppService->onPageDeleted($formerCmsApp);
             }
@@ -647,6 +713,11 @@ class AdminPageService extends BaseService
 
             $this->entityManager->commit();
 
+            // The roles that held a grant on the page: their rights, access stamp and open clients.
+            foreach ($revokedRoleIds as $roleId) {
+                $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
+            }
+
             // Invalidate entity-scoped cache for this specific page
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageIdForLog);
             $this->cache
@@ -662,6 +733,9 @@ class AdminPageService extends BaseService
             // resolving (create/update already invalidate via syncRoutes()).
             $this->pageRouteService->invalidateResolverCache();
             $this->navigationCacheInvalidator->invalidateForPageDeletion($pageIdForLog);
+
+            // Live sync: the page left the menu (its group rows are gone, so only the menu is named).
+            $this->notices->navigationChanged();
 
             return $deleted_page;
         } catch (\Throwable $e) {

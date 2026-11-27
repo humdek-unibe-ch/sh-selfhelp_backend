@@ -273,7 +273,7 @@ Toggle a user's blocked status.
 
 **Response:** Updated user data with new blocked status
 
-**Permissions:** `admin.user.block` or `admin.user.unblock`
+**Permissions:** `admin.user.block` (blocking and unblocking; `admin.user.unblock` was removed on 2026-11-19)
 
 ### Stats, bulk actions and CSV
 
@@ -777,7 +777,9 @@ Retrieve a list of all user groups.
         "acls": [...],
         "created_at": "2024-01-15T10:30:00Z",
         "updated_at": "2024-01-20T14:45:00Z",
-        "user_count": 5
+        "user_count": 5,
+        "can_update": true,
+        "can_delete": false
       }
     ],
     "total": 10,
@@ -787,6 +789,8 @@ Retrieve a list of all user groups.
   }
 }
 ```
+
+`can_update` / `can_delete` are the **caller's** rights on that group (rule 4.11): the route right (`admin.group.update` / `admin.group.delete`) **and** the update / delete bit of a grant on the group; the superuser always `true`. They are added after the cached list is read. When `false`, the matching write answers `403`.
 
 **Permissions:** `admin.group.read`
 
@@ -919,6 +923,8 @@ Retrieve all available roles.
 ```
 
 **Permissions:** `admin.role.read`
+
+Each role item (list and `GET /admin/roles/{roleId}`) also carries three per-caller booleans, added after the cache read (rule 4.11): `can_update`, `can_delete` and `fully_held`. `fully_held` is `true` when the caller holds every permission and every data-access grant bit of the role (rule 4.6f); a superuser caller gets `true` for every role, a caller who is not superuser gets `false` for the superuser role. Clients use it to disable roles the caller may not hand out (the managing roles of an asset), instead of showing the refusal after submit (F219). Example item: `{"id": 7, "name": "qa_read_role", "is_superuser": false, "permissions_count": 2, "users_count": 1, "can_update": true, "can_delete": false, "fully_held": true}`.
 
 ### Create Role
 
@@ -1058,7 +1064,7 @@ Retrieve the complete list of available permissions.
 }
 ```
 
-**Permissions:** `admin.permission.read`
+**Permissions:** `admin.permission.read` or `admin.role.update` (a role editor needs the names to edit a role; F224). Each permission also carries the caller's `can_assign` and `implied_read`.
 
 ## Data Access Management
 

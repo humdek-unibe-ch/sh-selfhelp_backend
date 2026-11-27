@@ -137,7 +137,7 @@ final class FormMultipartFieldsTest extends QaWebTestCase
         $bio = $this->addChild($form, $prefix . '_bio', 'textarea', 'qa_bio');
         $subject = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $subject);
-        $this->pages->grantGroupAcl($page, $subject, select: true, insert: true, update: true, delete: true);
+        $this->pages->grantGroupAcl($page, $subject);
 
         return [$page, $form, $upload, $bio];
     }
