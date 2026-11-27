@@ -95,11 +95,14 @@ the same change wave:
 - raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
   adopts it.
 
-> **Current floor (2026-11-23):** **frontend `>=0.1.77` ⇄ core `>=0.1.50`** (live-sync follow-ups:
+> **Current floor (2026-11-26):** **frontend `>=0.1.79` ⇄ core `>=0.1.52`** (plugin host hooks:
+> resource tags and where-used, plugin settings and action-plannable jobs, sync maps, `content_ref` /
+> `record_ref`, pluginApiVersion `0.2.0`). The backend `supports.frontend` is raised here; frontend 0.1.79
+> raises its `supports.core` to `>=0.1.52`.
+> The floor before it was frontend `>=0.1.77` ⇄ core `>=0.1.50` (live-sync follow-ups:
 > `409 lock_idle_ended` after the idle end; delete/publish callers read the lock and respect another's lock;
-> frontend 0.1.77 handles both). The backend `supports.frontend` is raised here; frontend 0.1.77 raises its
-> `supports.core` to `>=0.1.50`.
-> The floor before it was frontend `>=0.1.76` ⇄ core `>=0.1.49` (live sync: change notices,
+> frontend 0.1.77 handles both).
+> The floor before that was frontend `>=0.1.76` ⇄ core `>=0.1.49` (live sync: change notices,
 > page draft version `X-Page-Version` and the page edit lock; a frontend before 0.1.76 sends no version, so every
 > page-editor write gets `400 page_version_required` from core 0.1.49).
 > The floor before that was frontend `>=0.1.75` ⇄ core `>=0.1.48` (role-scope:

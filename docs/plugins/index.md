@@ -3,7 +3,7 @@
 Audience: Plugin authors and backend developers.
 Status: active.
 Applies to: SelfHelp2 plugin ecosystem (backend host side).
-Last verified: 2026-06-03.
+Last verified: 2026-11-26.
 Source of truth: Plugin layer code in `src/Plugin`, the schemas in this folder, and `AGENTS.md`.
 
 This is the canonical plugin documentation area. Filenames here are preserved because they are referenced from backend source comments and other repos.
@@ -12,6 +12,7 @@ This is the canonical plugin documentation area. Filenames here are preserved be
 
 - [architecture.md](architecture.md) - Plugin ecosystem architecture and the host extension surfaces.
 - [developer-guide.md](developer-guide.md) - Building a plugin against the host.
+- [host-hooks.md](host-hooks.md) - Host hooks of plugin API 0.2.0 (resources, sync, jobs, settings, C2–C26).
 - [installation.md](installation.md) - Installing plugins into a host.
 
 ## Security and trust

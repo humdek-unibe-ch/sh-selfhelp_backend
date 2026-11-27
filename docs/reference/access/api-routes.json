@@ -24,6 +24,17 @@
       ]
     },
     {
+      "name": "admin_actions_plugin_job_types_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/actions/plugin-job-types",
+      "is_public": false,
+      "permissions": [
+        "admin.action.read"
+      ]
+    },
+    {
       "name": "admin_actions_delete",
       "methods": [
         "DELETE"
@@ -1777,6 +1788,28 @@
       ]
     },
     {
+      "name": "admin_plugins_settings_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/plugins/{pluginId}/settings",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
+      "name": "admin_plugins_settings_put",
+      "methods": [
+        "PUT"
+      ],
+      "path": "/admin/plugins/{pluginId}/settings",
+      "is_public": false,
+      "permissions": [
+        "admin.plugins.manage"
+      ]
+    },
+    {
       "name": "admin_plugins_uninstall",
       "methods": [
         "POST"
@@ -1851,6 +1884,17 @@
       "is_public": false,
       "permissions": [
         "admin.registration_code.read"
+      ]
+    },
+    {
+      "name": "admin_resources_usage_get",
+      "methods": [
+        "GET"
+      ],
+      "path": "/admin/resources/{type}/{id}/usage",
+      "is_public": false,
+      "permissions": [
+        "admin.access"
       ]
     },
     {
