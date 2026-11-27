@@ -12,6 +12,7 @@ use App\Entity\DataTable;
 use App\Entity\Language;
 use App\Entity\ScheduledJob;
 use App\Entity\User;
+use App\Plugin\ScheduledJob\PluginActionJobTypes;
 use App\Repository\ActionTranslationRepository;
 use App\Repository\DataTableRepository;
 use App\Repository\UserRepository;
@@ -43,7 +44,9 @@ class ActionSchedulerService extends BaseService
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly MailTemplateService $mailTemplateService,
         private readonly ActionTranslationRepository $actionTranslationRepository,
-        private readonly VariableResolverService $variableResolverService
+        private readonly VariableResolverService $variableResolverService,
+        // The job types of enabled plugins (C12). Optional so a scheduler built by hand plans core jobs only.
+        private readonly ?PluginActionJobTypes $pluginJobTypes = null
     ) {
     }
 
@@ -182,6 +185,58 @@ class ActionSchedulerService extends BaseService
     }
 
     /**
+     * The action's stored config as an array (it may be stored double-encoded).
+     *
+     * @return array<string, mixed>
+     */
+    private function decodeStoredConfig(Action $action): array
+    {
+        $stored = $action->getConfig();
+        if ($stored === null || trim($stored) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($stored, true);
+        while (is_string($decoded)) {
+            $decoded = json_decode($decoded, true);
+        }
+
+        return $this->toConfigArray($decoded);
+    }
+
+    /**
+     * The `plugin_config` of a plugin job for one recipient (contract C12): the properties the
+     * plugin's schema marks `format: variable-text` get their `{{variables}}` resolved like the
+     * texts of core jobs (`{{recipient.*}}`, `{{record.<field>}}`, `{{system.*}}`); every other
+     * property is passed on as stored.
+     *
+     * @param array<string, mixed> $configSchema
+     *   The job type's flat JSON Schema.
+     * @param array<string, mixed> $storedConfig
+     *   The `plugin_config` as the editor saved it.
+     *
+     * @return array<string, mixed>
+     */
+    private function renderPluginConfig(array $configSchema, array $storedConfig, User $recipient, ActionTriggerContext $triggerContext): array
+    {
+        $properties = $this->asArray($configSchema['properties'] ?? null);
+        $rendered = $storedConfig;
+        $context = null;
+
+        foreach ($storedConfig as $name => $value) {
+            $property = $this->asArray($properties[$name] ?? null);
+            if (($property['format'] ?? null) !== 'variable-text' || !is_string($value) || $value === '') {
+                continue;
+            }
+
+            $context ??= $this->buildTemplateContext($recipient, $triggerContext);
+            $rendered[$name] = $this->templateContextBuilder->render($value, $context);
+        }
+
+        return $rendered;
+    }
+
+    /**
      * Schedule every job produced by a resolved action runtime configuration.
      *
      * @param array<string, mixed> $runtimeConfig
@@ -202,6 +257,9 @@ class ActionSchedulerService extends BaseService
         $firstJob = $this->toConfigArray($firstBlockJobs[0] ?? null);
         $firstJobDates = $this->scheduleCalculator->calculateDates($runtimeConfig, $firstJob);
         $iterations = $this->configRuntimeService->getIterationCount($runtimeConfig, count($firstJobDates));
+        // The stored config, for the `plugin_config` of plugin jobs (C12): the runtime config
+        // was interpolated early and has already blanked the record and system variables.
+        $storedBlocks = $this->asArray($this->decodeStoredConfig($action)[ActionConfig::BLOCKS] ?? null);
 
         for ($iteration = 0; $iteration < $iterations; $iteration++) {
             $selectedBlocks = $this->configRuntimeService->selectBlocksForIteration($action, $runtimeConfig);
@@ -211,11 +269,15 @@ class ActionSchedulerService extends BaseService
                     continue;
                 }
 
-                foreach ($this->asArray($block[ActionConfig::JOBS] ?? null) as $job) {
+                $storedBlock = $this->toConfigArray($storedBlocks[$this->asInt($block['index'] ?? -1)] ?? null);
+                $storedJobs = $this->asArray($storedBlock[ActionConfig::JOBS] ?? null);
+
+                foreach ($this->asArray($block[ActionConfig::JOBS] ?? null) as $jobIndex => $job) {
                     if (!is_array($job)) {
                         continue;
                     }
                     $job = $this->toConfigArray($job);
+                    $storedJob = $this->toConfigArray($storedJobs[$jobIndex] ?? null);
 
                     foreach ($recipientUserIds as $recipientUserId) {
                         if (!$this->conditionEvaluator->passes($this->conditionArg($job[ActionConfig::CONDITION] ?? null), $recipientUserId, 'action.job')) {
@@ -233,7 +295,16 @@ class ActionSchedulerService extends BaseService
                             continue;
                         }
 
-                        $createdJobs = $this->scheduleSingleJob($action, $runtimeConfig, $context, $job, $recipientUserId, $executionDate, scheduleContext: $scheduleContext);
+                        $createdJobs = $this->scheduleSingleJob(
+                            $action,
+                            $runtimeConfig,
+                            $context,
+                            $job,
+                            $recipientUserId,
+                            $executionDate,
+                            scheduleContext: $scheduleContext,
+                            storedPluginConfig: $this->toConfigArray($storedJob[ActionConfig::PLUGIN_CONFIG] ?? null)
+                        );
                         if ($createdJobs === []) {
                             continue;
                         }
@@ -264,6 +335,8 @@ class ActionSchedulerService extends BaseService
      *   The fully interpolated action configuration.
      * @param array<string, mixed> $job
      *   The action job definition being materialized.
+     * @param array<string, mixed> $storedPluginConfig
+     *   The `plugin_config` of the job as it is saved (not interpolated); only plugin jobs read it.
      *
      * @return ScheduledJob[]
      *   The created scheduled jobs. Email jobs fan out into one job per
@@ -281,7 +354,8 @@ class ActionSchedulerService extends BaseService
         ?DataTable $reminderDataTable = null,
         ?\DateTimeImmutable $reminderSessionStart = null,
         ?\DateTimeImmutable $reminderSessionEnd = null,
-        ?ActionScheduleContext $scheduleContext = null
+        ?ActionScheduleContext $scheduleContext = null,
+        array $storedPluginConfig = []
     ): array {
         $user = $this->userRepository->find($recipientUserId);
         if (!$user instanceof User) {
@@ -292,6 +366,20 @@ class ActionSchedulerService extends BaseService
         $notificationConfig = $this->toConfigArray($job[ActionConfig::NOTIFICATION] ?? null);
         $onJobExecute = $this->toConfigArray($job[ActionConfig::ON_JOB_EXECUTE] ?? null);
 
+        // C12: a job whose type is not one of the core types belongs to an enabled plugin. A reminder
+        // (it has a parent job) is always a core job.
+        $pluginJobType = null;
+        if ($parentJob === null && !PluginActionJobTypes::isCoreType($actionJobType)) {
+            $pluginJobType = $this->pluginJobTypes?->find($actionJobType);
+            if ($pluginJobType === null) {
+                // The plugin was disabled or removed after the action was saved: plan nothing rather than a core job.
+                return [];
+            }
+        }
+
+        // C26: a job planned from a record trigger keeps the version reference; a reminder does not.
+        $recordRef = $parentJob === null ? $context->recordRef : null;
+
         $jobData = [
             'type' => $this->resolveScheduledJobType($job, $notificationConfig),
             'description' => $this->asString($job[ActionConfig::JOB_NAME] ?? sprintf('Scheduled job for action %s', $action->getName())),
@@ -300,6 +388,7 @@ class ActionSchedulerService extends BaseService
             'action' => $action,
             'dataTable' => $context->dataTable,
             'dataRow' => $context->dataRow,
+            'record_ref' => $recordRef,
             'parent_job' => $parentJob,
             'reminder_data_table' => $reminderDataTable,
             'reminder_session_start' => $reminderSessionStart,
@@ -308,6 +397,21 @@ class ActionSchedulerService extends BaseService
             'schedule' => $this->buildScheduleMetadata($job, $user, $scheduleContext, $executionDate),
             'action_job_type' => $actionJobType,
         ];
+
+        if ($pluginJobType !== null) {
+            $jobData['type'] = $actionJobType;
+            $jobData['plugin_job_config'] = [
+                'plugin_config' => $this->renderPluginConfig($pluginJobType['config_schema'], $storedPluginConfig, $user, $context),
+                'record_id' => $context->dataRow->getId(),
+                'record_ref' => $recordRef,
+                'data_table_id' => $context->dataTable->getId(),
+                'trigger' => $context->triggerType,
+            ];
+
+            $scheduledJob = $this->jobSchedulerService->scheduleJob($jobData, $context->transactionBy);
+
+            return $scheduledJob instanceof ScheduledJob ? [$scheduledJob] : [];
+        }
 
         if ($jobData['type'] === LookupService::JOB_TYPES_EMAIL) {
             return $this->scheduleEmailJobs($action, $jobData, $runtimeConfig, $notificationConfig, $user, $recipientUserId, $context);

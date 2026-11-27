@@ -10,6 +10,7 @@ namespace App\Repository;
 
 use App\Entity\ScheduledJob;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\ORM\QueryBuilder;
 
@@ -507,6 +508,116 @@ class ScheduledJobRepository extends ServiceEntityRepository
             ->execute();
 
         return $affected === 1;
+    }
+
+    /**
+     * Mark a job as failed when it has not reached an end state: it is still `queued` or `running`.
+     *
+     * Used by the runner for a job whose child process was stopped after its timeout (contract C22):
+     * the child's transaction, the claim included, was rolled back with it, so the job reads as
+     * queued again. The single UPDATE is guarded by the current status, so a job that is over
+     * (done, failed, skipped, cancelled, deleted) is never changed.
+     *
+     * @param int $jobId
+     *   The job to mark.
+     * @param \DateTimeInterface $at
+     *   The end time recorded on the job.
+     *
+     * @return bool
+     *   `true` when this call changed the job.
+     */
+    public function markFailedIfPending(int $jobId, \DateTimeInterface $at): bool
+    {
+        $em = $this->getEntityManager();
+
+        $statusIds = [];
+        foreach (['queued', 'running', 'failed'] as $code) {
+            $statusIds[$code] = (int) $em->createQuery(
+                'SELECT l.id FROM App\\Entity\\Lookup l WHERE l.typeCode = :type AND l.lookupCode = :code'
+            )->setParameter('type', 'scheduledJobsStatus')->setParameter('code', $code)->getSingleScalarResult();
+        }
+
+        $affected = $em->createQuery(
+            'UPDATE App\\Entity\\ScheduledJob j
+                SET j.status = :failed, j.dateExecuted = :at
+              WHERE j.id = :id AND IDENTITY(j.status) IN (:pending)'
+        )
+            ->setParameter('failed', $statusIds['failed'])
+            ->setParameter('at', $at)
+            ->setParameter('id', $jobId)
+            ->setParameter('pending', [$statusIds['queued'], $statusIds['running']])
+            ->execute();
+
+        return $affected === 1;
+    }
+
+    /**
+     * The queued recurring jobs of the given job types (contract C25): every queued job whose
+     * config holds a `recurring` entry name.
+     *
+     * @param list<string> $jobTypeCodes
+     *   Codes of the `jobTypes` lookup, usually the job types of one plugin.
+     *
+     * @return list<array{id: int, job_type: string, recurring: string, date_to_be_executed: string}>
+     *   Earliest first; the due time is the stored UTC `Y-m-d H:i:s` text.
+     */
+    public function findQueuedRecurringJobs(array $jobTypeCodes): array
+    {
+        if ($jobTypeCodes === []) {
+            return [];
+        }
+
+        $rows = $this->getEntityManager()->getConnection()->fetchAllAssociative(
+            "SELECT sj.id AS id,
+                    jt.lookup_code AS job_type,
+                    JSON_UNQUOTE(JSON_EXTRACT(sj.config, '$.recurring')) AS recurring,
+                    sj.date_to_be_executed AS date_to_be_executed
+               FROM scheduled_jobs sj
+         INNER JOIN lookups jt ON jt.id = sj.id_job_types AND jt.type_code = 'jobTypes'
+         INNER JOIN lookups st ON st.id = sj.id_job_status AND st.type_code = 'scheduledJobsStatus' AND st.lookup_code = 'queued'
+              WHERE jt.lookup_code IN (:codes)
+                AND JSON_EXTRACT(sj.config, '$.recurring') IS NOT NULL
+           ORDER BY sj.date_to_be_executed ASC, sj.id ASC",
+            ['codes' => $jobTypeCodes],
+            ['codes' => ArrayParameterType::STRING]
+        );
+
+        $jobs = [];
+        foreach ($rows as $row) {
+            $id = $row['id'] ?? null;
+            $type = $row['job_type'] ?? null;
+            $name = $row['recurring'] ?? null;
+            $due = $row['date_to_be_executed'] ?? null;
+            if (is_numeric($id) && is_string($type) && is_string($name) && is_string($due)) {
+                $jobs[] = ['id' => (int) $id, 'job_type' => $type, 'recurring' => $name, 'date_to_be_executed' => $due];
+            }
+        }
+
+        return $jobs;
+    }
+
+    /**
+     * Physically remove queued jobs by id. Only jobs that are still `queued` are removed.
+     *
+     * @param list<int> $jobIds
+     *
+     * @return int how many jobs were removed
+     */
+    public function deleteQueuedJobs(array $jobIds): int
+    {
+        if ($jobIds === []) {
+            return 0;
+        }
+
+        $removed = $this->getEntityManager()->getConnection()->executeStatement(
+            "DELETE sj FROM scheduled_jobs sj
+         INNER JOIN lookups st ON st.id = sj.id_job_status AND st.type_code = 'scheduledJobsStatus' AND st.lookup_code = 'queued'
+              WHERE sj.id IN (:ids)",
+            ['ids' => $jobIds],
+            ['ids' => ArrayParameterType::INTEGER]
+        );
+
+        return is_int($removed) ? $removed : (int) $removed;
     }
 
     /**

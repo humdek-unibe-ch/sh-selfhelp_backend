@@ -45,6 +45,8 @@ class ScheduledJobRunnerService
         private readonly LockFactory $lockFactory,
         private readonly LoggerInterface $logger,
         private readonly ChangeNotifier $changeNotifier,
+        // Optional so that a runner built by hand (tests) keeps the in-process way of running jobs.
+        private readonly ?ScheduledJobProcessPool $processPool = null,
     ) {
     }
 
@@ -59,9 +61,21 @@ class ScheduledJobRunnerService
      *   Bypass the enabled flag and the interval gate (manual run-now).
      * @param bool $dryRun
      *   Report due counts and policy state without executing any job.
+     * @param int $concurrency
+     *   0 runs the jobs one after the other in this process (as ever). 1 or more runs each job in
+     *   its own child process, up to that many at once, with the timeout of the job type (C22).
+     * @param bool $woken
+     *   The tick follows a wake signal (C13): a job was created that is due at once. The interval
+     *   gate is skipped, so the job starts within seconds; the enabled flag and the lock still apply.
      */
-    public function runDueJobs(string $trigger, ?int $limit = null, bool $force = false, bool $dryRun = false): ScheduledJobRunResult
-    {
+    public function runDueJobs(
+        string $trigger,
+        ?int $limit = null,
+        bool $force = false,
+        bool $dryRun = false,
+        int $concurrency = 0,
+        bool $woken = false,
+    ): ScheduledJobRunResult {
         $settings = $this->getOrCreateSettings();
         $now = new \DateTime('now', new \DateTimeZone('UTC'));
 
@@ -69,7 +83,7 @@ class ScheduledJobRunnerService
             return $this->recordSkippedRun($trigger, ScheduledJobRunnerRun::STATUS_SKIPPED_DISABLED, $settings, $now);
         }
 
-        if (!$force && !$dryRun && !$this->intervalElapsed($settings, $now)) {
+        if (!$force && !$woken && !$dryRun && !$this->intervalElapsed($settings, $now)) {
             return $this->recordSkippedRun($trigger, ScheduledJobRunnerRun::STATUS_SKIPPED_INTERVAL, $settings, $now);
         }
 
@@ -96,30 +110,62 @@ class ScheduledJobRunnerService
             $failed = 0;
             $skipped = 0;
 
-            foreach ($jobs as $job) {
-                $attempted++;
-                try {
-                    $executed = $this->jobSchedulerService->executeJob((int) $job->getId(), LookupService::TRANSACTION_BY_BY_CRON_JOB);
-                } catch (\Throwable $e) {
-                    // What the job queued for the live-sync hub belongs to this job only (F136/F211).
-                    $this->changeNotifier->reset();
-                    throw $e;
+            if ($concurrency >= 1 && $this->processPool !== null && $jobs !== []) {
+                // C22: every job in its own child process, up to `$concurrency` at once. Each child
+                // sends its own change notices when it ends, and the pool keeps the lock alive.
+                $pairs = [];
+                foreach ($jobs as $job) {
+                    $pairs[] = ['id' => (int) $job->getId(), 'type' => (string) $job->getJobType()->getLookupCode()];
                 }
-                // One job, one set of change notices: sent now, never carried into the next job.
-                $this->changeNotifier->flush();
-
-                if ($executed === false) {
-                    $failed++;
-                    continue;
+                $lastRefresh = microtime(true);
+                $outcomes = $this->processPool->run(
+                    $pairs,
+                    $concurrency,
+                    LookupService::TRANSACTION_BY_BY_CRON_JOB,
+                    function () use ($lock, &$lastRefresh, $settings): void {
+                        $refreshEvery = max(1.0, $settings->getLockTtlSeconds() / 3);
+                        if (microtime(true) - $lastRefresh >= $refreshEvery) {
+                            $lock->refresh();
+                            $lastRefresh = microtime(true);
+                        }
+                    }
+                );
+                foreach ($outcomes as $outcome) {
+                    $attempted++;
+                    if ($outcome['status'] === LookupService::SCHEDULED_JOBS_STATUS_DONE) {
+                        $done++;
+                    } elseif (str_starts_with($outcome['status'], 'skipped')) {
+                        $skipped++;
+                    } else {
+                        $failed++;
+                    }
                 }
+            } else {
+                foreach ($jobs as $job) {
+                    $attempted++;
+                    try {
+                        $executed = $this->jobSchedulerService->executeJob((int) $job->getId(), LookupService::TRANSACTION_BY_BY_CRON_JOB);
+                    } catch (\Throwable $e) {
+                        // What the job queued for the live-sync hub belongs to this job only (F136/F211).
+                        $this->changeNotifier->reset();
+                        throw $e;
+                    }
+                    // One job, one set of change notices: sent now, never carried into the next job.
+                    $this->changeNotifier->flush();
 
-                $code = $executed->getStatus()->getLookupCode();
-                if ($code === LookupService::SCHEDULED_JOBS_STATUS_DONE) {
-                    $done++;
-                } elseif (str_starts_with((string) $code, 'skipped')) {
-                    $skipped++;
-                } else {
-                    $failed++;
+                    if ($executed === false) {
+                        $failed++;
+                        continue;
+                    }
+
+                    $code = $executed->getStatus()->getLookupCode();
+                    if ($code === LookupService::SCHEDULED_JOBS_STATUS_DONE) {
+                        $done++;
+                    } elseif (str_starts_with((string) $code, 'skipped')) {
+                        $skipped++;
+                    } else {
+                        $failed++;
+                    }
                 }
             }
 

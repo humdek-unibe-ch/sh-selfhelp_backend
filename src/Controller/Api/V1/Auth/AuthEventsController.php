@@ -171,6 +171,8 @@ class AuthEventsController extends AbstractController
         // subscription. Plugin listeners use `PluginRealtimePublisher`
         // to publish messages; the topic IRIs they grant here must match
         // the IRIs declared in their `plugin.json#realtimeTopics`.
+        // The host grants the one-user topics itself (`PluginUserTopicGrant`, audience `user`): the
+        // topic with the caller's own id and no other.
         $pluginTopics = [];
         if ($user) {
             $pluginEvent = new PluginRealtimePermissionEvent($user);

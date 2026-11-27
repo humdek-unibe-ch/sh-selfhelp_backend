@@ -47,7 +47,11 @@ The root `docker-compose.yml` includes a `scheduler` service that runs:
 php bin/console app:scheduled-jobs:execute-due --env=dev --no-interaction
 ```
 
-every `SCHEDULED_JOBS_TICK_SECONDS` seconds, default `60`.
+every `SCHEDULED_JOBS_TICK_SECONDS` seconds, default `60`. A job that is due at
+once (for example one that an action plans) does not wait for the tick: the
+scheduler wakes through a signal on Redis. Up to `SCHEDULED_JOBS_CONCURRENCY`
+jobs (default `4`) run at the same time, each with a timeout. See
+[Scheduled jobs](./docs/developer/11-scheduled-jobs.md).
 
 Start the local support stack:
 

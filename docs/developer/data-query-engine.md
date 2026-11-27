@@ -3,8 +3,8 @@
 Audience: Backend developers.
 Status: active.
 Applies to: SelfHelp2 backend, `App\Service\CMS\DataQuery\*` (migrations `Version20261113104850`, `Version20261113120844` and `Version20261113135247`).
-Last verified: 2026-11-15.
-Source of truth: `DataQuery`, `DataQueryEngine`, `DataFilter`, `DataFilterGroup`, `DataFilterJson`, `DataQueryLimits`, `LegacyFilterTranslator`, `DataTableRepository`, `DataService`, and `tests/Integration/Repository/FormListQueryTest.php`.
+Last verified: 2026-11-26.
+Source of truth: `DataQuery`, `DataQueryEngine`, `AggregateSpec`, `DataFilter`, `DataFilterGroup`, `DataFilterJson`, `DataQueryLimits`, `LegacyFilterTranslator`, `DataTableRepository`, `DataService`, and `tests/Integration/Repository/FormListQueryTest.php`, `tests/Integration/CMS/DataQueryAggregateTest.php`.
 
 One structured reader of the generic data store (`data_tables`, `data_cols`,
 `data_rows`, `data_cells`). Every part of the platform that **reads** records
@@ -36,8 +36,10 @@ projected columns, whatever the table holds.
 
 Entry points: `run()` (rows, optional total), `count()`, `first()`, `batches()`
 (stable batches of at most 1,000 for exports), `facet()` (distinct values with
-counts inside the visitor's dataset), `columnsOf()`, `compile()` (planning
-without executing; used by validation and the admin preview).
+counts inside the visitor's dataset), `aggregate()` (counts, sums, averages and
+extremes per group, for plugins; see [Aggregation for plugins](#aggregation-for-plugins-aggregate)),
+`columnsOf()`, `compile()` (planning without executing; used by validation and the
+admin preview).
 
 ## Limits
 
@@ -74,6 +76,47 @@ before planning.
 ## Caching
 
 `run()` caches per table: key `dq_<ENGINE_VERSION>_<sha1 of the whole normalized query>` in cache category `CATEGORY_DATA_TABLES` with the table's entity scope. Every write to a table through `DataService` (save, delete, restore) bumps that scope, so a cached page never outlives a change of its data. The key contains the owner scope and user, language, timezone, filter, search, sort, page and projection; queries scoped by group grants are not cached. Raise `ENGINE_VERSION` when the shape of a cached result changes.
+
+## Aggregation for plugins (`aggregate()`)
+
+Contract C17. `DataQueryEngine::aggregate(DataQuery $query, AggregateSpec $spec): list<array<string, mixed>>` groups
+the records a query matches and computes numbers per group, so a plugin that draws a chart or a total does not read
+every record and add up in PHP. It is the one way a plugin reads statistics.
+
+**Which records.** The ones `run()` would read: the same table, owner scope (`any`, `user`, `groups`), deleted
+records (left out unless the query keeps them), filters and search. The sort and the page window do not apply.
+
+**`AggregateSpec`** (immutable, checks its own shape; the engine checks it against the columns):
+
+| Part | Rule |
+| --- | --- |
+| `groupBy` | 0 to 2 column keys (a column of the table or a row field such as `entry_date`). Each distinct combination of values is one group; records without a value form a group of their own (`null`). With no column and no bucket the answer is one row, the grand total. |
+| `dateBucket` | Optional `{ column, unit }`, `unit` one of `day`, `week` (Monday first), `month`, `year`; the column must be a date or datetime column. Records fall into the calendar period their date names, in UTC (for the row field `entry_date`: in the `timezone` of the query, default UTC); the row shows the first day of the period as `YYYY-MM-DD`. A record without a readable date has no period and is not counted. A bucket combines with `groupBy`; a column is either grouped or bucketed. |
+| `metrics` | 1 to 5 of `{ fn, column?, as }`. `count` without a column counts the records of the group, with one it counts the records that have a value there; `sum` and `avg` need a number column; `min` and `max` work on number, date and datetime columns. `as` names the value in the row (`^[a-z][a-z0-9_]{0,40}$`, unique, not a grouped column). |
+| `maxGroups` | 1 to 1000, default 200. A result with more groups is **refused**, never cut short. |
+
+**The answer** is typed values, never raw rows. Each row holds the group-by keys, the bucket under the key of its
+column, then the metrics under their names. Numbers are `int` or `float` (`avg` is always a float), a yes/no column is
+`bool`, a date is `YYYY-MM-DD`, a date with time is `YYYY-MM-DD HH:MM:SS` (UTC), `null` means "no value". A cell that
+cannot be read as the type of its column counts as no value, like in a filter (the typing is the one of
+`DataColValueType`). Rows are ordered by the group values, a missing value last. The result is not cached; a caller
+that asks often keeps it in a cache category of its own.
+
+**Refusals.** A spec that does not fit the table (unknown column, `sum` of a text column, a bucket on a number column)
+throws `\InvalidArgumentException`. More groups than `maxGroups` throws `DataQueryException` (HTTP 400 when it reaches
+an API, with `max_groups` in its data). Pinned by `DataQueryAggregateTest`.
+
+```php
+$rows = $engine->aggregate(
+    new DataQuery(tableId: $tableId, ownerScope: DataQuery::OWNER_ANY),
+    new AggregateSpec(
+        groupBy: ['mood'],
+        dateBucket: ['column' => 'entry_date', 'unit' => 'month'],
+        metrics: [['fn' => 'count', 'as' => 'entries'], ['fn' => 'avg', 'column' => 'sleep_hours', 'as' => 'avg_sleep']],
+    ),
+);
+// [['mood' => 'good', 'entry_date' => '2026-11-01', 'entries' => 12, 'avg_sleep' => 7.4], ...]
+```
 
 ## Reader inventory
 

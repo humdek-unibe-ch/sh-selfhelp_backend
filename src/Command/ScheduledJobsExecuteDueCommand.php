@@ -8,6 +8,7 @@
 namespace App\Command;
 
 use App\Entity\ScheduledJobRunnerRun;
+use App\Service\Core\ScheduledJobProcessPool;
 use App\Service\Core\ScheduledJobRunnerService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -38,6 +39,14 @@ class ScheduledJobsExecuteDueCommand extends Command
         $this->addOption('force', 'f', InputOption::VALUE_NONE, 'Bypass the enabled flag and interval gate');
         $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Report due counts and policy state without executing jobs');
         $this->addOption('json', null, InputOption::VALUE_NONE, 'Emit a machine-readable JSON summary');
+        $this->addOption(
+            'concurrency',
+            'c',
+            InputOption::VALUE_REQUIRED,
+            sprintf('Run each job in its own child process, up to this many at once (1 to %d), with the timeout of its job type; without the option the jobs run one after the other in this process', ScheduledJobProcessPool::MAX_CONCURRENCY),
+            null
+        );
+        $this->addOption('woken', null, InputOption::VALUE_NONE, 'The tick follows a wake signal (app:scheduled-jobs:wait printed "woken"): skip the interval gate');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -49,13 +58,33 @@ class ScheduledJobsExecuteDueCommand extends Command
         $force = (bool) $input->getOption('force');
         $dryRun = (bool) $input->getOption('dry-run');
         $json = (bool) $input->getOption('json');
+        $woken = (bool) $input->getOption('woken');
+
+        $concurrencyOption = $input->getOption('concurrency');
+        $concurrency = 0;
+        if ($concurrencyOption !== null) {
+            if (!is_string($concurrencyOption) || !ctype_digit($concurrencyOption)
+                || (int) $concurrencyOption < 1 || (int) $concurrencyOption > ScheduledJobProcessPool::MAX_CONCURRENCY) {
+                $message = sprintf('The --concurrency option must be a whole number from 1 to %d.', ScheduledJobProcessPool::MAX_CONCURRENCY);
+                if ($json) {
+                    $output->writeln((string) json_encode(['status' => 'error', 'error' => $message]));
+                } else {
+                    $io->error($message);
+                }
+
+                return Command::INVALID;
+            }
+            $concurrency = (int) $concurrencyOption;
+        }
 
         try {
             $result = $this->runnerService->runDueJobs(
                 ScheduledJobRunnerRun::TRIGGER_SCHEDULER,
                 $limit,
                 $force,
-                $dryRun
+                $dryRun,
+                $concurrency,
+                $woken
             );
         } catch (\Throwable $e) {
             if ($json) {

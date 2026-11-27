@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Plugin job types for actions",
+  "description": "Response from GET /cms-api/v1/admin/actions/plugin-job-types. The job types that enabled plugins offer to actions (C12): the editor builds the job's plugin_config form from config_schema.",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "plugin_id", "label", "config_schema", "resource_fields"],
+        "properties": {
+          "type": { "type": "string", "description": "The job_type value to put in the action job." },
+          "plugin_id": { "type": "string", "description": "The plugin that offers the type." },
+          "label": { "type": "string", "description": "The name the editor shows." },
+          "config_schema": {
+            "type": "object",
+            "description": "Flat JSON Schema (type object, properties, required) of plugin_config; a string property with format variable-text may hold {{variables}}."
+          },
+          "resource_fields": {
+            "type": "object",
+            "description": "Property of plugin_config => resource type of the plugin item it holds; the editor must be allowed to view the item.",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["data"]
+}

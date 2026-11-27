@@ -13,6 +13,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
@@ -37,6 +38,12 @@ class ScheduledJobExecuteOneCommand extends Command
     protected function configure(): void
     {
         $this->addArgument('jobId', InputArgument::REQUIRED, 'Scheduled job ID');
+        $this->addOption(
+            'by-cron-job',
+            null,
+            InputOption::VALUE_NONE,
+            'Record the run as a scheduler run (transaction origin by_cron_job); the runner sets it for the child processes of execute-due --concurrency'
+        );
     }
 
     /**
@@ -56,7 +63,11 @@ class ScheduledJobExecuteOneCommand extends Command
         $jobIdRaw = $input->getArgument('jobId');
         $jobId = is_numeric($jobIdRaw) ? (int) $jobIdRaw : 0;
 
-        $result = $this->jobSchedulerService->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM);
+        $transactionBy = $input->getOption('by-cron-job')
+            ? LookupService::TRANSACTION_BY_BY_CRON_JOB
+            : LookupService::TRANSACTION_BY_BY_SYSTEM;
+
+        $result = $this->jobSchedulerService->executeJob($jobId, $transactionBy);
         if (!$result) {
             $io->error(sprintf('Scheduled job %d failed to execute.', $jobId));
             return Command::FAILURE;

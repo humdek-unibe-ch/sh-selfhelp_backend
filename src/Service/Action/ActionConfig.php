@@ -83,6 +83,13 @@ final class ActionConfig
     public const JOB_TYPE_NOTIFICATION_WITH_REMINDER = 'notification_with_reminder';
     public const JOB_TYPE_NOTIFICATION_WITH_REMINDER_FOR_DIARY = 'notification_with_reminder_for_diary';
 
+    /**
+     * The configuration of a job whose `job_type` is a plugin job type (contract C12):
+     * a flat object checked against the `configSchema` of the type. The same key is read by
+     * {@see \App\Service\Sync\ResourceReadIndex} and the `plugin_config` of a planned job.
+     */
+    public const PLUGIN_CONFIG = 'plugin_config';
+
     private function __construct()
     {
     }

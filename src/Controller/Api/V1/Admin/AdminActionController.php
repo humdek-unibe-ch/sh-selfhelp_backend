@@ -82,6 +82,28 @@ class AdminActionController extends AbstractController
     }
 
     /**
+     * The job types that enabled plugins offer to actions (C12): type, plugin id, label,
+     * the flat config schema of the job's `plugin_config` and its resource fields.
+     * @route /admin/actions/plugin-job-types
+     * @method GET
+     */
+    public function getPluginJobTypes(): JsonResponse
+    {
+        try {
+            return $this->responseFormatter->formatSuccess(
+                $this->adminActionService->getPluginJobTypes(),
+                'responses/admin/actions/plugin_job_types',
+                Response::HTTP_OK,
+                false,
+                // The list holds plain arrays and objects only; normalizing would turn an empty `{}` into `[]`.
+                true
+            );
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
      * Update action
      * @route /admin/actions/{actionId}
      * @method PUT

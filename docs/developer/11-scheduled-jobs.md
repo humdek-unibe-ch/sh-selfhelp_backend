@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-05.
+Last verified: 2026-11-26.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 ## Overview
@@ -260,9 +260,10 @@ php bin/console app:scheduled-jobs:execute-one 123
 ### Docker scheduler (v1) and cron fallback
 
 In Docker production the tick source is a dedicated `scheduler` container running
-the command in a loop every `SCHEDULED_JOBS_TICK_SECONDS` (default 60); the
-DB-backed runner settings decide whether work actually runs. See the "Docker
-Runner" section above. For non-Docker/manual deployments a host cron works too:
+the command in a loop every `SCHEDULED_JOBS_TICK_SECONDS` (default 60), with up to
+`SCHEDULED_JOBS_CONCURRENCY` (default 4) jobs at once; a job that is due at once
+wakes the loop before the tick ends. The DB-backed runner settings decide whether
+work actually runs. See the "Docker Runner" section above. For non-Docker/manual deployments a host cron works too:
 
 ```cron
 * * * * * cd /path/to/sh-selfhelp_backend && php bin/console app:scheduled-jobs:execute-due --env=prod --no-interaction >> var/log/scheduled-jobs.log 2>&1
@@ -389,13 +390,25 @@ per-job execution still flows through the single
 ### Console options
 
 ```bash
-php bin/console app:scheduled-jobs:execute-due [--limit=N] [--force] [--dry-run] [--json]
+php bin/console app:scheduled-jobs:execute-due [--limit=N] [--force] [--dry-run] [--json] [--concurrency=N] [--woken]
 ```
 
 - `--limit` caps jobs this tick (DB-level `setMaxResults`).
 - `--force` bypasses the enabled flag + interval gate (used by "Run now").
 - `--dry-run` reports due counts / policy state without executing.
 - `--json` emits a machine-readable summary for health tooling.
+- `--concurrency=N` (1 to 32) runs each due job in its own child process, up to N at once, with the timeout of its
+  job type. Without it the jobs run one after the other in this process. See
+  [Parallel jobs and timeouts](#parallel-jobs-and-timeouts).
+- `--woken` marks a tick that follows a wake signal: the interval gate is skipped. See
+  [Wake signal](#wake-signal-immediate-jobs-start-at-once).
+
+```bash
+php bin/console app:scheduled-jobs:wait --timeout=60
+```
+
+Waits for the wake signal for at most `--timeout` seconds, prints `woken` or `timeout`, and exits `0` either way. It is
+the pause of the scheduler loop (it replaces `sleep`).
 
 Exit `0` for normal completion (including policy/lock skips and cleanly
 failed/skipped jobs); exit `1` only for infrastructure failure.
@@ -410,6 +423,91 @@ Under `/cms-api/v1/admin/scheduled-jobs/runner` (see
 - `PUT settings`, `POST enable`, `POST disable` (`admin.scheduled_job.manage`).
 - `POST run-now` — `runDueJobs(trigger: manual, force: true)`
   (`admin.scheduled_job.execute`).
+
+## Wake signal: immediate jobs start at once
+
+Contract C13. `scheduled_jobs` stays the one queue (rule 6.1); the wake signal is only a doorbell, so a job that is
+due now does not wait for the next tick.
+
+- **Push.** When `JobSchedulerService::scheduleJob()` creates a job that is due now or earlier, it pushes one entry
+  onto the Redis list `selfhelp:scheduled_jobs:wake` **after the commit** (`LPUSH`, then `LTRIM 0 0`: the list never
+  holds more than one entry, because the entry only says "look at the queue"). Nothing is pushed when the transaction
+  rolls back. A push that fails is logged as a warning and ignored: the job then starts at the next tick.
+- **Wait.** `app:scheduled-jobs:wait --timeout=<s>` blocks on the list (`BLPOP`, in calls of at most 20 seconds),
+  consumes the entry, prints `woken` or `timeout`, and exits `0`. When Redis cannot be reached it sleeps for the
+  timeout instead, so the scheduler keeps its pace.
+- **Entrypoints.** `docker/scheduler/entrypoint.sh` and `docker/scheduler/prod-entrypoint.sh` run `execute-due`,
+  then `wait --timeout="${SCHEDULED_JOBS_TICK_SECONDS:-60}"`, and start again. After `woken` the next `execute-due`
+  gets `--woken`, which skips the interval gate (the enabled flag, the lock and `max_jobs_per_run` still apply). An
+  immediate job therefore starts within about two seconds; jobs that are due later still run at the ticks.
+- **Configuration.** The list name is the parameter `selfhelp.scheduled_jobs.wake_key`
+  (`config/packages/scheduled_jobs.yaml`); the test environment appends the `TEST_TOKEN` of the test database, so
+  parallel test runs on one Redis do not wake each other. The meaning of `SCHEDULED_JOBS_TICK_SECONDS` did not
+  change: it is the longest time between two ticks.
+
+## Parallel jobs and timeouts
+
+Contract C22. `execute-due --concurrency=<n>` runs each due job in its own child process,
+`app:scheduled-jobs:execute-one <id> --by-cron-job`, up to `n` at once (1 to 32). A slow or stuck job then holds up
+neither the other jobs nor the scheduler. Both scheduler entrypoints pass
+`--concurrency="${SCHEDULED_JOBS_CONCURRENCY:-4}"`; set the environment variable `SCHEDULED_JOBS_CONCURRENCY` on the
+`scheduler` container to change it. Without the option the command runs the jobs one after the other in its own
+process, as before.
+
+- **No job runs twice.** The child's `JobSchedulerService::executeJob()` claims the job with one guarded `UPDATE`
+  (`claimQueuedJobForExecution()`), so two runners, two ticks or a runner and a manual run never both execute a job.
+- **Timeout per job type.** A plugin sets `scheduledJobs[].timeoutSeconds` (10 to 900) in its manifest; every other
+  job type, the core ones included, gets 120 seconds (`ScheduledJobTimeouts`). A child that is still running after
+  that is stopped (killed after a grace period of 3 seconds). A stopped child leaves nothing behind: its transaction,
+  the claim included, is rolled back. The runner then marks the job `failed`, with the reason `timeout` in the
+  transaction log, unless the job reached an end state in the meantime. The other jobs of the tick run on. A child
+  that dies by itself (a fatal error) leaves the job queued, as a job that kills an in-process runner does.
+- **Not limited.** A job that is run inside the process of the caller, for example `execute-one <id>` typed by hand,
+  is not interrupted.
+- **Lock.** While children run, the runner keeps its `scheduled_jobs_runner` lock alive.
+
+## Jobs of plugins
+
+A plugin declares job types in its manifest (`scheduledJobs[]`: `type`, `capability`, `label`, optional
+`actionPlannable`, `configSchema`, `resourceFields`, `timeoutSeconds`) and implements
+`PluginScheduledJobHandlerInterface`. The job is an ordinary `scheduled_jobs` row of that type; the scheduler hands it
+to the handler when it is due. How actions plan such jobs:
+[Admin Actions](../reference/api/14-admin-actions.md#plugin-job-types).
+
+### Queue a job from code
+
+`App\Plugin\ScheduledJob\PluginJobQueueInterface` (contract C13), for a listener of a domain event or any plugin
+service:
+
+```php
+$id = $queue->queueNow('example-plugin', 'example_sync_job', ['item_id' => 12], $userId);
+$id = $queue->queueAt('example-plugin', 'example_sync_job', ['item_id' => 12], null, new \DateTimeImmutable('+1 hour'));
+```
+
+- Both create a normal row (status queued) with the given config and user (`null` for a job of the system) and return
+  its id. A job that is due at once wakes the scheduler after the commit.
+- The plugin must be enabled and offer the type; the config must not use the keys the host owns (`condition`,
+  `schedule`, `action_job_type`, `recurring`); the user must exist. Otherwise `\InvalidArgumentException`.
+- Keep the config small and free of secrets; read secrets through `PluginSettingsInterface` when the job runs
+  ([Admin plugin settings](../reference/api/24-admin-plugin-settings.md)).
+
+### Recurring jobs
+
+Contract C25. A plugin declares `recurringJobs: [{ name, type, cron, description }]`, `type` being one of its own
+`scheduledJobs` types and `cron` a five-field schedule in UTC no closer than five minutes. There is no second queue:
+the host keeps **exactly one queued job per entry**, a normal row of that type with the config
+`{"recurring": "<name>"}`, due at the next time the cron matches (`PluginRecurringJobs`).
+
+- On install, update and enable the row is created, re-aligned when the cron changed, and rows of entries the
+  manifest no longer declares are removed. Enabling twice leaves one row.
+- After **every** run, whatever its result (done, failed, timed out), the next row is queued, so a failed run never
+  ends the series.
+- On disable and uninstall the queued rows are removed.
+- A scheduler that was down misses nothing: the overdue job runs once when it is back, and the next one is queued
+  from that run.
+- Everything that changes the rows runs under the lock `plugin_recurring_jobs`, so a lifecycle change and a finished
+  run cannot both queue the next job. The lifecycle link is `PluginRecurringJobsListener`; a failure there is logged
+  and never undoes the lifecycle change (the next enable or update repairs the queue).
 
 ## End-to-End Example
 
@@ -485,6 +583,11 @@ Check:
 - `src/Service/Core/ScheduledJobExecutionResult.php`
 - `src/Service/Core/TaskJobExecutorService.php`
 - `src/Command/ScheduledJobsExecuteDueCommand.php`
+- `src/Command/ScheduledJobsWaitCommand.php`, `src/Service/Core/ScheduledJobWakeSignal.php` (C13)
+- `src/Service/Core/ScheduledJobProcessPool.php`, `src/Service/Core/ScheduledJobTimeouts.php` (C22)
+- `src/Plugin/ScheduledJob/PluginJobQueue.php`, `PluginJobQueueInterface.php`, `PluginRecurringJobs.php`, `PluginActionJobTypes.php` (C12, C13, C25)
+- `src/EventListener/PluginRecurringJobsListener.php`
+- `docker/scheduler/entrypoint.sh`, `docker/scheduler/prod-entrypoint.sh`, `config/packages/scheduled_jobs.yaml`
 - `src/Controller/Api/V1/Admin/AdminScheduledJobRunnerController.php`
 - `src/Entity/ScheduledJob.php`, `ScheduledJobRecipient.php`, `ScheduledJobRunnerSetting.php`, `ScheduledJobRunnerRun.php`
 - `migrations/Version20260601000000.php` (canonical baseline; defines `scheduled_jobs` + `scheduled_job_reminders`)

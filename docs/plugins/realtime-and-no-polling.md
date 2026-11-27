@@ -87,7 +87,7 @@ public function onResponseSaved(int $sectionId, int $userId): void
 {
     $this->realtime->publish(
         pluginId: 'sh2-shp-survey-js',
-        topic: 'survey/response/saved',
+        topicKey: 'survey/response/saved',
         payload: ['sectionId' => $sectionId, 'userId' => $userId],
     );
 }
@@ -97,6 +97,30 @@ The publisher enforces the topic prefix, JWT signing, and an
 `audience` claim that scopes the message to the right set of
 subscribers (so admin-only events are not delivered to
 unauthenticated subscribers).
+
+### Updates for one user (`audience: 'user'`)
+
+For a message that belongs to one person (the progress of their export, the result of their job), publish with
+`audience: 'user'` and `topicParams: ['userId' => <positive user id>]`:
+
+```php
+$this->realtime->publish(
+    'example-plugin',
+    'export-progress',
+    ['exportId' => 42, 'percent' => 60],
+    ['audience' => 'user', 'topicParams' => ['userId' => $userId]],
+);
+```
+
+- The topic is `…/plugin/<pluginId>/<topicKey>/userId/<id>` and the update is **always private**.
+- **Only that user's subscriber token carries the topic.** `GET /cms-api/v1/auth/events` lists the topics of the
+  signed-in user in `pluginTopics` and in the `mercure.subscribe` claim of the token: for every topic key an *enabled*
+  plugin declares in `realtimeTopics`, the topic with that user's id, and no other user's. A guest gets none. A topic
+  that declares a `requiredPermission` goes only to users who hold it.
+- `publish()` throws `\InvalidArgumentException` for `audience: 'user'` without a positive `userId`, with another topic
+  parameter, or when `userId` is used with any other audience: the name `userId` is reserved for this audience, so a
+  topic that the host grants is never published to for another purpose.
+- The payload carries IDs and numbers, no content (see the topic naming rules below).
 
 ## Mercure hub reachability
 

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Plugin settings",
+  "description": "Response from GET and PUT /cms-api/v1/admin/plugins/{pluginId}/settings (contract C14). One entry per setting the plugin manifest declares. A secret is never returned: value is null, has_value says whether one is set, and hint is its last 4 characters when it has 12 or more.",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "label", "type", "secret", "required", "has_value", "value", "hint", "overridden_by_env"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "type": { "type": "string", "enum": ["string", "number", "boolean", "url"] },
+          "secret": { "type": "boolean" },
+          "required": { "type": "boolean" },
+          "has_value": { "type": "boolean", "description": "True when an environment override or a stored value is in effect (the default does not count)." },
+          "value": { "type": ["string", "number", "boolean", "null"], "description": "The value in effect, as the declared type; null for a secret or when nothing is set and there is no default." },
+          "hint": { "type": ["string", "null"], "description": "The last 4 characters of a secret of 12 or more characters; otherwise null." },
+          "overridden_by_env": { "type": "boolean", "description": "True when the environment variable named by envOverride is set and decides the value." }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["data"]
+}
