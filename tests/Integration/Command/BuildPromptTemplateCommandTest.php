@@ -57,8 +57,14 @@ final class BuildPromptTemplateCommandTest extends QaKernelTestCase
         $written = (string) file_get_contents($this->outputPath);
         self::assertNotSame('', $written, 'The rendered prompt must not be empty.');
 
-        // The dumped file must equal the on-demand render (the endpoint contract).
+        // The dumped file must equal the on-demand render (the endpoint contract). The render stamps
+        // "Catalog regenerated: <ATOM time to the second>"; two renders that straddle a second differ
+        // only there, so the stamp is checked for its shape and left out of the comparison.
+        $stampPattern = '/^> Catalog regenerated: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/m';
+        self::assertMatchesRegularExpression($stampPattern, $written, 'The prompt carries its regeneration time.');
+        $withoutStamp = static fn (string $prompt): string => (string) preg_replace($stampPattern, '> Catalog regenerated: <time>', $prompt);
+
         $expected = $this->service(PromptTemplateService::class)->render();
-        self::assertSame($expected, $written, 'The dumped prompt must match the live render.');
+        self::assertSame($withoutStamp($expected), $withoutStamp($written), 'The dumped prompt must match the live render.');
     }
 }

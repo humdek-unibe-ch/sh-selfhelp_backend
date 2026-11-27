@@ -129,6 +129,24 @@ final class CacheServiceTest extends QaKernelTestCase
     public function testWithEntityScopeRejectsNonPositiveId(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->cache()->withEntityScope(CacheService::ENTITY_SCOPE_USER, 0);
+        $this->cache()->withEntityScope(CacheService::ENTITY_SCOPE_USER, -1);
+    }
+
+    public function testWithEntityScopeRejectsIdZeroForEveryScopeButTheGuestUser(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->cache()->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, 0);
+    }
+
+    /**
+     * The anonymous guest (user id 0, `UserContextService::GUEST_USER_ID`) is a legitimate "no
+     * specific user" scope: the call returns the same cache and adds no user scope, instead of
+     * failing (fix 6a4e0cf3, anonymous callers are not admin id 1).
+     */
+    public function testWithEntityScopeTreatsTheGuestUserIdAsNoUserScope(): void
+    {
+        $cache = $this->cache();
+
+        self::assertSame($cache, $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, 0));
     }
 }

@@ -15,6 +15,7 @@ use App\Entity\Group;
 use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Entity\Page;
+use App\Entity\PageRoute;
 use App\Entity\PagesFieldsTranslation;
 use App\Entity\PagesSection;
 use App\Entity\PageType;
@@ -182,6 +183,15 @@ final class QaFrontendGoldenFixture extends Fixture implements FixtureGroupInter
         $page->setIsHeadless(false);
         $page->setIsOpenAccess(false);
         $this->em->persist($page);
+
+        // A page is reached by its public path through `page_routes`; without a row the frontend answers "Page not found".
+        $route = new PageRoute();
+        $route->setPage($page);
+        $route->setPathPattern(self::QA_FORM_PAGE_URL);
+        $route->setIsCanonical(true);
+        $route->setIsActive(true);
+        $route->setPriority(100);
+        $this->em->persist($route);
 
         return $page;
     }
