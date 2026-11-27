@@ -77,9 +77,11 @@ The host applies standard SemVer with one tightened constraint:
   pinned to `<0.2.0` is marked `blocking` against a `0.2.0` host even
   if no plugin-API surface changed. (Post-1.0 the same applies to the
   MAJOR.)
-- For `compatibility.pluginApi`, the host honors exact (`0.1.0`),
-  caret (`^0.1.0` ≡ `>=0.1.0 <0.2.0`), and tilde (`~0.1.0`) ranges
-  with the standard SemVer `0.x` semantics.
+- For `pluginApiVersion` (and `compatibility.pluginApi`), a bare version
+  such as `0.1.0` means **at least this version, within the same major**.
+  Example on a host at `0.2.0`: `0.1.0` is accepted, `0.3.0` is refused,
+  `^0.1.0` is refused. Explicit ranges (`^`, `~`, `>=`, `||`) keep their
+  standard SemVer `0.x` meaning (`^0.1.0` ≡ `>=0.1.0 <0.2.0`).
 
 ## When to bump the host `pluginApiVersion`
 

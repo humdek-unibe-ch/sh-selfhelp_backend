@@ -1,4 +1,116 @@
-# Unreleased
+# v0.1.52
+
+## Plugin host hooks (resources, live sync, render, cache, jobs, settings)
+
+- Added: plugin items: `PluginResourceServiceInterface` (`changed`, `deleted`,
+  `grantCreator`, `rightsFor`, `pinnedVersion`), `res:<type>:<id>` change
+  notices with `ResourceReadIndex`, a resource cache scope
+  (`CacheService::withResourceScope`), plugin cache categories
+  (`cacheCategories`), `ResourceBindingGuard` (403 `resource_not_bindable`),
+  `ResourceGrantService::revokeAll`.
+- Added: manifest keys of `pluginApiVersion` 0.2.0: `styles[].resourceFields`,
+  `cacheCategories`, `settings`, `rateLimits`, `jsonLogicOperations`, `listens`,
+  `recurringJobs`, `scheduledJobs[].label`, `.actionPlannable`, `.configSchema`,
+  `.resourceFields`, `.timeoutSeconds`. Host default `selfhelp.plugin_api_version`
+  is `0.2.0`.
+- Added: plugin dependencies, conflicts and unique names are enforced (409
+  `plugin_dependency_missing`, `plugin_dependents_enabled`, `plugin_conflict`,
+  `plugin_manifest_collision`).
+- Added: five read-only domain events for plugins (`record.saved`,
+  `record.deleted`, `user.created`, `user.deleted`, `page.published`), delivered
+  after the commit by `PluginDomainEventDispatcher`; `AfterCommitConnection`.
+- Added: a plugin permission implies the read permission of the same plugin
+  area; the plugin resources list holds only items the caller may view, each
+  with `can_assign`.
+- Changed: uninstall remembers a plugin's catalogue rows and a reinstall takes
+  them back with the same ids (F248).
+- Fixed: deleting a page, group, data table or asset removes its role grants; a
+  migration removes the orphans (F280).
+- Removed: `SectionFieldBindingEvent` (the core checks `resourceFields`) and its
+  test subscriber.
+- Fixed: `content_ref` is a reserved key, so a form field of that name can no
+  longer overwrite the reference a data row keeps.
+- Fixed: a failure reading the enabled plugins no longer escapes the commit of
+  a change; it is logged and the event is not delivered.
+- Fixed: updating a plugin to a version outside the range an enabled dependent
+  requires is refused with 409 `plugin_dependents_enabled` (`data.dependents`).
+- Fixed: `GET /plugins/manifest` sends `featureFlags: {}` for a plugin without
+  flags (was `[]`, which broke the response schema).
+- Fixed: two first saves of one plugin setting at the same time no longer end
+  in a 500; the last value is kept.
+- Fixed: the plugin operation and health routes send the `data` of a
+  `ServiceException`.
+- Changed: a bare `pluginApiVersion` (`0.1.0`) means at least this version
+  within the same major; explicit ranges keep their SemVer meaning. Docs
+  updated (`topicKey` in the realtime example).
+- Render: plugin style resolvers fill `section.plugin` after the page cache; a
+  throw becomes `plugin_error: "resolver_failed"` on that section only (C6).
+- Sync: page `depends_on` lists `res:<type>:<id>` from section `resourceFields`
+  and from resolvers (filtered).
+- Admin: `GET /admin/resources/{type}/{id}/usage` (C7, `admin.access`).
+- Actions can plan jobs of a plugin's own job types:
+  `GET /admin/actions/plugin-job-types` lists the types a plugin marked
+  `actionPlannable`; an action job holds `plugin_config` (checked against the
+  type's `config_schema` and against the editor's view of the items it names);
+  a record save plans a `scheduled_jobs` row of that type with `record_id`,
+  `record_ref`, `data_table_id` and `trigger` (C12).
+- A job that is due now wakes the scheduler: after the commit the host pushes
+  one entry onto a Redis list and `app:scheduled-jobs:wait` ends its wait; the
+  interval tick stays as the fallback. Plugins can queue jobs with
+  `PluginJobQueueInterface::queueNow` and `queueAt` (C13).
+- `app:scheduled-jobs:execute-due --concurrency=<1..32>` runs due jobs in child
+  processes (`execute-one`), each with the time limit of its job type
+  (`scheduledJobs[].timeoutSeconds`, default 120 s); a job over its limit is
+  marked failed with `timeout`. The Docker scheduler reads
+  `SCHEDULED_JOBS_CONCURRENCY` (default 4) (C22).
+- Recurring plugin jobs (`recurringJobs` in the manifest): the host keeps
+  exactly one queued job per entry and queues the next one after every run,
+  also after a failed or timed-out run; disabling or uninstalling the plugin
+  removes the queued job (C25).
+- Plugin settings and secrets: manifest `settings[]`, table `plugin_settings`
+  keyed by the plugin id, secrets encrypted with libsodium under a key derived
+  from `APP_SECRET`, routes `GET` and `PUT /admin/plugins/{pluginId}/settings`
+  (`admin.plugins.manage`), `PluginSettingsInterface`, and an environment
+  variable named by `envOverride` that wins. Uninstall keeps the values; purge
+  deletes them (C14).
+- `DataQueryEngine::aggregate()` with `AggregateSpec`: count, sum, avg, min and
+  max per group, up to two group keys and a day, week, month or year bucket,
+  with the same filters and access as a read; more than `maxGroups` groups is
+  refused with 400 `max_groups` (C17).
+- Realtime to one user: `publish()` with `audience: 'user'` and
+  `topicParams['userId']`; the topic is private and only that user's subscriber
+  token (`GET /auth/events`, `pluginTopics`) contains it (C18).
+- Records remember the content they were written for: `data_rows.content_ref`
+  and `data_revisions.content_ref` hold `page:<id>@v<n>` or `page:<id>@draft`
+  for core forms and `res:<type>:<id>@v<n>` for plugins
+  (`RecordWriteContext::withContentRef()`). The data browser, the record
+  history and the exports (`_content_ref`) show it. Old records stay NULL.
+- `PluginResourceServiceInterface::pinnedVersion()` tells a plugin which item
+  version a participant's unfinished record was begun on.
+- Every record save, delete, restore and quick action raises `record.saved` or
+  `record.deleted` for listening plugins after the commit.
+- Plugins: `PluginUserScopeInterface` tells a plugin which users a caller
+  manages (`mayManage`, `managedUserIds`) (C20).
+- Plugins: `PluginRecordWriterInterface::saveFor` writes a record of the generic
+  store for another user into a table under the plugin's prefix; the history
+  names the signed-in user and the new door `plugin`; a caller who does not
+  manage the owner gets 403 `user_not_managed` (C20).
+- Plugins: the host raises `user.created`, `user.deleted` and `page.published`
+  after the commit, never on rollback (C24).
+- Plugins: rate limits declared in the manifest (`rateLimits`) are enforced with
+  `PluginRateLimiterInterface::consume`; a spent limit answers 429
+  `rate_limited` with `meta.retry_after` and a `Retry-After` header (C15).
+- Plugins: pure JSON Logic operations `<namespace>.<operation>` declared in the
+  manifest (`jsonLogicOperations`) work in section, action, reminder and job
+  conditions while the plugin is enabled (C16). The public
+  `GET /cms-api/v1/plugins/manifest` lists them.
+- Jobs and record events carry `record_ref` (`record:<id>@v<n>`):
+  `scheduled_jobs.record_ref`, plugin job config, and `RecordSavedEvent` /
+  `RecordDeletedEvent` (`recordRef`). Jobs without a record leave it null.
+  Helper `VersionRef` (C26).
+- Compatibility: `supports.frontend` raised to `>=0.1.79 <0.2.0`.
+
+## Folded from the SurveyJS upgrade merge (was Unreleased)
 
 **The register page falls back like the other system pages.** It was missing
 from `PageService::FALLBACK_CHECK_KEYWORDS`, so a register page without its
@@ -18,13 +130,6 @@ built-in screen (`should_fallback`).
   (Excel reported the file as damaged).
 - Documented limit: `PageService::variablesForSection()` gives the first row's
   variables under an entry list or loop (the plugin call names no row).
-
-**Plugins check their field values when a section is authored (SurveyJS
-upgrade wave 6, H7).** `SectionTableBindingGuard` dispatches the new
-`App\Plugin\Event\SectionFieldBindingEvent` for every non-empty field value of
-a section save or import; a plugin refuses a value pointing at a resource the
-editor may not use (a survey) and the request answers 403 before anything is
-written, the same rule as binding a data table (F07).
 
 **Excel export of data tables (SurveyJS upgrade wave 4, H5).** The single and
 bulk export endpoints accept `format=xlsx` next to `csv` and `json`, for every
@@ -46,25 +151,15 @@ are numbers. Written with ZipArchive, no new dependency.
   resources; new admin routes `GET /admin/data-access/plugin-resource-types`
   and `.../{typeCode}/resources` (`admin.role.read`, migration
   `Version20261117103339`). Grants are stored and checked like page grants;
-  the lookup row's `ON DELETE CASCADE` removes them on purge. The frontend's
-  role screen needs these routes: raise `supports.frontend` / the frontend's
-  `supports.core` to the releases that ship them.
+  the lookup row's `ON DELETE CASCADE` removes them on purge.
 
 **The plugin installer writes a plugin's catalogue rows from its manifest (rule
-7.8, F112).** New `PluginCatalogueSynchronizer` runs on install and update,
-after the plugin's migrations and before the route sync. It writes the style
-groups, field types, fields, styles with their field lists, permissions
+7.8, F112).** `PluginCatalogueSynchronizer` runs on install and update, after
+the plugin's migrations and before the route sync. It writes the style groups,
+field types, fields, styles with their field lists, permissions
 (`defaultRoles` granted once, on creation) and lookup entries the manifest
-declares, all tagged with `id_plugins`. A name held by core or another plugin
-is refused; `renamedFrom` renames a plugin's style or field in place, so
-sections keep their content; permissions, lookup entries and style-field links
-no longer declared are removed, styles and fields never are. Manifest sections
-a plugin does not declare are left untouched, so plugins that still seed their
-catalogue in a migration keep working. Migration `Version20261117095959` adds
+declares, all tagged with `id_plugins`. Migration `Version20261117095959` adds
 `id_plugins` to `field_types` and `style_groups`; purge now also deletes those.
-Manifest schema: new `styleGroups`, `fieldTypes`, `fields`, and `group`,
-`renamedFrom`, `fields` on a style (copies of the schema in plugin repos and the
-registry must be updated to stay byte-identical).
 
 # v0.1.51
 

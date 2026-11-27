@@ -94,17 +94,28 @@ final class PluginCompatibilityValidatorTest extends TestCase
         self::assertSame('blocking', $report['checks']['cms']['status']);
     }
 
-    public function testMismatchedSdkContractIsBlocking(): void
+    public function testAHostSdkOlderThanThePluginNeedsIsBlocking(): void
     {
-        // The backend SDK contract token is matched against the plugin's
-        // declared `pluginApiVersion`; a host SDK that is not `0.1.0` is
-        // blocking under the pre-1.0 "every minor is breaking" rule.
+        // A bare `pluginApiVersion` is a minimum within the major (R1-D2): a host SDK
+        // older than the plugin was built against, or of another major, is blocking.
+        foreach (['0.0.9', '1.0.0'] as $hostSdk) {
+            $validator = new PluginCompatibilityValidator('0.1.0', $hostSdk);
+
+            $report = $validator->check($this->officialPluginManifest());
+
+            self::assertFalse($report['compatible'], $hostSdk);
+            self::assertSame('blocking', $report['severity'], $hostSdk);
+            self::assertSame('blocking', $report['checks']['sdk']['status'], $hostSdk);
+        }
+    }
+
+    public function testANewerHostSdkOfTheSameMajorStillAcceptsThePlugin(): void
+    {
+        // The plugin declares 0.1.0; a host at 0.2.0 is newer in the same major (R1-D2).
         $validator = new PluginCompatibilityValidator('0.1.0', '0.2.0');
 
         $report = $validator->check($this->officialPluginManifest());
 
-        self::assertFalse($report['compatible']);
-        self::assertSame('blocking', $report['severity']);
-        self::assertSame('blocking', $report['checks']['sdk']['status']);
+        self::assertSame('ok', $report['checks']['sdk']['status']);
     }
 }

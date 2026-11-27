@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Tests\Plugin\Versioning;
 
 use App\Plugin\Versioning\PluginCompatibility;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -43,6 +44,34 @@ final class PluginCompatibilityTest extends TestCase
         self::assertTrue(PluginCompatibility::pluginApiSatisfied('0.1.0', null));
         self::assertTrue(PluginCompatibility::pluginApiSatisfied('0.1.0', '>=0.1.0 <0.2.0'));
         self::assertFalse(PluginCompatibility::pluginApiSatisfied('0.2.0', '>=0.1.0 <0.2.0'));
+    }
+
+    /**
+     * R1-D2: a bare `pluginApiVersion` is a minimum within the same major, as `isPluginApiCompatible` of
+     * `@selfhelp/shared` reads it in the web runtime; an explicit range keeps its semver meaning.
+     *
+     * @return iterable<string, array{string, string, bool}> host, declared, accepted
+     */
+    public static function pluginApiDeclarations(): iterable
+    {
+        yield 'bare, older minor on a 0.x host' => ['0.2.0', '0.1.0', true];
+        yield 'bare, the same version' => ['0.2.0', '0.2.0', true];
+        yield 'bare, a newer minor than the host' => ['0.2.0', '0.3.0', false];
+        yield 'bare, a newer patch than the host' => ['0.2.0', '0.2.1', false];
+        yield 'bare, another major' => ['0.2.0', '1.0.0', false];
+        yield 'caret range keeps its meaning' => ['0.2.0', '^0.1.0', false];
+        yield 'greater-or-equal range' => ['0.2.0', '>=0.1.0', true];
+        yield 'empty declaration' => ['0.2.0', '', true];
+        yield 'bare, older minor, same major 1' => ['1.4.0', '1.2.0', true];
+        yield 'bare, next major' => ['1.4.0', '2.0.0', false];
+        yield 'bare, older major' => ['1.4.0', '0.9.0', false];
+        yield 'or range keeps its meaning' => ['0.2.0', '0.1.0 || 0.3.0', false];
+    }
+
+    #[DataProvider('pluginApiDeclarations')]
+    public function testABarePluginApiVersionIsAMinimumWithinTheMajor(string $host, string $declared, bool $accepted): void
+    {
+        self::assertSame($accepted, PluginCompatibility::pluginApiSatisfied($host, $declared));
     }
 
     public function testManifestCoreRangePrefersSelfhelpThenFallsBackToCore(): void

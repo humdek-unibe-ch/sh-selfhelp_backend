@@ -77,6 +77,7 @@ class DataColumnService extends BaseService
         'scope',
         'user',
         'metadata',
+        'content_ref',
     ];
 
     /**
