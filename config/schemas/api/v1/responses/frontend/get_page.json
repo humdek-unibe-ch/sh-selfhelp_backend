@@ -88,8 +88,8 @@
                         "depends_on": {
                             "type": "array",
                             "uniqueItems": true,
-                            "items": { "type": "string", "pattern": "^(global_values|page:[0-9]+|page_draft:[0-9]+|table:[0-9]+)$" },
-                            "description": "Change tags: page:<id> (page_draft:<id> when the draft is served), table:<id> for every data table the page reads, and global_values."
+                            "items": { "type": "string", "pattern": "^(global_values|page:[0-9]+|page_draft:[0-9]+|table:[0-9]+|res:[a-z][a-z0-9_]{1,63}:[0-9]+)$" },
+                            "description": "Change tags: page:<id> (page_draft:<id> when the draft is served), table:<id> for every data table the page reads, res:<type>:<id> for plugin resources the page or its resolvers depend on, and global_values."
                         },
                         "valid_until": {
                             "type": ["string", "null"],

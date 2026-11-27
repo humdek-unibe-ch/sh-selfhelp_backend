@@ -29,7 +29,10 @@ use App\Service\Core\InterpolationService;
 use App\Service\Core\ServerBuiltString;
 use App\Service\Core\UserContextAwareService;
 use App\Service\Auth\UserContextService;
+use App\Plugin\Render\PluginRenderContext;
+use App\Plugin\Render\PluginStyleResolverRegistry;
 use App\Service\Sync\ClockBoundaries;
+use App\Service\Sync\PageResourceScanner;
 use App\Service\Sync\PageTableScanner;
 use App\Service\Sync\SyncTag;
 use App\Service\System\PlatformAboutService;
@@ -102,6 +105,8 @@ class PageService extends BaseService
         private readonly \App\Service\CMS\FormFieldKeyResolver $formFieldKeys,
         private readonly ClockBoundaries $clockBoundaries,
         private readonly PageTableScanner $tableScanner,
+        private readonly PageResourceScanner $resourceScanner,
+        private readonly PluginStyleResolverRegistry $pluginResolvers,
     ) {
     }
 
@@ -482,29 +487,73 @@ class PageService extends BaseService
         );
 
         // Both versions leave here, after every cache read: what the `version`
-        // style shows depends on the caller, so it is added last.
+        // style shows and what a plugin section resolves depend on the caller,
+        // so they are added last (contract C6, rule 3.8).
         $pageData = $this->withPlatformAboutOnPage($served['value']);
-        $pageData['sync'] = $this->syncBlock($page, $servesPublished, $served['valid_until']);
+        $user = $this->userContextAwareService->getCurrentUser();
+        $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID;
+        [$pageData, $resolverDependsOn] = $this->pluginResolvers->apply(
+            $pageData,
+            new PluginRenderContext(
+                $userId,
+                $page_id,
+                $languageId,
+                $servesPublished,
+                $preview,
+                $mode,
+            ),
+        );
+        $pageData['sync'] = $this->syncBlock($page, $servesPublished, $served['valid_until'], $resolverDependsOn);
 
         return $pageData;
     }
 
     /**
      * The `sync` block of a page payload (live-sync contract C6): the change tags the page depends on
-     * and the moment time alone changes the result.
+     * and the moment time alone changes the result. Resource tags come from the
+     * effective page's `resourceFields` and from the resolvers that just ran;
+     * unregistered `res:` tags and `table:` ids of missing tables are dropped.
      *
+     * @param list<string> $resolverDependsOn already-filtered tags from {@see PluginStyleResolverRegistry::apply()}
      * @return array{depends_on: list<string>, valid_until: string|null}
      */
-    private function syncBlock(\App\Entity\Page $page, bool $servesPublished, ?int $validUntil): array
-    {
+    private function syncBlock(
+        \App\Entity\Page $page,
+        bool $servesPublished,
+        ?int $validUntil,
+        array $resolverDependsOn = [],
+    ): array {
         $pageId = (int) $page->getId();
         $effective = $servesPublished ? $this->effectivePages->forPage($page, false) : $this->effectivePages->draftOf($page);
 
         $dependsOn = [$servesPublished ? SyncTag::page($pageId) : SyncTag::pageDraft($pageId)];
-        $tables = $this->tableScanner->scan($effective)['any'];
-        sort($tables);
-        foreach ($tables as $tableId) {
+
+        // Table ids are sorted as numbers (so table:9 before table:10), then
+        // resource tags alphabetically. Both sets absorb the resolvers' tags.
+        $tableIds = $this->tableScanner->scan($effective)['any'];
+        $resourceTags = [];
+        foreach ($this->resourceScanner->scan($effective) as $resource) {
+            $tag = $this->pluginResolvers->resourceTag($resource['type'], $resource['id']);
+            if ($tag !== null) {
+                $resourceTags[$tag] = $tag;
+            }
+        }
+        foreach ($resolverDependsOn as $tag) {
+            if (preg_match('/^table:(\d+)$/', $tag, $m) === 1) {
+                $tableIds[] = (int) $m[1];
+            } elseif (str_starts_with($tag, 'res:')) {
+                $resourceTags[$tag] = $tag;
+            }
+        }
+        $tableIds = array_values(array_unique($tableIds));
+        sort($tableIds);
+        foreach ($tableIds as $tableId) {
             $dependsOn[] = SyncTag::table($tableId);
+        }
+        $resourceTags = array_values($resourceTags);
+        sort($resourceTags);
+        foreach ($resourceTags as $tag) {
+            $dependsOn[] = $tag;
         }
         $dependsOn[] = SyncTag::GLOBAL_VALUES;
 

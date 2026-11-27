@@ -144,6 +144,16 @@
             "type": "object",
             "description": "entry-table header map: data column field_key => display_name (issue #56 v2)",
             "additionalProperties": { "type": "string" }
+        },
+        "plugin": {
+            "type": "object",
+            "description": "Plugin-resolved data for this section (contract C6). Present only when an enabled plugin's style resolver ran successfully for this section after the page cache. Never overwrites a core key.",
+            "additionalProperties": true
+        },
+        "plugin_error": {
+            "type": "string",
+            "description": "Set to \"resolver_failed\" when the section's plugin style resolver threw (contract C6). The rest of the page still renders.",
+            "const": "resolver_failed"
         }
     },
     "required": ["id", "section_name", "id_styles", "style_name", "position", "level", "path", "children", "section_data"],
