@@ -16,6 +16,7 @@ use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminDataHistoryService;
 use App\Service\CMS\Admin\DataQueryPreviewService;
 use App\Service\CMS\Admin\DataTableExportService;
+use App\Service\CMS\DataRevision\RecordContentRefReader;
 use App\Service\CMS\DataRevision\RecordWriteContext;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
@@ -51,6 +52,7 @@ class AdminDataController extends AbstractController
         private readonly OptionLabelHydrator $optionLabelHydrator,
         private readonly FormFileUploadService $formFileUploadService,
         private readonly DataTableExportService $exports,
+        private readonly RecordContentRefReader $contentRefs,
     ) {
     }
 
@@ -185,6 +187,8 @@ class AdminDataController extends AbstractController
                     $hydratedRows[] = $this->toAssocArray($row);
                 }
             }
+            // Each record shows the content it was written for (`content_ref`, contract C19); null for a record that predates it.
+            $hydratedRows = $this->contentRefs->attach($hydratedRows, 'content_ref', true);
             $rows = $this->optionLabelHydrator->hydrate(
                 $hydratedRows,
                 (string) $dataTable->getName(),

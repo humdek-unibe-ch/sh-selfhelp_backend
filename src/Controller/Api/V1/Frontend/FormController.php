@@ -15,6 +15,7 @@ use App\Service\CMS\DataRevision\RecordWriteContext;
 use App\Service\CMS\DataService;
 use App\Service\CMS\Effective\FormInputValidator;
 use App\Service\CMS\Effective\FormWriteScope;
+use App\Service\CMS\Effective\PageContentRefService;
 use App\Service\CMS\FormFileUploadService;
 use App\Service\CMS\FormList\FormListBoundary;
 use App\Service\CMS\FormList\FormListGuard;
@@ -70,7 +71,8 @@ class FormController extends AbstractController
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly PageContentRefService $contentRefs,
     ) {}
 
     /**
@@ -122,7 +124,9 @@ class FormController extends AbstractController
                     null,
                     true,
                     $accepted['labels'],
-                    RecordWriteContext::interactive(LookupService::DATA_REVISION_SOURCES_FORM, null),
+                    // The record remembers which version of the page the person was shown (contract C19).
+                    RecordWriteContext::interactive(LookupService::DATA_REVISION_SOURCES_FORM, null)
+                        ->withContentRef($this->contentRefs->forEffective($scope->effective)),
                 );
             } catch (\Throwable $e) {
                 $this->discardStoredFiles($stored);
@@ -333,7 +337,7 @@ class FormController extends AbstractController
                         LookupService::DATA_REVISION_SOURCES_FORM,
                         $expectedVersion,
                         $listContext !== null ? $this->listBoundary->guard($listContext) : null,
-                    ),
+                    )->withContentRef($this->contentRefs->forEffective($scope->effective)),
                 );
             } catch (\Throwable $e) {
                 $this->discardStoredFiles($stored);
@@ -483,7 +487,7 @@ class FormController extends AbstractController
                     LookupService::DATA_REVISION_SOURCES_FORM,
                     $expectedVersion,
                     $listContext !== null ? $this->listBoundary->guard($listContext) : null,
-                )
+                )->withContentRef($this->contentRefs->forEffective($validation->effective))
             );
 
             if (!$success) {

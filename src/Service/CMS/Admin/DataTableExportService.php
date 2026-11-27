@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Service\CMS\Admin;
 
 use App\Entity\DataTable;
+use App\Service\CMS\DataRevision\RecordContentRefReader;
 use App\Service\CMS\DataService;
 
 /**
@@ -21,9 +22,18 @@ use App\Service\CMS\DataService;
  * single read produced: JSON is the pretty-printed list of rows, CSV has one
  * header row with every column that appears in any row and one line per row.
  * Excel has the same header and rows as the CSV, in one sheet.
+ *
+ * A record written for known content carries its content reference (contract C19)
+ * in the column {@see self::CONTENT_REF_COLUMN}: a row without one has no such key,
+ * so CSV and Excel show an empty cell for it (the column exists as soon as one row
+ * has a reference) and a table whose records all predate the reference is
+ * exported exactly as before.
  */
 final class DataTableExportService
 {
+    /** The export column of the content a record was written for (`data_rows.content_ref`). */
+    public const CONTENT_REF_COLUMN = '_content_ref';
+
     /** Bytes a spool or an output buffer keeps in memory before PHP moves it to a temporary file. */
     private const MEMORY_LIMIT_BYTES = 4 * 1024 * 1024;
 
@@ -31,8 +41,10 @@ final class DataTableExportService
     private const XLSX_CELL_MAX = 32000;
     private const XLSX_CUT_MARK = ' [cut: too long for Excel]';
 
-    public function __construct(private readonly DataService $dataService)
-    {
+    public function __construct(
+        private readonly DataService $dataService,
+        private readonly RecordContentRefReader $contentRefs,
+    ) {
     }
 
     /**
@@ -51,7 +63,19 @@ final class DataTableExportService
             : $this->dataService->getDataInBatchesWithUserGroupFilter($tableId, $currentUserId, $excludeDeleted, $languageId, $batchSize);
 
         foreach ($source as $batch) {
-            yield $this->dataService->remapEntriesToInputNames($tableId, $batch);
+            $rows = [];
+            foreach ($this->dataService->remapEntriesToInputNames($tableId, $batch) as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $named = [];
+                foreach ($row as $key => $value) {
+                    $named[(string) $key] = $value;
+                }
+                $rows[] = $named;
+            }
+
+            yield $this->contentRefs->attach($rows, self::CONTENT_REF_COLUMN, false);
         }
     }
 

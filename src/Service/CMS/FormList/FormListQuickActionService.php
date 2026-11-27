@@ -16,6 +16,7 @@ use App\Service\CMS\DataRevision\LockedRecord;
 use App\Service\CMS\DataRevision\RecordWriteContext;
 use App\Service\CMS\DataService;
 use App\Service\CMS\Effective\FormInputValidator;
+use App\Service\CMS\Effective\PageContentRefService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Security\DataAccessSecurityService;
@@ -45,6 +46,7 @@ class FormListQuickActionService extends BaseService
         private readonly DataAccessSecurityService $security,
         private readonly FormListBoundary $boundary,
         private readonly FormInputValidator $validator,
+        private readonly PageContentRefService $contentRefs,
     ) {
     }
 
@@ -113,7 +115,9 @@ class FormListQuickActionService extends BaseService
             ['record_id' => $recordId],
             $isOwn ? $config->ownEntriesOnly : false,
             null,
-            RecordWriteContext::interactive(LookupService::DATA_REVISION_SOURCES_QUICK_ACTION, $expectedVersion, $guard),
+            // The record remembers which version of the page the person was shown (contract C19).
+            RecordWriteContext::interactive(LookupService::DATA_REVISION_SOURCES_QUICK_ACTION, $expectedVersion, $guard)
+                ->withContentRef($this->contentRefs->forPage($ctx->pageId, $ctx->source)),
         );
         if ($savedId === false) {
             throw new ServiceException('The action could not be saved.', Response::HTTP_INTERNAL_SERVER_ERROR);

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Content reference",
+  "description": "The content a record write was made for (contract C19): `page:<page id>@v<version number>` (a form of a published page version), `page:<page id>@draft` (an editor's preview, or a page that was never published) or `res:<resource type>:<item id>@v<item version>` (a version of a plugin item). Null: the write named none (a job, an import) or predates the reference.",
+  "type": [
+    "string",
+    "null"
+  ],
+  "maxLength": 191,
+  "pattern": "^(page:\\d+@(v\\d+|draft)|res:[a-z][a-z0-9_]{1,63}:\\d+@v\\d+)$"
+}

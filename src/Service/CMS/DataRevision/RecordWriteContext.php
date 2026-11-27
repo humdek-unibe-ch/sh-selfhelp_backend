@@ -30,6 +30,9 @@ use App\Service\Core\LookupService;
  *
  * `expectedVersion` is the version of the record the caller based its change on.
  * `restoredFromVersion` is set only by a restore.
+ * `contentRef` is the content the write was made for ({@see ContentRef}, contract C19):
+ * core forms name the page version they served, a plugin names the item version
+ * ({@see self::withContentRef()}), jobs and imports name none.
  */
 final readonly class RecordWriteContext
 {
@@ -39,6 +42,7 @@ final readonly class RecordWriteContext
      *                                                         change; it throws to refuse (the dataset boundary of a list)
      * @param (\Closure(RestorePlan): void)|null $planGuard runs under the record lock on the plan of a restore before it is applied;
      *                                                      it throws to refuse the whole restore
+     * @param string|null $contentRef the content reference of the write; null: the write names none. Always well formed: set it through {@see self::withContentRef()}
      */
     public function __construct(
         public string $source = LookupService::DATA_REVISION_SOURCES_FORM,
@@ -47,6 +51,7 @@ final readonly class RecordWriteContext
         public bool $interactive = false,
         public ?\Closure $targetGuard = null,
         public ?\Closure $planGuard = null,
+        public ?string $contentRef = null,
     ) {
     }
 
@@ -78,12 +83,30 @@ final readonly class RecordWriteContext
 
     public function withSource(string $source): self
     {
-        return new self($source, $this->expectedVersion, $this->restoredFromVersion, $this->interactive, $this->targetGuard, $this->planGuard);
+        return new self($source, $this->expectedVersion, $this->restoredFromVersion, $this->interactive, $this->targetGuard, $this->planGuard, $this->contentRef);
     }
 
-    /** The same context for a restore from `$version`. */
-    public function restoringFrom(int $version): self
+    /**
+     * The same context for a write made for the content `$contentRef` names (contract C19): a plugin passes
+     * `res:<type>:<id>@v<n>`, a core form `page:<id>@v<n>` or `page:<id>@draft`. The save refuses a `res:` type
+     * that no enabled plugin registered, before anything is written.
+     *
+     * @throws \InvalidArgumentException when `$contentRef` is not a well formed reference
+     */
+    public function withContentRef(string $contentRef): self
     {
-        return new self($this->source, $this->expectedVersion, $version, $this->interactive, $this->targetGuard, $this->planGuard);
+        ContentRef::assertWellFormed($contentRef);
+
+        return new self($this->source, $this->expectedVersion, $this->restoredFromVersion, $this->interactive, $this->targetGuard, $this->planGuard, $contentRef);
+    }
+
+    /**
+     * The same context for a restore from `$version`. A restore applies an earlier state, so it takes the
+     * reference that state was written with (`$contentRef`, null when that revision named none); a reference the
+     * caller set is replaced.
+     */
+    public function restoringFrom(int $version, ?string $contentRef = null): self
+    {
+        return new self($this->source, $this->expectedVersion, $version, $this->interactive, $this->targetGuard, $this->planGuard, $contentRef);
     }
 }

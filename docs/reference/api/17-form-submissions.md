@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-11-14.
+Last verified: 2026-11-26.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository (form storage keys resolved by `App\Service\CMS\DataColumnService`).
 
 ## Overview
@@ -81,6 +81,8 @@ The file part's name must be the `name` of a `file-input` in that form (here `at
 ```
 
 The success `data` also returns `record_id`, `section_id`, `page_id`, `submitted_at`, `user_authenticated` and the new record's `version` (`1`); see `responses/frontend/form_submitted.json`.
+
+Every write of a form (submit, update, delete, and a list's quick action) also stores which version of the page the person was shown, on the record and on its revision: `page:<page id>@v<n>` for the published version served, `page:<page id>@draft` for an editor's preview or a page that was never published. The client does not send it and cannot change it. Admins read it as `content_ref` in the data browser, the record history and the exports; see [record-history](../../developer/record-history.md#content-reference).
 
 ### Update Form Submission
 

@@ -17,7 +17,12 @@
               "type": "object",
               "required": ["revision", "changes"],
               "properties": {
-                "revision": { "type": "object" },
+                "revision": {
+                  "type": "object",
+                  "properties": {
+                    "content_ref": { "$ref": "../../common/_content_ref.json" }
+                  }
+                },
                 "changes": { "type": "array", "items": { "type": "object" } }
               },
               "additionalProperties": false

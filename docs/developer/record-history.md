@@ -2,9 +2,9 @@
 
 Audience: Backend developers and operators.
 Status: active.
-Applies to: SelfHelp2 backend, generic data store (`data_rows`, `data_revisions*`; migration `Version20261113120906`).
-Last verified: 2026-11-13.
-Source of truth: `DataService`, `App\Service\CMS\DataRevision\*` (`DataRevisionService`, `DataRestoreService`, `DataRevisionErasureService`, `RecordWriteContext`, `RestorePlan`), `FormListHistoryService`, and the tests `DataRevisionTest`, `DataRevisionRaceTest`, `DataRevisionErasureTest`, `FormRecordVersionTest`.
+Applies to: SelfHelp2 backend, generic data store (`data_rows`, `data_revisions*`; migrations `Version20261113120906` and, for the content reference, `Version20261126124832`).
+Last verified: 2026-11-26.
+Source of truth: `DataService`, `App\Service\CMS\DataRevision\*` (`DataRevisionService`, `DataRestoreService`, `DataRevisionErasureService`, `RecordWriteContext`, `RestorePlan`, `ContentRef`, `RecordContentRefReader`), `PageContentRefService`, `ContentVersionPins`, `FormListHistoryService`, and the tests `DataRevisionTest`, `DataRevisionRaceTest`, `DataRevisionErasureTest`, `FormRecordVersionTest`, `RecordContentRefTest`, `PluginPinnedVersionTest`, `PluginRecordEventsTest`.
 
 Every change to a record of the generic data store is a **revision**, and every
 record has a **version**. Together they give two things the platform did not have:
@@ -41,7 +41,8 @@ styles read it from the page (`section_data[]._version`, `entries[]._version`,
 | Table | Holds |
 | --- | --- |
 | `data_rows.version` | the record's version: 1 when created, +1 per persisted change |
-| `data_revisions` | one event per persisted change: `version`, `created_at`, `id_users` (actor), `id_impersonating_users`, `id_operations`, `id_sources`, `id_transactions` (the audit event of the same write), `restored_from_version`, `is_checkpoint`, `schema_version`; unique `(id_data_rows, version)` |
+| `data_rows.content_ref` | the content the record's latest write that named one was made for (see [Content reference](#content-reference)); NULL when none did |
+| `data_revisions` | one event per persisted change: `version`, `created_at`, `id_users` (actor), `id_impersonating_users`, `id_operations`, `id_sources`, `id_transactions` (the audit event of the same write), `restored_from_version`, `is_checkpoint`, `schema_version`, `content_ref` (the content that write was made for); unique `(id_data_rows, version)` |
 | `data_revision_changes` | per field and language: the stable `field_key`, the `field_label` it had, `id_before_values`, `id_after_values`; for a checkpoint, `is_snapshot` rows listing what each field held afterwards |
 | `data_revision_values` | the immutable values, stored **once per record** (`content_hash`, `byte_length`, `content`) |
 
@@ -72,6 +73,29 @@ An uploaded file is referenced by a logical key (`uploads/form-files/...`) in th
 - A dry run returns the plan without writing.
 - Deleted records are not restorable.
 - Who may restore is the list layer's decision (page, list occurrence, table grant or ownership); the service decides nothing about access.
+
+## Content reference
+
+A record also remembers **which content it was written for** (`content_ref`, contract C19), so research can always establish what a participant was shown and a plugin can keep an unfinished record on the version it began with. Two nullable `VARCHAR(191)` columns hold it: `data_rows.content_ref` (the latest write that named one) and `data_revisions.content_ref` (that write). `ContentRef` defines the three shapes; nothing else is stored.
+
+| Reference | Written by |
+| --- | --- |
+| `page:<page id>@v<n>` | a participant's core form write (form submit, update, delete, a list's quick action); `<n>` is the number of the published page version that was served (`PageContentRefService`, from the effective page) |
+| `page:<page id>@draft` | the same writes in an editor's preview, or on a page that was never published |
+| `res:<type>:<item id>@v<n>` | a plugin, through `RecordWriteContext::withContentRef('res:...')`; the type must be a resource type an enabled plugin registered, otherwise `DataService` throws `InvalidArgumentException` before anything is written (a malformed reference is refused by `withContentRef()` itself) |
+
+Rules:
+
+- **A write that names no reference never clears one.** Jobs, imports, administrators' edits and the user-validation form store no reference on their revision (NULL) and leave the record's as it is, so a record keeps the content version it was begun on.
+- A write that changes nothing creates no revision but still moves the record's reference to the newest one a write named.
+- A **delete** carries the reference of the content that caused it. A **restore** applies the reference of the revision it brings back (a revision without one restores without one; the record keeps its current reference).
+- Records written before the columns existed stay NULL. NULL means "unknown"; nothing is guessed or back-filled.
+- **Reads:** the data browser rows and the record history (admin and list history, per revision) carry `content_ref`; the CSV, Excel and JSON exports add the column `_content_ref` when at least one exported record has a reference (an empty cell for a record without one).
+- **Pin:** `PluginResourceServiceInterface::pinnedVersion($userId, $dataTableId, $type, $id)` returns the item version `<n>` of the newest record of that user in that table whose reference is `res:<type>:<id>@v<n>` and whose trigger type is `started` or `updated` (so not finished, not deleted); otherwise null, which means "serve the newest published version". A guest (user 0) is never pinned. One query on `idx_data_rows_table_user_timestamp`; no new index.
+
+## Record events for plugins
+
+After the commit of every record save (create, update, restore, quick action) and delete, `DataService` hands a `RecordSavedEvent` or `RecordDeletedEvent` to the plugin domain event dispatcher (contract C24, `record.saved` and `record.deleted`). The dispatcher waits for the outermost transaction to commit, drops the event when it rolls back, and delivers only to listeners of enabled plugins whose manifest `listens` names the event. The saved event carries the reference of the write that raised it (null when the write named none). A write that was refused (a stale version, a malformed or unregistered reference) announces nothing. The event is information only: a listener plans work, it never changes the record.
 
 ## Explicit erasure
 

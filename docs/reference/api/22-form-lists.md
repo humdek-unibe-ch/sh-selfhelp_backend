@@ -3,7 +3,7 @@
 Audience: Developers and integrators (web, mobile, scripts).
 Status: active.
 Applies to: SelfHelp2 Symfony backend with the `entry-form-list` and `data-view` styles (migration `Version20261113120844`).
-Last verified: 2026-11-17.
+Last verified: 2026-11-26.
 Source of truth: `FormListController`, `PageController`, `FormController`, `App\Service\CMS\FormList\*`, and the JSON schemas `config/schemas/api/v1/common/_form_list_state.json`, `_form_list_error.json`, `responses/frontend/form_list_*.json`, `requests/frontend/list_*.json`.
 
 A list shows the records of a form with search, sort, filters and paging. The
@@ -195,7 +195,7 @@ table update grant (unlike quick actions). A data view has no history.
 
 | Endpoint | Query / body | Result |
 | --- | --- | --- |
-| `GET /cms-api/v1/lists/{id}/records/{record}/history` | `page_id`, `page`, `page_size` (1-100, default 20) | `{items, total, page, page_size, current_version}`; items newest first with `version`, `created_at`, `operation`, `source`, `actor`, `impersonated_by`, `restored_from_version`, `changed_fields`, `is_checkpoint` |
+| `GET /cms-api/v1/lists/{id}/records/{record}/history` | `page_id`, `page`, `page_size` (1-100, default 20) | `{items, total, page, page_size, current_version}`; items newest first with `version`, `created_at`, `operation`, `source`, `actor`, `impersonated_by`, `restored_from_version`, `changed_fields`, `is_checkpoint`, `content_ref` (the content that write was made for, e.g. `page:7@v3`; `null` when it named none) |
 | `GET .../versions/{version}` | `page_id` | the revision's changes and the record's field state at that version |
 | `GET .../compare` | `page_id`, `from`, `to` | the field changes between two versions |
 | `POST .../restore` | `{page_id, version, expected_version, field_keys?, dry_run?}` | a dry run returns `{restorable, changes, blockers}`; a restore returns `{restored_from_version, version}` |

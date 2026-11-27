@@ -58,6 +58,15 @@ class DataRow
     #[ORM\Column(name: 'version', type: 'integer', options: ['default' => 1])]
     private int $version = 1;
 
+    /**
+     * The content the latest write that named one was made for (contract C19):
+     * `page:<id>@v<n>`, `page:<id>@draft` or `res:<type>:<id>@v<n>`. NULL means
+     * "unknown": records written before the reference existed, and records only
+     * jobs or imports wrote. A write without a reference never clears it.
+     */
+    #[ORM\Column(name: 'content_ref', type: 'string', length: 191, nullable: true)]
+    private ?string $contentRef = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -141,6 +150,18 @@ class DataRow
     public function setVersion(int $version): static
     {
         $this->version = $version;
+
+        return $this;
+    }
+
+    public function getContentRef(): ?string
+    {
+        return $this->contentRef;
+    }
+
+    public function setContentRef(?string $contentRef): static
+    {
+        $this->contentRef = $contentRef;
 
         return $this;
     }
