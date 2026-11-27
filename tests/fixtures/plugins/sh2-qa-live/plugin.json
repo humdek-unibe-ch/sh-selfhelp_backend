@@ -1,0 +1,245 @@
+{
+    "id": "sh2-qa-live",
+    "name": "QA Live (test fixture)",
+    "description": "Minimal test-only plugin proving plugin host hooks (resources, render, cache, jobs, sync). Lives only under tests/Fixtures.",
+    "version": "1.0.0",
+    "pluginApiVersion": "0.2.0",
+    "author": {
+        "name": "Humdek, University of Bern",
+        "email": "selfhelp@unibe.ch"
+    },
+    "license": "MPL-2.0",
+    "compatibility": {
+        "selfhelp": ">=0.1.52",
+        "php": "^8.4",
+        "node": "^22",
+        "react": "^19"
+    },
+    "backend": {
+        "bundleClass": "Humdek\\QaLiveBundle\\QaLiveBundle",
+        "migrationsNamespace": "Humdek\\QaLiveBundle\\Migrations",
+        "composer": {
+            "package": "humdek/sh2-qa-live",
+            "version": "1.0.0",
+            "repository": {
+                "type": "path",
+                "url": "."
+            }
+        }
+    },
+    "frontend": {
+        "runtime": {
+            "entrypoint": "dist/plugin.esm.js",
+            "format": "esm"
+        }
+    },
+    "security": {
+        "trustLevel": "reviewed",
+        "capabilities": [
+            "backendBundle",
+            "databaseMigrations",
+            "frontendStyles",
+            "adminPages",
+            "writeDataTables",
+            "scheduledJobs",
+            "readDataTables",
+            "lookupExtend"
+        ],
+        "signing": {
+            "required": false
+        }
+    },
+    "permissions": [
+        {
+            "key": "qa_live.items.read",
+            "description": "Read QA live items.",
+            "defaultRoles": ["admin"]
+        },
+        {
+            "key": "qa_live.items.create",
+            "description": "Create QA live items.",
+            "defaultRoles": ["admin"]
+        },
+        {
+            "key": "qa_live.items.update",
+            "description": "Update, publish and delete QA live items.",
+            "defaultRoles": ["admin"]
+        }
+    ],
+    "dataAccess": {
+        "ownedTables": ["qa_live_items"],
+        "ownedDataTablePrefix": "qa_live_",
+        "read": [
+            "data_tables",
+            "data_rows",
+            "data_cols",
+            "data_cells"
+        ],
+        "write": [
+            "data_tables",
+            "data_rows",
+            "data_cols",
+            "data_cells"
+        ]
+    },
+    "styleGroups": [
+        {
+            "name": "qa-live-group",
+            "description": "QA Live (test)",
+            "position": 990
+        }
+    ],
+    "fieldTypes": [
+        {
+            "name": "qa-live-type",
+            "position": 990
+        },
+        {
+            "name": "qa-live-pin-table",
+            "position": 991
+        }
+    ],
+    "fields": [
+        {
+            "name": "item_id",
+            "type": "qa-live-type",
+            "translatable": false
+        },
+        {
+            "name": "pin_table_id",
+            "type": "qa-live-pin-table",
+            "translatable": false
+        }
+    ],
+    "styles": [
+        {
+            "name": "qa-live-item",
+            "description": "Shows a pinned or current published QA live item.",
+            "canHaveChildren": false,
+            "group": "qa-live-group",
+            "fields": [
+                {
+                    "name": "item_id",
+                    "title": "Item id"
+                },
+                {
+                    "name": "pin_table_id",
+                    "title": "Pin data table id"
+                }
+            ],
+            "resourceFields": {
+                "item_id": "qa_live_item"
+            }
+        }
+    ],
+    "lookups": {
+        "extends": [
+            {
+                "typeCode": "resourceTypes",
+                "ownership": "plugin_extendable",
+                "entries": [
+                    {
+                        "code": "qa_live_item",
+                        "value": "QA live item"
+                    }
+                ]
+            },
+            {
+                "typeCode": "jobTypes",
+                "ownership": "plugin_extendable",
+                "entries": [
+                    {
+                        "code": "qa_live_job",
+                        "value": "QA live job"
+                    }
+                ]
+            }
+        ]
+    },
+    "cacheCategories": [
+        {
+            "name": "items",
+            "ttlSeconds": 120,
+            "description": "Resolved QA live item payloads"
+        }
+    ],
+    "scheduledJobs": [
+        {
+            "type": "qa_live_job",
+            "description": "Write a row into a QA live data table.",
+            "capability": "scheduledJobs",
+            "label": "QA live job",
+            "actionPlannable": true,
+            "configSchema": {
+                "type": "object",
+                "properties": {
+                    "result_table": {
+                        "type": "string",
+                        "title": "Result table"
+                    },
+                    "note": {
+                        "type": "string",
+                        "format": "variable-text",
+                        "title": "Note"
+                    }
+                },
+                "required": ["result_table"]
+            }
+        }
+    ],
+    "listens": ["record.saved"],
+    "adminPages": [
+        {
+            "slug": "items",
+            "label": "QA Live items",
+            "permission": "qa_live.items.read"
+        }
+    ],
+    "apiRoutes": [
+        {
+            "name": "qa_live_admin_list",
+            "path": "/admin/plugins/sh2-qa-live/items",
+            "controller": "Humdek\\QaLiveBundle\\Controller\\QaLiveAdminController::list",
+            "methods": ["GET"],
+            "permission": "qa_live.items.read"
+        },
+        {
+            "name": "qa_live_admin_create",
+            "path": "/admin/plugins/sh2-qa-live/items",
+            "controller": "Humdek\\QaLiveBundle\\Controller\\QaLiveAdminController::create",
+            "methods": ["POST"],
+            "permission": "qa_live.items.create"
+        },
+        {
+            "name": "qa_live_admin_update",
+            "path": "/admin/plugins/sh2-qa-live/items/{id}",
+            "controller": "Humdek\\QaLiveBundle\\Controller\\QaLiveAdminController::updateTitle",
+            "methods": ["PUT"],
+            "requirements": { "id": "\\d+" },
+            "permission": "qa_live.items.update"
+        },
+        {
+            "name": "qa_live_admin_publish",
+            "path": "/admin/plugins/sh2-qa-live/items/{id}/publish",
+            "controller": "Humdek\\QaLiveBundle\\Controller\\QaLiveAdminController::publish",
+            "methods": ["POST"],
+            "requirements": { "id": "\\d+" },
+            "permission": "qa_live.items.update"
+        },
+        {
+            "name": "qa_live_admin_delete",
+            "path": "/admin/plugins/sh2-qa-live/items/{id}",
+            "controller": "Humdek\\QaLiveBundle\\Controller\\QaLiveAdminController::delete",
+            "methods": ["DELETE"],
+            "requirements": { "id": "\\d+" },
+            "permission": "qa_live.items.update"
+        },
+        {
+            "name": "qa_live_write_for",
+            "path": "/admin/plugins/sh2-qa-live/write-for",
+            "controller": "Humdek\\QaLiveBundle\\Controller\\QaLiveWriteForController::writeFor",
+            "methods": ["POST"],
+            "permission": "qa_live.items.update"
+        }
+    ]
+}

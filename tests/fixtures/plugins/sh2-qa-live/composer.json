@@ -1,0 +1,29 @@
+{
+    "name": "humdek/sh2-qa-live",
+    "description": "SelfHelp test-only QA plugin (plugin host hooks end-to-end proof).",
+    "type": "symfony-bundle",
+    "license": "MPL-2.0",
+    "version": "1.0.0",
+    "require": {
+        "php": ">=8.4",
+        "doctrine/dbal": "^4.4.3",
+        "doctrine/doctrine-bundle": "^3.2.2",
+        "doctrine/orm": "^3.6.3",
+        "symfony/framework-bundle": "7.4.*",
+        "symfony/event-dispatcher": "7.4.*",
+        "symfony/http-foundation": "7.4.*",
+        "symfony/dependency-injection": "7.4.*",
+        "symfony/config": "7.4.*",
+        "symfony/security-bundle": "7.4.*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Humdek\\QaLiveBundle\\": "backend/src/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true
+    }
+}

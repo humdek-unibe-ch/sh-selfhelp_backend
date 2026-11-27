@@ -47,6 +47,31 @@ final class MercureTestRecorder implements HubInterface
     {
     }
 
+    /**
+     * Prefer getenv, then $_ENV / $_SERVER — `php -S` on Windows often leaves
+     * process env out of getenv() unless the harness router putenv()'s it.
+     *
+     * The e2e stack also drops `var/e2e-real-hub.flag` (see
+     * `scripts/e2e-stack.mjs`): on Windows the custom env var frequently never
+     * reaches this class even after the router putenv's it, so the flag is the
+     * reliable switch for browser golden runs. PHPUnit never creates the flag.
+     */
+    private function shouldForwardToRealHub(): bool
+    {
+        $raw = getenv(self::FORWARD_ENV);
+        if ($raw === false) {
+            $raw = $_ENV[self::FORWARD_ENV] ?? $_SERVER[self::FORWARD_ENV] ?? null;
+        }
+        if ($raw === '0' || $raw === 0 || $raw === false || $raw === 'false') {
+            return false;
+        }
+        if ($raw === '1' || $raw === 1 || $raw === true || $raw === 'true') {
+            return true;
+        }
+
+        return is_file(dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'var' . DIRECTORY_SEPARATOR . 'e2e-real-hub.flag');
+    }
+
     public function getPublicUrl(): string
     {
         return 'https://mercure.test/.well-known/mercure';
@@ -61,7 +86,7 @@ final class MercureTestRecorder implements HubInterface
     {
         $this->updates[] = $update;
 
-        if ($this->forwardTo !== null && getenv(self::FORWARD_ENV) === '1') {
+        if ($this->forwardTo !== null && $this->shouldForwardToRealHub()) {
             return $this->forwardTo->publish($update);
         }
 
